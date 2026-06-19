@@ -13,6 +13,7 @@ import TypeManagerModal from './components/TypeManagerModal'
 import DialogModal from './components/DialogModal'
 import ToastContainer from './components/ToastContainer'
 import KeyboardShortcuts from './components/KeyboardShortcuts'
+import WelcomeGuide from './components/WelcomeGuide'
 import { PanelLeftOpen, PanelRightOpen } from 'lucide-react'
 import { getReminderMilliseconds } from './utils/eventUtils'
 
@@ -31,6 +32,8 @@ export default function App() {
   const setIsRightPanelOpen = useUIStore((s) => s.setIsRightPanelOpen)
   const dialogConfig = useUIStore((s) => s.dialogConfig)
   const closeDialog = useUIStore((s) => s.closeDialog)
+  const isWelcomeGuideOpen = useUIStore((s) => s.isWelcomeGuideOpen)
+  const setIsWelcomeGuideOpen = useUIStore((s) => s.setIsWelcomeGuideOpen)
   const groupSize = useEventGroupStore((s) => s.groups.size)
   const activeId = useEventGroupStore((s) => s.activeGroupId)
   const sideKey = `${groupSize}-${activeId || 'none'}`
@@ -54,6 +57,16 @@ export default function App() {
     useEventGroupStore.getState().load()
     setInitialized(true)
   }, [])
+
+  // 首次启动自动弹出功能导览
+  useEffect(() => {
+    if (!initialized) return
+    try {
+      if (!localStorage.getItem('hasSeenWelcomeGuide')) {
+        setIsWelcomeGuideOpen(true)
+      }
+    } catch {}
+  }, [initialized])
 
   // 全局 ESC 关闭所有弹窗/浮窗
   useEffect(() => {
@@ -172,6 +185,7 @@ export default function App() {
       {isTypeManagerOpen && <TypeManagerModal editTypeId={typeToEditId} onClose={() => { setIsTypeManagerOpen(false); useUIStore.getState().setTypeToEditId(null) }} />}
       {dialogConfig && <DialogModal config={dialogConfig} onClose={closeDialog} />}
       <ToastContainer />
+      {isWelcomeGuideOpen && <WelcomeGuide onClose={() => setIsWelcomeGuideOpen(false)} />}
     </div>
   )
 }
