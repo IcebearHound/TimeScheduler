@@ -40,6 +40,8 @@ interface UIStore {
   setIsChainManagerOpen: (open: boolean) => void
   isSearchOpen: boolean
   setIsSearchOpen: (open: boolean) => void
+  isWelcomeGuideOpen: boolean
+  setIsWelcomeGuideOpen: (open: boolean) => void
   openPopoverEventId: string | null
   setOpenPopoverEventId: (id: string | null) => void
 
@@ -143,6 +145,8 @@ const useUIStore = create<UIStore>()(
     setIsChainManagerOpen: (open) => set({ isChainManagerOpen: open }),
     isSearchOpen: false,
     setIsSearchOpen: (open) => set({ isSearchOpen: open }),
+    isWelcomeGuideOpen: false,
+    setIsWelcomeGuideOpen: (open) => set({ isWelcomeGuideOpen: open }),
     openPopoverEventId: null,
     setOpenPopoverEventId: (id) => set({ openPopoverEventId: id }),
 
