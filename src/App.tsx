@@ -78,6 +78,7 @@ export default function App() {
       if (s.isEventPanelOpen) { s.setIsEventPanelOpen(false); return }
       if (s.isImportDialogOpen) { s.setIsImportDialogOpen(false); return }
       if (s.isConflictDialogOpen) { s.setIsConflictDialogOpen(false); return }
+      if (s.isWelcomeGuideOpen) { s.setIsWelcomeGuideOpen(false); return }
       if (s.dialogConfig) { s.closeDialog(); return }
       if (s.selectedEventId) { s.setSelectedEvent(undefined); return }
       s.triggerClosePopovers()
