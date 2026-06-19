@@ -1,0 +1,7 @@
+/**
+ * ID生成工具
+ */
+
+export function generateId(prefix: string): string {
+  return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`
+}

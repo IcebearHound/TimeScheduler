@@ -1,0 +1,382 @@
+import React, { useState, useMemo, useCallback, useRef, useEffect } from 'react'
+import {
+  PanelRightClose, Pin, Star, Clock, GripVertical, ChevronDown, ChevronRight,
+  RefreshCw, Settings, Layers, Link2
+} from 'lucide-react'
+import useUIStore from '../stores/uiStore'
+import useEventStore from '../stores/eventStore'
+import useEventGroupStore from '../stores/eventGroupStore'
+import { Event } from '../types/event'
+
+export default function TodoView() {
+  const setIsRightPanelOpen = useUIStore((s) => s.setIsRightPanelOpen)
+  const setSelectedEvent = useUIStore((s) => s.setSelectedEvent)
+  const todoHighlightDays = useUIStore((s) => s.todoHighlightDays)
+  const setTodoHighlightDays = useUIStore((s) => s.setTodoHighlightDays)
+  const todoUpcomingDays = useUIStore((s) => s.todoUpcomingDays)
+  const setTodoUpcomingDays = useUIStore((s) => s.setTodoUpcomingDays)
+  const events = useEventStore((s) => s.events)
+  const eventChains = useEventStore((s) => s.eventChains)
+  const groups = useEventGroupStore((s) => s.groups)
+  const togglePinEvent = useEventStore((s) => s.togglePinEvent)
+  const reorderTodo = useEventStore((s) => s.reorderTodo)
+  const toggleChainIncludeInTodo = useEventStore((s) => s.toggleChainIncludeInTodo)
+  const toggleGroupIncludeInTodo = useEventGroupStore((s) => s.toggleGroupIncludeInTodo)
+
+  const eventStore = useEventStore.getState()
+  const popoverCloseToken = useUIStore((s) => s.popoverCloseToken)
+
+  const [showSettings, setShowSettings] = useState(false)
+  const [collapsedSections, setCollapsedSections] = useState<Set<string>>(new Set())
+  const [dragId, setDragId] = useState<string | null>(null)
+  const dragOverId = useRef<string | null>(null)
+  const [dragPosition, setDragPosition] = useState<'above' | 'below' | null>(null)
+
+  useEffect(() => { setShowSettings(false) }, [popoverCloseToken])
+
+  const now = new Date()
+  const highlightCutoff = new Date(now.getTime() + todoHighlightDays * 24 * 60 * 60 * 1000)
+  const upcomingCutoff = new Date(now.getTime() + todoUpcomingDays * 24 * 60 * 60 * 1000)
+
+  const allEvents = Array.from(events.values())
+
+  function isInTodo(event: Event): boolean {
+    if (event.pinned) return true
+    if (event.isHighlight && event.startTime <= highlightCutoff) return true
+    if (event.startTime > upcomingCutoff) return false
+
+    const chain = eventChains.get(event.chainId)
+    if (chain && chain.includeInTodo === false) return false
+
+    const group = Array.from(groups.values()).find(g => g.eventIds.includes(event.id) || g.eventChainIds.includes(event.chainId))
+    if (group && group.includeInTodo === false) return false
+
+    return true
+  }
+
+  const pinnedEvents = useMemo(() =>
+    allEvents.filter(e => e.pinned).sort((a, b) => {
+      if (a.todoOrder !== undefined && b.todoOrder !== undefined) return a.todoOrder - b.todoOrder
+      if (a.todoOrder !== undefined) return -1
+      if (b.todoOrder !== undefined) return 1
+      return new Date(a.startTime).getTime() - new Date(b.startTime).getTime()
+    }),
+  [allEvents])
+
+  const highlightEvents = useMemo(() =>
+    allEvents.filter(e =>
+      !e.pinned && e.isHighlight && e.startTime >= now && e.startTime <= highlightCutoff
+    ).sort((a, b) => new Date(a.startTime).getTime() - new Date(b.startTime).getTime()),
+  [allEvents, highlightCutoff])
+
+  const upcomingEvents = useMemo(() =>
+    allEvents.filter(e =>
+      !e.pinned && !e.isHighlight &&
+      e.startTime >= now && e.startTime <= upcomingCutoff &&
+      isInTodo(e)
+    ).sort((a, b) => new Date(a.startTime).getTime() - new Date(b.startTime).getTime()),
+  [allEvents, upcomingCutoff])
+
+  const allTodoEvents = useMemo(() => {
+    const seen = new Set<string>()
+    const result: Event[] = []
+    for (const e of [...pinnedEvents, ...highlightEvents, ...upcomingEvents]) {
+      if (!seen.has(e.id)) { seen.add(e.id); result.push(e) }
+    }
+    return result
+  }, [pinnedEvents, highlightEvents, upcomingEvents])
+
+  function handleReorder() {
+    const ids = [...pinnedEvents, ...highlightEvents, ...upcomingEvents].map(e => e.id)
+    reorderTodo(ids)
+  }
+
+  function toggleSection(key: string) {
+    setCollapsedSections(prev => {
+      const next = new Set(prev)
+      if (next.has(key)) next.delete(key)
+      else next.add(key)
+      return next
+    })
+  }
+
+  function handleDragStart(e: React.DragEvent, eventId: string) {
+    setDragId(eventId)
+    e.dataTransfer.effectAllowed = 'move'
+    e.dataTransfer.setData('text/plain', eventId)
+  }
+
+  function handleDragOver(e: React.DragEvent, eventId: string) {
+    e.preventDefault()
+    e.dataTransfer.dropEffect = 'move'
+    dragOverId.current = eventId
+
+    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect()
+    const mid = rect.top + rect.height / 2
+    setDragPosition(e.clientY < mid ? 'above' : 'below')
+  }
+
+  function handleDragLeave() {
+    dragOverId.current = null
+    setDragPosition(null)
+  }
+
+  function handleDrop(e: React.DragEvent) {
+    e.preventDefault()
+    setDragId(null)
+    setDragPosition(null)
+    if (!dragId || !dragOverId.current || dragId === dragOverId.current) return
+
+    const ids = allTodoEvents.map(ev => ev.id)
+    const fromIdx = ids.indexOf(dragId)
+    const toIdx = ids.indexOf(dragOverId.current)
+    if (fromIdx === -1 || toIdx === -1) return
+
+    const newIds = [...ids]
+    newIds.splice(fromIdx, 1)
+    const insertIdx = dragPosition === 'below'
+      ? (toIdx >= fromIdx ? toIdx : toIdx + 1)
+      : (toIdx > fromIdx ? toIdx - 1 : toIdx)
+    newIds.splice(Math.max(0, insertIdx), 0, dragId)
+
+    reorderTodo(newIds)
+  }
+
+  function handleDragEnd() {
+    setDragId(null)
+    setDragPosition(null)
+  }
+
+  return (
+    <div
+      className="w-[min(22vw,20rem)] bg-white dark:bg-slate-800 border-l border-slate-200 dark:border-slate-700 flex flex-col overflow-hidden"
+      onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = 'move' }}
+      onDrop={(e) => {
+        e.preventDefault()
+        const eventId = e.dataTransfer.getData('text/plain')
+        if (eventId) togglePinEvent(eventId)
+        useUIStore.getState().setDraggedEvent(undefined)
+      }}>
+      <div className="flex items-center justify-between p-3 border-b border-slate-200 dark:border-slate-700 flex-shrink-0">
+        <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">Todo</span>
+        <div className="flex items-center gap-1">
+          <button onClick={handleReorder} className="p-1 hover:bg-slate-100 dark:hover:bg-slate-700 rounded text-slate-400" title="一键重排">
+            <RefreshCw className="w-3.5 h-3.5" />
+          </button>
+          <div className="relative flex items-center">
+            <button onClick={() => setShowSettings(!showSettings)} className="p-1 hover:bg-slate-100 dark:hover:bg-slate-700 rounded text-slate-400" title="Todo 设置">
+              <Settings className="w-3.5 h-3.5" />
+            </button>
+            {showSettings && (
+              <div className="absolute right-0 top-full mt-1 w-60 bg-white dark:bg-slate-800 rounded-lg shadow-xl border border-slate-200 dark:border-slate-700 p-3 z-50 space-y-3">
+                <div>
+                  <label className="block text-xs text-slate-500 mb-1">重点事项时间范围（天）</label>
+                  <input type="number" min={1} max={365} value={todoHighlightDays}
+                    onChange={e => setTodoHighlightDays(Math.max(1, Number(e.target.value)))}
+                    className="w-full px-2 py-1 text-xs border border-slate-300 dark:border-slate-600 rounded bg-white dark:bg-slate-700 text-slate-900 dark:text-white focus:outline-none focus:ring-1 focus:ring-blue-500" />
+                </div>
+                <div>
+                  <label className="block text-xs text-slate-500 mb-1">待办事项时间范围（天）</label>
+                  <input type="number" min={1} max={365} value={todoUpcomingDays}
+                    onChange={e => setTodoUpcomingDays(Math.max(1, Number(e.target.value)))}
+                    className="w-full px-2 py-1 text-xs border border-slate-300 dark:border-slate-600 rounded bg-white dark:bg-slate-700 text-slate-900 dark:text-white focus:outline-none focus:ring-1 focus:ring-blue-500" />
+                </div>
+                <div className="border-t border-slate-200 dark:border-slate-600 pt-3">
+                  <p className="text-[10px] text-slate-400 mb-1.5">Todo 来源</p>
+                  <div className="space-y-1.5 max-h-32 overflow-y-auto">
+                    <div>
+                      <p className="text-[10px] text-slate-400 px-0.5 mb-0.5 flex items-center gap-1"><Layers className="w-2.5 h-2.5" /> 事件组</p>
+                      {Array.from(groups.values()).map(g => (
+                        <label key={g.id} className="flex items-center gap-2 px-0.5 py-0.5 text-xs cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-700 rounded">
+                          <input type="checkbox" checked={g.includeInTodo !== false}
+                            onChange={() => toggleGroupIncludeInTodo(g.id)} className="w-3 h-3" />
+                          <span className="text-slate-600 dark:text-slate-400 truncate">{g.emoji} {g.name}</span>
+                        </label>
+                      ))}
+                    </div>
+                    <div>
+                      <p className="text-[10px] text-slate-400 px-0.5 mb-0.5 flex items-center gap-1"><Link2 className="w-2.5 h-2.5" /> 事件链</p>
+                      {Array.from(eventChains.values()).map(c => (
+                        <label key={c.id} className="flex items-center gap-2 px-0.5 py-0.5 text-xs cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-700 rounded">
+                          <input type="checkbox" checked={c.includeInTodo !== false}
+                            onChange={() => toggleChainIncludeInTodo(c.id)} className="w-3 h-3" />
+                          <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: c.color }} />
+                          <span className="text-slate-600 dark:text-slate-400 truncate">{c.name}</span>
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+          <button onClick={() => setIsRightPanelOpen(false)} className="p-1 hover:bg-slate-100 dark:hover:bg-slate-700 rounded text-slate-400">
+            <PanelRightClose className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      </div>
+
+      <div className="flex-1 overflow-y-auto">
+        {/* 置顶区 */}
+        <div className="border-b border-slate-100 dark:border-slate-700">
+          <button onClick={() => toggleSection('pinned')}
+            className="flex items-center gap-1.5 w-full px-3 py-2 text-xs font-medium text-slate-500 hover:bg-slate-50 dark:hover:bg-slate-700/50">
+            {collapsedSections.has('pinned') ? <ChevronRight className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
+            <Pin className="w-3 h-3" /> 置顶 ({pinnedEvents.length})
+          </button>
+          {!collapsedSections.has('pinned') && (
+            <div className="px-1 pb-1">
+              {pinnedEvents.length === 0 && (
+                <p className="text-xs text-slate-400 px-3 py-2">拖拽事件到此处置顶</p>
+              )}
+              {pinnedEvents.map(event => (
+                <TodoItem key={event.id} event={event}
+                  onSelect={() => setSelectedEvent(event.id)}
+                  onTogglePin={() => togglePinEvent(event.id)}
+                  onDragStart={handleDragStart}
+                  onDragOver={handleDragOver}
+                  onDragLeave={handleDragLeave}
+                  onDrop={handleDrop}
+                  onDragEnd={handleDragEnd}
+                  dragId={dragId}
+                  dragPosition={dragId && dragOverId.current === event.id ? dragPosition : null}
+                  eventStore={eventStore} />
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* 重点区 */}
+        <div className="border-b border-slate-100 dark:border-slate-700">
+          <button onClick={() => toggleSection('highlight')}
+            className="flex items-center gap-1.5 w-full px-3 py-2 text-xs font-medium text-slate-500 hover:bg-slate-50 dark:hover:bg-slate-700/50">
+            {collapsedSections.has('highlight') ? <ChevronRight className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
+            <Star className="w-3 h-3 text-yellow-500" /> 重点事项 ({highlightEvents.length})
+          </button>
+          {!collapsedSections.has('highlight') && (
+            <div className="px-1 pb-1">
+              {highlightEvents.length === 0 && (
+                <p className="text-xs text-slate-400 px-3 py-2">暂无重点事项</p>
+              )}
+              {highlightEvents.map(event => (
+                <TodoItem key={event.id} event={event}
+                  onSelect={() => setSelectedEvent(event.id)}
+                  onTogglePin={() => togglePinEvent(event.id)}
+                  onDragStart={handleDragStart}
+                  onDragOver={handleDragOver}
+                  onDragLeave={handleDragLeave}
+                  onDrop={handleDrop}
+                  onDragEnd={handleDragEnd}
+                  dragId={dragId}
+                  dragPosition={dragId && dragOverId.current === event.id ? dragPosition : null}
+                  eventStore={eventStore} />
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* 待办区 */}
+        <div>
+          <button onClick={() => toggleSection('upcoming')}
+            className="flex items-center gap-1.5 w-full px-3 py-2 text-xs font-medium text-slate-500 hover:bg-slate-50 dark:hover:bg-slate-700/50">
+            {collapsedSections.has('upcoming') ? <ChevronRight className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
+            <Clock className="w-3 h-3" /> 待办事项 ({upcomingEvents.length})
+          </button>
+          {!collapsedSections.has('upcoming') && (
+            <div className="px-1 pb-1">
+              {upcomingEvents.length === 0 && (
+                <p className="text-xs text-slate-400 px-3 py-2">暂无待办事项</p>
+              )}
+              {upcomingEvents.slice(0, 10).map(event => (
+                <TodoItem key={event.id} event={event}
+                  onSelect={() => setSelectedEvent(event.id)}
+                  onTogglePin={() => togglePinEvent(event.id)}
+                  onDragStart={handleDragStart}
+                  onDragOver={handleDragOver}
+                  onDragLeave={handleDragLeave}
+                  onDrop={handleDrop}
+                  onDragEnd={handleDragEnd}
+                  dragId={dragId}
+                  dragPosition={dragId && dragOverId.current === event.id ? dragPosition : null}
+                  eventStore={eventStore} />
+              ))}
+              {upcomingEvents.length > 10 && (
+                <p className="text-xs text-slate-400 text-center py-1">还有 {upcomingEvents.length - 10} 项...</p>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+interface TodoItemProps {
+  event: Event
+  onSelect: () => void
+  onTogglePin: () => void
+  onDragStart: (e: React.DragEvent, id: string) => void
+  onDragOver: (e: React.DragEvent, id: string) => void
+  onDragLeave: () => void
+  onDrop: (e: React.DragEvent) => void
+  onDragEnd: () => void
+  dragId: string | null
+  dragPosition: 'above' | 'below' | null
+  eventStore: ReturnType<typeof useEventStore.getState>
+}
+
+function TodoItem({ event, onSelect, onTogglePin, onDragStart, onDragOver, onDragLeave, onDrop, onDragEnd, dragId, dragPosition, eventStore }: TodoItemProps) {
+  const type = eventStore.getEventType(event.typeId)
+  const chain = eventStore.getEventChain(event.chainId)
+  const isDragging = dragId === event.id
+
+  function fmtDate(d: Date): string {
+    const now = new Date()
+    const diff = d.getTime() - now.getTime()
+    const days = Math.ceil(diff / (1000 * 60 * 60 * 24))
+    if (days === 0) return '今天'
+    if (days === 1) return '明天'
+    if (days === 2) return '后天'
+    return `${d.getMonth() + 1}/${d.getDate()}`
+  }
+
+  function fmtTime(d: Date): string {
+    return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
+  }
+
+  return (
+    <div
+      draggable
+      onDragStart={(e) => onDragStart(e, event.id)}
+      onDragOver={(e) => onDragOver(e, event.id)}
+      onDragLeave={onDragLeave}
+      onDrop={onDrop}
+      onDragEnd={onDragEnd}
+      className={`relative ${isDragging ? 'opacity-50' : ''}`}
+    >
+      {dragPosition === 'above' && (
+        <div className="h-0.5 bg-blue-500 mx-3 rounded" />
+      )}
+      <div onClick={onSelect}
+        className={`flex items-center gap-2 px-3 py-1.5 cursor-pointer rounded mx-1 transition-colors hover:bg-slate-50 dark:hover:bg-slate-700/50 ${event.isHighlight ? 'bg-yellow-50 dark:bg-yellow-900/10' : ''}`}>
+        <GripVertical className="w-3 h-3 text-slate-300 flex-shrink-0 cursor-grab" />
+        <button onClick={e => { e.stopPropagation(); onTogglePin() }}
+          className={`flex-shrink-0 ${event.pinned ? 'text-blue-500' : 'text-slate-300 hover:text-slate-500'}`}>
+          <Pin className="w-3 h-3" />
+        </button>
+        <span className="text-sm flex-shrink-0">{type?.emoji || '📌'}</span>
+        <div className="flex-1 min-w-0">
+          <p className="text-xs text-slate-700 dark:text-slate-300 truncate">{event.name}</p>
+          <p className="text-[10px] text-slate-400">
+            {fmtDate(new Date(event.startTime))} {fmtTime(new Date(event.startTime))} ~ {fmtTime(new Date(event.endTime))}
+            {chain && <span className="ml-1">· {chain.name}</span>}
+          </p>
+        </div>
+        {event.isHighlight && <Star className="w-3 h-3 fill-yellow-400 text-yellow-400 flex-shrink-0" />}
+      </div>
+      {dragPosition === 'below' && (
+        <div className="h-0.5 bg-blue-500 mx-3 rounded" />
+      )}
+    </div>
+  )
+}

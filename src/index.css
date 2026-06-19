@@ -1,0 +1,98 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+* {
+  @apply transition-colors;
+}
+
+html {
+  @apply scroll-smooth;
+  font-size: clamp(13px, 1.2vw, 16px);
+}
+
+@keyframes slideUp {
+  from { opacity: 0; transform: translateY(1rem); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+body {
+  @apply bg-gradient-to-br from-slate-50 to-slate-100 dark:from-slate-900 dark:to-slate-800;
+}
+
+::-webkit-scrollbar {
+  @apply w-2 h-2;
+}
+
+::-webkit-scrollbar-track {
+  @apply bg-transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  @apply bg-slate-300 dark:bg-slate-600 rounded-full;
+  &:hover {
+    @apply bg-slate-400 dark:bg-slate-500;
+  }
+}
+
+/* 自定义样式 */
+.event-block {
+  @apply rounded-lg p-2 text-white text-sm font-medium cursor-move shadow-md hover:shadow-lg;
+  border-left: 4px solid;
+  
+  &.highlight {
+    @apply ring-2 ring-yellow-400;
+  }
+}
+
+.time-slot {
+  @apply relative h-20 border-b border-slate-200 dark:border-slate-700;
+  
+  &:hover {
+    @apply bg-slate-100 dark:bg-slate-800;
+  }
+}
+
+.day-header {
+  @apply sticky top-0 z-10 bg-white dark:bg-slate-800 shadow-sm;
+}
+
+.week-day {
+  @apply flex flex-col gap-1 flex-1;
+}
+
+.modal-backdrop {
+  @apply fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50;
+}
+
+.modal {
+  @apply bg-white dark:bg-slate-800 rounded-xl shadow-2xl max-w-2xl w-full max-h-96 overflow-y-auto;
+}
+
+.btn-primary {
+  @apply px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium transition-colors;
+}
+
+.btn-secondary {
+  @apply px-4 py-2 bg-slate-200 hover:bg-slate-300 dark:bg-slate-700 dark:hover:bg-slate-600 rounded-lg font-medium transition-colors;
+}
+
+.input-field {
+  @apply w-full px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500;
+}
+
+.badge {
+  @apply inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium;
+}
+
+.badge-course {
+  @apply bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200;
+}
+
+.badge-exam {
+  @apply bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200;
+}
+
+.badge-lab {
+  @apply bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200;
+}
