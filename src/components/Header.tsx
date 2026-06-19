@@ -23,6 +23,7 @@ export default function Header() {
   const setIsSearchOpen = useUIStore((s) => s.setIsSearchOpen)
   const themeMode = useUIStore((s) => s.themeMode)
   const setThemeMode = useUIStore((s) => s.setThemeMode)
+  const setIsWelcomeGuideOpen = useUIStore((s) => s.setIsWelcomeGuideOpen)
   const [showSettings, setShowSettings] = useState(false)
   const [showFilter, setShowFilter] = useState(false)
 
@@ -114,6 +115,8 @@ export default function Header() {
             <div className="absolute right-0 top-full mt-2 bg-white dark:bg-slate-800 rounded-xl shadow-xl border border-slate-200 dark:border-slate-700 z-50 min-w-44 overflow-hidden">
               <button onClick={() => { setIsTypeManagerOpen(true); setShowSettings(false) }}
                 className="w-full text-left px-4 py-2.5 text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors">管理事件类型</button>
+              <button onClick={() => { setIsWelcomeGuideOpen(true); setShowSettings(false) }}
+                className="w-full text-left px-4 py-2.5 text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors">功能导览</button>
               <button onClick={() => { setThemeMode(themeMode === 'light' ? 'dark' : themeMode === 'dark' ? 'system' : 'light') }}
                 className="w-full text-left px-4 py-2.5 text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors flex items-center gap-2">
                 {themeMode === 'light' ? <Sun className="w-4 h-4" /> : themeMode === 'dark' ? <Moon className="w-4 h-4" /> : <Monitor className="w-4 h-4" />}
