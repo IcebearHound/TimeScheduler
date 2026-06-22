@@ -7,6 +7,7 @@ interface Props {
 
 export default function NotificationPermissionPrompt({ onClose }: Props) {
   const [visible, setVisible] = useState(true)
+  const [dontRemind, setDontRemind] = useState(false)
   const [permState, setPermState] = useState<NotificationPermission>(
     'Notification' in window ? Notification.permission : 'denied'
   )
@@ -21,7 +22,9 @@ export default function NotificationPermissionPrompt({ onClose }: Props) {
 
   const handleDismiss = () => {
     setVisible(false)
-    try { localStorage.setItem('notificationPromptSeen', 'true') } catch {}
+    if (dontRemind) {
+      try { localStorage.setItem('notificationPromptSeen', 'true') } catch {}
+    }
     setTimeout(() => onClose(), 200)
   }
 
@@ -66,6 +69,14 @@ export default function NotificationPermissionPrompt({ onClose }: Props) {
                 请在浏览器地址栏左侧点击锁/信息图标，<br />
                 找到"通知"选项，改为"允许"后刷新页面。
               </p>
+              <div className="flex items-center justify-center gap-2 mb-4">
+                <input type="checkbox" id="dontRemindDenied" checked={dontRemind}
+                  onChange={e => setDontRemind(e.target.checked)}
+                  className="w-4 h-4 rounded border-slate-300 dark:border-slate-600 text-accent-600 focus:ring-accent-500" />
+                <label htmlFor="dontRemindDenied" className="text-xs text-slate-400 dark:text-slate-500 cursor-pointer select-none">
+                  不再提醒
+                </label>
+              </div>
               <button onClick={handleDismiss}
                 className="px-8 py-2.5 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 rounded-lg text-sm font-medium transition-colors">
                 关闭
@@ -84,6 +95,14 @@ export default function NotificationPermissionPrompt({ onClose }: Props) {
                 按你设置的提醒时间发送桌面通知。<br />
                 通知仅在本设备显示，不上传任何数据。
               </p>
+              <div className="flex items-center justify-center gap-2 mb-4">
+                <input type="checkbox" id="dontRemind" checked={dontRemind}
+                  onChange={e => setDontRemind(e.target.checked)}
+                  className="w-4 h-4 rounded border-slate-300 dark:border-slate-600 text-accent-600 focus:ring-accent-500" />
+                <label htmlFor="dontRemind" className="text-xs text-slate-400 dark:text-slate-500 cursor-pointer select-none">
+                  不再提醒
+                </label>
+              </div>
               {permState === 'granted' ? (
                 <div className="flex items-center justify-center gap-2 text-green-600 dark:text-green-400 text-sm mb-2">
                   <span className="w-2 h-2 rounded-full bg-green-500" />

@@ -98,17 +98,17 @@ export default function App() {
     } catch {}
   }, [initialized])
 
-  // 导览关闭后弹出通知权限请求
+  // 启动时检测通知权限，未授权/已拒绝则弹窗提醒
   useEffect(() => {
     if (!initialized) return
-    if (isWelcomeGuideOpen) return
     try {
       if (localStorage.getItem('notificationPromptSeen')) return
     } catch {}
     if (!('Notification' in window)) return
-    if (Notification.permission !== 'default') return
-    setIsNotificationPromptOpen(true)
-  }, [initialized, isWelcomeGuideOpen])
+    if (Notification.permission === 'granted') return
+    const timer = setTimeout(() => setIsNotificationPromptOpen(true), 500)
+    return () => clearTimeout(timer)
+  }, [initialized])
 
   // 全局 ESC 关闭所有弹窗/浮窗
   useEffect(() => {
