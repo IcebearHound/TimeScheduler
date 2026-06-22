@@ -28,18 +28,18 @@ export default function NotificationPermissionPrompt({ onClose }: Props) {
     setTimeout(() => onClose(), 200)
   }
 
-  const handleEnable = () => {
+  const handleEnable = async () => {
     if (!('Notification' in window)) return
-    Notification.requestPermission()
-      .then((p) => {
-        setPermState(p)
-        if (p === 'granted') {
-          setTimeout(() => handleDismiss(), 1500)
-        }
-      })
-      .catch(() => {
-        setPermState('denied')
-      })
+    let result: NotificationPermission
+    try {
+      result = await Notification.requestPermission()
+    } catch {
+      result = 'denied'
+    }
+    setPermState(result)
+    if (result === 'granted') {
+      setTimeout(() => handleDismiss(), 1500)
+    }
   }
 
   if (!visible) return null
