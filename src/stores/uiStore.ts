@@ -18,6 +18,10 @@ interface UIStore {
   selectedEventIds: Set<string>
   toggleMultiSelect: (id: string) => void
   clearMultiSelect: () => void
+  hiddenGroupIds: Set<string>
+  toggleGroupVisibility: (id: string) => void
+  setHiddenGroupIds: (ids: Set<string>) => void
+  clearHiddenGroups: () => void
   selectedChainId?: string
   setSelectedChain: (id?: string) => void
 
@@ -42,15 +46,21 @@ interface UIStore {
   setIsSearchOpen: (open: boolean) => void
   isWelcomeGuideOpen: boolean
   setIsWelcomeGuideOpen: (open: boolean) => void
+  isNotificationPromptOpen: boolean
+  setIsNotificationPromptOpen: (open: boolean) => void
+  isTodoModalOpen: boolean
+  setIsTodoModalOpen: (open: boolean) => void
   openPopoverEventId: string | null
   setOpenPopoverEventId: (id: string | null) => void
+  popoverEditorId: string | null
+  setPopoverEditorId: (id: string | null) => void
 
   dialogConfig: DialogConfig | null
   showDialog: (config: DialogConfig) => void
   closeDialog: () => void
 
-  toasts: Array<{ id: string; message: string; action?: string; actionFn?: () => void }>
-  addToast: (message: string, action?: string, actionFn?: () => void) => void
+  toasts: Array<{ id: string; message: string; action?: string; actionFn?: () => void; affected?: Array<{ type: 'event' | 'chain' | 'group' | 'type'; id: string; name: string }> }>
+  addToast: (message: string, action?: string, actionFn?: () => void, affected?: Array<{ type: 'event' | 'chain' | 'group' | 'type'; id: string; name: string }>) => void
   removeToast: (id: string) => void
 
   showGroupEmoji: boolean
@@ -78,6 +88,11 @@ interface UIStore {
   setTypeToEditId: (id: string | null) => void
   popoverCloseToken: number
   triggerClosePopovers: () => void
+  flashEventId: string | null
+  setFlashEventId: (id: string | null) => void
+
+  showDebugPanel: boolean
+  setShowDebugPanel: (show: boolean) => void
 }
 
 function getSavedTheme(): 'light' | 'dark' | 'system' {
@@ -123,6 +138,14 @@ const useUIStore = create<UIStore>()(
       return { selectedEventIds: ns }
     }),
     clearMultiSelect: () => set({ selectedEventIds: new Set() }),
+    hiddenGroupIds: new Set(),
+    toggleGroupVisibility: (id) => set(s => {
+      const ns = new Set(s.hiddenGroupIds)
+      if (ns.has(id)) ns.delete(id); else ns.add(id)
+      return { hiddenGroupIds: ns }
+    }),
+    setHiddenGroupIds: (ids) => set({ hiddenGroupIds: ids }),
+    clearHiddenGroups: () => set({ hiddenGroupIds: new Set() }),
     selectedChainId: undefined,
     setSelectedChain: (id) => set({ selectedChainId: id }),
 
@@ -147,17 +170,23 @@ const useUIStore = create<UIStore>()(
     setIsSearchOpen: (open) => set({ isSearchOpen: open }),
     isWelcomeGuideOpen: false,
     setIsWelcomeGuideOpen: (open) => set({ isWelcomeGuideOpen: open }),
+    isNotificationPromptOpen: false,
+    setIsNotificationPromptOpen: (open) => set({ isNotificationPromptOpen: open }),
+    isTodoModalOpen: false,
+    setIsTodoModalOpen: (open) => set({ isTodoModalOpen: open }),
     openPopoverEventId: null,
     setOpenPopoverEventId: (id) => set({ openPopoverEventId: id }),
+    popoverEditorId: null,
+    setPopoverEditorId: (id) => set({ popoverEditorId: id }),
 
     dialogConfig: null,
     showDialog: (config) => set({ dialogConfig: config }),
     closeDialog: () => set({ dialogConfig: null }),
 
     toasts: [],
-    addToast: (message, action, actionFn) => {
+    addToast: (message, action, actionFn, affected) => {
       const id = `toast-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`
-      set(s => ({ toasts: [...s.toasts, { id, message, action, actionFn }] }))
+      set(s => ({ toasts: [...s.toasts, { id, message, action, actionFn, affected }] }))
       setTimeout(() => { useUIStore.getState().removeToast(id) }, 5000)
     },
     removeToast: (id) => set(s => ({ toasts: s.toasts.filter(t => t.id !== id) })),
@@ -192,6 +221,13 @@ const useUIStore = create<UIStore>()(
     setTypeToEditId: (id) => set({ typeToEditId: id }),
     popoverCloseToken: 0,
     triggerClosePopovers: () => set(s => ({ popoverCloseToken: s.popoverCloseToken + 1 })),
+    flashEventId: null,
+    setFlashEventId: (id) => {
+      set({ flashEventId: id })
+      if (id) setTimeout(() => set({ flashEventId: null }), 1200)
+    },
+    showDebugPanel: false,
+    setShowDebugPanel: (show) => set({ showDebugPanel: show }),
   }))
 )
 
