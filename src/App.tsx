@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useState, useRef, useCallback } from 'react'
 import useEventStore from './stores/eventStore'
 import useEventGroupStore from './stores/eventGroupStore'
 import useUIStore from './stores/uiStore'
@@ -12,8 +12,11 @@ import ConflictDialog from './components/ConflictDialog'
 import TypeManagerModal from './components/TypeManagerModal'
 import DialogModal from './components/DialogModal'
 import ToastContainer from './components/ToastContainer'
+import DebugOverlay from './components/DebugOverlay'
 import KeyboardShortcuts from './components/KeyboardShortcuts'
 import WelcomeGuide from './components/WelcomeGuide'
+import NotificationPermissionPrompt from './components/NotificationPermissionPrompt'
+import TodoModal from './components/TodoModal'
 import { PanelLeftOpen, PanelRightOpen } from 'lucide-react'
 import { getReminderMilliseconds } from './utils/eventUtils'
 
@@ -34,9 +37,36 @@ export default function App() {
   const closeDialog = useUIStore((s) => s.closeDialog)
   const isWelcomeGuideOpen = useUIStore((s) => s.isWelcomeGuideOpen)
   const setIsWelcomeGuideOpen = useUIStore((s) => s.setIsWelcomeGuideOpen)
+  const isNotificationPromptOpen = useUIStore((s) => s.isNotificationPromptOpen)
+  const setIsNotificationPromptOpen = useUIStore((s) => s.setIsNotificationPromptOpen)
+  const isTodoModalOpen = useUIStore((s) => s.isTodoModalOpen)
+  const setIsTodoModalOpen = useUIStore((s) => s.setIsTodoModalOpen)
+  const showDebugPanel = useUIStore((s) => s.showDebugPanel)
   const groupSize = useEventGroupStore((s) => s.groups.size)
   const activeId = useEventGroupStore((s) => s.activeGroupId)
   const sideKey = `${groupSize}-${activeId || 'none'}`
+
+  // 边栏展开/折叠动画状态（延迟卸载以完成关闭动画）
+  const [leftRender, setLeftRender] = useState(isLeftSidebarOpen)
+  const [rightRender, setRightRender] = useState(isRightPanelOpen)
+  const leftRef = useRef<HTMLDivElement>(null)
+  const rightRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    if (isLeftSidebarOpen) setLeftRender(true)
+  }, [isLeftSidebarOpen])
+
+  useEffect(() => {
+    if (isRightPanelOpen) setRightRender(true)
+  }, [isRightPanelOpen])
+
+  const handleLeftTransitionEnd = useCallback(() => {
+    if (!isLeftSidebarOpen) setLeftRender(false)
+  }, [isLeftSidebarOpen])
+
+  const handleRightTransitionEnd = useCallback(() => {
+    if (!isRightPanelOpen) setRightRender(false)
+  }, [isRightPanelOpen])
 
   // 安全兜底：如果事件组数量变为0，立即创建默认组
   useEffect(() => {
@@ -68,6 +98,18 @@ export default function App() {
     } catch {}
   }, [initialized])
 
+  // 导览关闭后弹出通知权限请求
+  useEffect(() => {
+    if (!initialized) return
+    if (isWelcomeGuideOpen) return
+    try {
+      if (localStorage.getItem('notificationPromptSeen')) return
+    } catch {}
+    if (!('Notification' in window)) return
+    if (Notification.permission !== 'default') return
+    setIsNotificationPromptOpen(true)
+  }, [initialized, isWelcomeGuideOpen])
+
   // 全局 ESC 关闭所有弹窗/浮窗
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
@@ -79,7 +121,10 @@ export default function App() {
       if (s.isImportDialogOpen) { s.setIsImportDialogOpen(false); return }
       if (s.isConflictDialogOpen) { s.setIsConflictDialogOpen(false); return }
       if (s.isWelcomeGuideOpen) { s.setIsWelcomeGuideOpen(false); return }
+      if (s.isNotificationPromptOpen) { s.setIsNotificationPromptOpen(false); return }
+      if (s.isTodoModalOpen) { s.setIsTodoModalOpen(false); return }
       if (s.dialogConfig) { s.closeDialog(); return }
+      if (s.popoverEditorId) { s.setPopoverEditorId(null); return }
       if (s.selectedEventId) { s.setSelectedEvent(undefined); return }
       s.triggerClosePopovers()
     }
@@ -117,9 +162,10 @@ export default function App() {
     return () => { u1(); u2() }
   }, [initialized])
 
+  const notifiedPermissionRef = useRef(false)
+
   useEffect(() => {
     if (!('Notification' in window)) return
-    if (Notification.permission === 'default') Notification.requestPermission()
     const interval = setInterval(() => {
       const store = useEventStore.getState()
       const now = new Date()
@@ -133,10 +179,19 @@ export default function App() {
           const rt = new Date(new Date(event.startTime).getTime() - ms)
           const diff = rt.getTime() - now.getTime()
           if (diff <= 0 && diff > -60000) {
-            new Notification(`提醒: ${event.name}`, {
-              body: `${new Date(event.startTime).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })}`,
-              tag: event.id,
-            })
+            if (Notification.permission === 'granted') {
+              new Notification(`提醒: ${event.name}`, {
+                body: `${new Date(event.startTime).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })}`,
+                tag: event.id,
+              })
+            } else if (Notification.permission === 'default' && !notifiedPermissionRef.current) {
+              notifiedPermissionRef.current = true
+              useUIStore.getState().addToast(
+                '需要通知权限来发送事件提醒',
+                '启用',
+                () => { Notification.requestPermission() },
+              )
+            }
             store.updateEvent(event.id, {
               reminders: event.reminders.map(r => r.id === reminder.id ? { ...r, notified: true } : r),
             })
@@ -149,30 +204,41 @@ export default function App() {
 
   if (!initialized) {
     return (
-      <div className="flex h-screen items-center justify-center bg-gradient-to-br from-slate-50 to-slate-100 dark:from-slate-900 dark:to-slate-800">
-        <div className="text-slate-600 dark:text-slate-400">加载中...</div>
+      <div className="flex h-screen items-center justify-center bg-gradient-to-br from-slate-50 via-white to-slate-100 dark:from-slate-950 dark:via-slate-900 dark:to-slate-800">
+        <div className="flex flex-col items-center gap-3">
+          <div className="w-8 h-8 rounded-full border-2 border-accent-500/30 border-t-accent-500 animate-spin" />
+          <div className="text-sm text-slate-500 dark:text-slate-400">加载中...</div>
+        </div>
       </div>
     )
   }
 
   return (
-    <div className="flex flex-col h-screen bg-gradient-to-br from-slate-50 to-slate-100 dark:from-slate-900 dark:to-slate-800">
+    <div className="flex flex-col h-screen bg-gradient-to-br from-slate-50 via-white to-slate-100 dark:from-slate-950 dark:via-slate-900 dark:to-slate-800">
       <KeyboardShortcuts />
       <Header />
       <div className="flex flex-1 overflow-hidden">
         {!isLeftSidebarOpen && (
           <button onClick={() => setIsLeftSidebarOpen(true)}
-            className="absolute left-0 top-1/2 z-20 p-1.5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-r-lg shadow hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors">
-            <PanelLeftOpen className="w-4 h-4 text-slate-500" />
+            className="absolute left-0 top-1/2 -translate-y-1/2 z-20 p-2 bg-white/80 dark:bg-slate-800/80 backdrop-blur-sm border border-slate-200/80 dark:border-slate-700/80 rounded-r-xl shadow-elevated hover:bg-white dark:hover:bg-slate-800 hover:shadow-overlay transition-all duration-200">
+            <PanelLeftOpen className="w-4 h-4 text-slate-400 dark:text-slate-500" />
           </button>
         )}
-        {isLeftSidebarOpen && <LeftSidebar key={sideKey} />}
+        <div ref={leftRef}
+          onTransitionEnd={handleLeftTransitionEnd}
+          className={`overflow-hidden transition-all duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] ${isLeftSidebarOpen ? 'w-[min(20vw,18rem)] opacity-100' : 'w-0 opacity-0'}`}>
+          <div className="w-[min(20vw,18rem)]">{leftRender && <LeftSidebar key={sideKey} />}</div>
+        </div>
         <div className="flex-1 overflow-hidden"><TimeTable /></div>
-        {isRightPanelOpen && <RightPanel />}
+        <div ref={rightRef}
+          onTransitionEnd={handleRightTransitionEnd}
+          className={`overflow-hidden transition-all duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] ${isRightPanelOpen ? 'w-[min(22vw,20rem)] opacity-100' : 'w-0 opacity-0'}`}>
+          <div className="w-[min(22vw,20rem)]">{rightRender && <RightPanel />}</div>
+        </div>
         {!isRightPanelOpen && (
           <button onClick={() => setIsRightPanelOpen(true)}
-            className="absolute right-0 top-1/2 z-20 p-1.5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-l-lg shadow hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors">
-            <PanelRightOpen className="w-4 h-4 text-slate-500" />
+            className="absolute right-0 top-1/2 -translate-y-1/2 z-20 p-2 bg-white/80 dark:bg-slate-800/80 backdrop-blur-sm border border-slate-200/80 dark:border-slate-700/80 rounded-l-xl shadow-elevated hover:bg-white dark:hover:bg-slate-800 hover:shadow-overlay transition-all duration-200">
+            <PanelRightOpen className="w-4 h-4 text-slate-400 dark:text-slate-500" />
           </button>
         )}
       </div>
@@ -186,7 +252,10 @@ export default function App() {
       {isTypeManagerOpen && <TypeManagerModal editTypeId={typeToEditId} onClose={() => { setIsTypeManagerOpen(false); useUIStore.getState().setTypeToEditId(null) }} />}
       {dialogConfig && <DialogModal config={dialogConfig} onClose={closeDialog} />}
       <ToastContainer />
+      {showDebugPanel && <DebugOverlay />}
       {isWelcomeGuideOpen && <WelcomeGuide onClose={() => setIsWelcomeGuideOpen(false)} />}
+      {isNotificationPromptOpen && <NotificationPermissionPrompt onClose={() => setIsNotificationPromptOpen(false)} />}
+      {isTodoModalOpen && <TodoModal onClose={() => setIsTodoModalOpen(false)} />}
     </div>
   )
 }
