@@ -7,8 +7,11 @@
 [![Vite](https://img.shields.io/badge/Vite-4-646CFF?logo=vite)](https://vitejs.dev/)
 [![Tailwind CSS](https://img.shields.io/badge/Tailwind-3-06B6D4?logo=tailwindcss)](https://tailwindcss.com/)
 [![Zustand](https://img.shields.io/badge/Zustand-4-433e38)](https://zustand.docs.pmnd.rs/)
-
-**工程级质量 · 现代美观 · 专为大学生设计**
+> [!TIP]
+>
+>
+> 直接访问GithubPages使用：[时间规划器 - University Time Planner](https://icebearhound.github.io/TimeScheduler/)
+>
 
 [功能概览](#核心功能) · [快速开始](#快速开始) · [快捷键](#快捷键) · [技术栈](#技术栈) · [课程导入](#课程表导入指南)
 
