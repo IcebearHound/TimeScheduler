@@ -7,8 +7,9 @@ import useEventGroupStore from '../stores/eventGroupStore'
 import EventChainFilter from './EventChainFilter'
 import SearchDialog from './SearchDialog'
 import { dialogConfirm } from '../utils/dialog'
-import { Event, EventChain, EventGroup, EventType } from '../types/event'
 import { scrollToEventBlock } from '../utils/scrollTarget'
+import { parseTimeQuery } from '../utils/searchParser'
+import { Event, EventChain, EventGroup, EventType } from '../types/event'
 
 export default function Header() {
   const viewMode = useUIStore((s) => s.viewMode)
@@ -68,17 +69,27 @@ export default function Header() {
 
   const inlineResults = useMemo(() => {
     if (!inlineQuery.trim()) return { chains: [] as EventChain[], groups: [] as EventGroup[], types: [] as EventType[], events: [] as Event[] }
-    const q = inlineQuery.toLowerCase()
-    const chains = allChains.filter(c =>
-      c.name.toLowerCase().includes(q) || (c.description || '').toLowerCase().includes(q)
-    ).slice(0, 3)
-    const groups = allGroups.filter(g =>
-      g.name.toLowerCase().includes(q) || (g.description || '').toLowerCase().includes(q)
-    ).slice(0, 3)
-    const types = allTypes.filter(t =>
-      t.name.toLowerCase().includes(q) || t.category.toLowerCase().includes(q)
-    ).slice(0, 3)
+    const { text, dateFilter } = parseTimeQuery(inlineQuery.trim())
+    const q = text.trim().toLowerCase()
+    const chains = q
+      ? allChains.filter(c =>
+          c.name.toLowerCase().includes(q) || (c.description || '').toLowerCase().includes(q)
+        ).slice(0, 3)
+      : []
+    const groups = q
+      ? allGroups.filter(g =>
+          g.name.toLowerCase().includes(q) || (g.description || '').toLowerCase().includes(q)
+        ).slice(0, 3)
+      : []
+    const types = q
+      ? allTypes.filter(t =>
+          t.name.toLowerCase().includes(q) || t.category.toLowerCase().includes(q)
+        ).slice(0, 3)
+      : []
     const events = allEvents.filter(e => {
+      if (dateFilter && !dateFilter(new Date(e.startTime))) return false
+      if (!q && !dateFilter) return false
+      if (!q) return true
       const chain = eventStore.getEventChain(e.chainId)
       const type = eventStore.getEventType(e.typeId)
       if (e.name.toLowerCase().includes(q)) return true
