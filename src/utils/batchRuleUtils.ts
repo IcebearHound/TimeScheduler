@@ -36,14 +36,16 @@ function getWeekRange(rule: BatchRule, semesterStart: Date): { startWeek: number
 export function resolveMatchingDates(rule: BatchRule, semesterStart: Date): Date[] {
   const { startWeek, endWeek } = getWeekRange(rule, semesterStart)
   const results: Date[] = []
-  const semesterWeekStart = getStartOfWeek(semesterStart, 1)
+  const anchorDate = rule.weekRange.weekStartDate || semesterStart
+  const semesterWeekStart = getStartOfWeek(anchorDate, 1)
 
   for (let w = startWeek; w <= endWeek; w++) {
     if (!matchesWeekPattern(w, rule.weekPattern)) continue
     for (const dayOfWeek of rule.daysOfWeek) {
       const weekOffset = (w - 1) * 7
+      const dayOffset = dayOfWeek === 0 ? 6 : dayOfWeek - 1
       const date = new Date(semesterWeekStart)
-      date.setDate(date.getDate() + weekOffset + dayOfWeek)
+      date.setDate(date.getDate() + weekOffset + dayOffset)
 
       if (rule.mode === 'create' && rule.createTime) {
         const [sh, sm] = rule.createTime.startTime.split(':').map(Number)

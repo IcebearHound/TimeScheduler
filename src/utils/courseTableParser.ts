@@ -56,9 +56,9 @@ const SECTION_TIME_MAP: Record<number, { start: string; end: string }> = {
   6:  { start: '14:45', end: '15:50' },
   7:  { start: '16:10', end: '16:55' },
   8:  { start: '16:55', end: '18:00' },
-  9:  { start: '19:00', end: '19:45' },
-  10: { start: '19:45', end: '20:30' },
-  11: { start: '20:30', end: '21:00' },
+  9:  { start: '19:00', end: '19:50' },
+  10: { start: '19:50', end: '20:50' },
+  11: { start: '20:50', end: '21:00' },
 }
 
 const WEEKDAY_MAP: Record<string, number> = {
@@ -143,7 +143,6 @@ function parseRows(rows: any[][]): {
     const preview = rows.slice(0, 6).map((r, i) =>
       `[行${i}]: ` + (r || []).slice(0, 8).map(c => String(c || '').substring(0, 30)).join(' | ')
     ).join('\n')
-    console.warn('[courseTableParser] 未找到星期标题行\n' + preview)
     return { courses: [], errors: [`未找到星期标题行（需包含"星期一"~"星期日"）。\n\n文件前6行预览:\n${preview}`] }
   }
 
@@ -221,7 +220,6 @@ function parseRows(rows: any[][]): {
         return s.length > 40 ? s.substring(0, 40) + '...' : s
       }).join(' | ')
     ).join('\n')
-    console.warn('[courseTableParser] 数据行预览:\n' + preview)
     errors.push(`未从课表中解析到任何课程。\n\n标题行之后的数据行预览:\n${preview}\n\n可能原因：1) 文件不是山东大学标准课表；2) 课表格式有变化。`)
   }
 
@@ -231,65 +229,66 @@ function parseRows(rows: any[][]): {
 // ============ 单元格解析 ============
 
 function parseCell(cellText: string, dayOfWeek: number): ParsedCourse[] {
-  const courses: ParsedCourse[] = []
+  // XLS单元格内每个字段独占一行（\n分隔），先拼接为空格分隔的完整文本再解析
+  const normalizedText = cellText
+    .split(/\r?\n/)
+    .map(l => l.trim())
+    .filter(Boolean)
+    .join(' ')
 
-  // 先按换行符分割
-  const lines = cellText.split(/\r?\n/).filter(l => l.trim())
+  if (!normalizedText) return []
 
-  for (const line of lines) {
-    const course = parseSingleCourseLine(line.trim(), dayOfWeek)
-    if (course) courses.push(course)
-  }
+  const singleResult = parseSingleCourseLine(normalizedText, dayOfWeek)
+  const courses: ParsedCourse[] = singleResult ? [singleResult] : []
 
-  // 如果无换行但包含多个课序号，按课序号边界二次拆分
-  if (courses.length <= 1 && (cellText.match(/课序号:/g) || []).length > 1) {
-    const multiCourses = splitByCourseMarker(cellText, dayOfWeek)
+  const markerCount = (normalizedText.match(/课序号[:：]/g) || []).length
+  if (courses.length <= 1 && markerCount > 1) {
+    const multiCourses = splitByCourseMarker(normalizedText, dayOfWeek)
     if (multiCourses.length > 1) return multiCourses
   }
 
   return courses
 }
 
-/** 按"课序号:"边界切分多课程文本 */
+/** 按"课序号[:：]"边界切分多课程文本（兼容半角/全角冒号） */
 function splitByCourseMarker(text: string, dayOfWeek: number): ParsedCourse[] {
-  const courses: ParsedCourse[] = []
-
   const positions: number[] = []
-  let idx = text.indexOf('课序号:')
-  while (idx !== -1) { positions.push(idx); idx = text.indexOf('课序号:', idx + 1) }
+  const pattern = /课序号[:：]/g
+  let m: RegExpExecArray | null
+  while ((m = pattern.exec(text)) !== null) positions.push(m.index)
+
   if (positions.length <= 1) {
     const c = parseSingleCourseLine(text, dayOfWeek)
     return c ? [c] : []
   }
 
+  const courses: ParsedCourse[] = []
   for (let i = 0; i < positions.length; i++) {
-    const pos = positions[i]
-    const nextPos = i < positions.length - 1 ? positions[i + 1] : text.length
+    const markerPos = positions[i]
+    const nextMarkerPos = i < positions.length - 1 ? positions[i + 1] : text.length
 
-    // 向前找课程名起点：上一个课程的[节]之后，或文本开头
-    let start = 0
-    if (i > 0) {
-      const prevSectionEnd = text.lastIndexOf('节]', pos)
-      if (prevSectionEnd > positions[i - 1]) {
-        start = prevSectionEnd + 2
-        while (start < pos && /[\s　]/.test(text[start])) start++
-      } else {
-        start = Math.max(0, pos - 40)
-      }
+    // 课程名：紧邻课序号前的连续非空白文本
+    let nameEnd = markerPos
+    while (nameEnd > 0 && /[\s　]/.test(text[nameEnd - 1])) nameEnd--
+    let nameStart = nameEnd
+    while (nameStart > 0 && !/[\s　]/.test(text[nameStart - 1])) nameStart--
+
+    // 课程终点：下一门课程名之前（或文本末尾）
+    let courseEnd: number
+    if (i < positions.length - 1) {
+      let nextNameEnd = nextMarkerPos
+      while (nextNameEnd > 0 && /[\s　]/.test(text[nextNameEnd - 1])) nextNameEnd--
+      let nextNameStart = nextNameEnd
+      while (nextNameStart > 0 && !/[\s　]/.test(text[nextNameStart - 1])) nextNameStart--
+      courseEnd = nextNameStart
+    } else {
+      courseEnd = text.length
     }
 
-    // 向后找课程终点：下一个课序号之前，往回跳过空白
-    let end = nextPos
-    const mySectionEnd = text.indexOf('节]', pos)
-    while (end > (mySectionEnd > 0 ? mySectionEnd + 2 : pos) && /[\s　]/.test(text[end - 1])) {
-      end--
-    }
-
-    const line = text.substring(start, end).trim()
+    const line = text.substring(nameStart, courseEnd).trim()
     const c = parseSingleCourseLine(line, dayOfWeek)
     if (c) courses.push(c)
   }
-
   return courses
 }
 
@@ -352,13 +351,14 @@ function parseSingleCourseLine(line: string, dayOfWeek: number): ParsedCourse | 
   // 解析周次
   const weekNumbers = parseWeekNumbers(weekField)
 
-  // 解析节次范围
-  const sectionMatch = weekField.match(/\[(\d+)-(\d+)节\]/)
+  // 解析节次范围：提取所有数字，取首尾（兼容 [01-02节] 和 [01-02-03-04节]）
+  const sectionNums = weekField.match(/\[(\d+(?:-\d+)*)节\]/)?.[1]?.split('-').map(Number)
   let startSection = 1
   let endSection = 2
-  if (sectionMatch) {
-    startSection = parseInt(sectionMatch[1])
-    endSection = parseInt(sectionMatch[2])
+  if (sectionNums && sectionNums.length >= 2) {
+    startSection = sectionNums[0]
+    endSection = sectionNums[sectionNums.length - 1]
+    if (startSection > endSection) [startSection, endSection] = [endSection, startSection]
   }
 
   return {
@@ -427,6 +427,7 @@ function mergeCourses(courses: ParsedCourse[]): ParsedCourse[] {
       if (c.teacher && !best.teacher) best = c
     }
 
+    if (minStart > maxEnd) [minStart, maxEnd] = [maxEnd, minStart]
     merged.push({ ...best, startSection: minStart, endSection: maxEnd })
   }
 
@@ -472,7 +473,6 @@ export function coursesToEvents(
 
     const sampleTeacher = entries.find(e => e.teacher)?.teacher || ''
     const sampleCode = entries.find(e => e.courseCode)?.courseCode || ''
-    const sampleLoc = entries.find(e => e.location)?.location
 
     for (const entry of entries) {
       for (const weekNum of entry.weekNumbers) {
@@ -486,12 +486,13 @@ export function coursesToEvents(
           startTime.setHours(sh, sm, 0, 0)
         }
 
-        const endTime = new Date(eventDate)
+        let endTime = new Date(eventDate)
         const endSlot = SECTION_TIME_MAP[entry.endSection]
         if (endSlot) {
           const [eh, em] = endSlot.end.split(':').map(Number)
           endTime.setHours(eh, em, 0, 0)
         }
+        if (endTime <= startTime) endTime = new Date(startTime.getTime() + 50 * 60 * 1000)
 
         events.push({
           id: generateId('event'),
@@ -502,9 +503,9 @@ export function coursesToEvents(
           endTime,
           reminders: [],
           properties: {
-            location: entry.location || sampleLoc,
-            teacher: entry.teacher || sampleTeacher,
-            courseCode: entry.courseCode || sampleCode,
+            地点: entry.location,
+            授课老师: entry.teacher || sampleTeacher,
+            课序号: entry.courseCode || sampleCode,
           },
           isHighlight: false,
           priority: 0,

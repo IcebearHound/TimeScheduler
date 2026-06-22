@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
 import {
   X, Calendar, Pencil, Upload, Link, Folders,
   Tags, Zap, ListTodo, Search, Bell, Keyboard, Layout,
@@ -7,9 +7,9 @@ import {
 
 const Card: React.FC<{ icon: React.ReactNode; title: string; children: React.ReactNode; onClick: () => void }> = ({ icon, title, children, onClick }) => (
   <div onClick={onClick}
-    className="bg-slate-50 dark:bg-slate-700/50 rounded-xl p-4 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors cursor-pointer">
+    className="bg-slate-50 dark:bg-slate-800/50 rounded-xl p-4 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors cursor-pointer">
     <div className="flex items-center gap-2 mb-2">
-      <div className="text-blue-500 dark:text-blue-400">{icon}</div>
+      <div className="text-accent-500 dark:text-accent-400">{icon}</div>
       <h3 className="font-semibold text-sm text-slate-800 dark:text-slate-200">{title}</h3>
     </div>
     <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">{children}</p>
@@ -178,8 +178,8 @@ const CARDS: CardData[] = [
   {
     icon: <Search className="w-5 h-5" />,
     title: '搜索',
-    content: 'Ctrl+F 打开全局搜索：按事件名称、事件链名、类型名、属性值搜索，支持自然语言日期（今天/明天/本周），支持星期和时间筛选。',
-    detail: 'Ctrl+F 或点击顶部搜索栏打开全局搜索对话框。支持按事件名称、事件链名、类型名、属性值（位置/教师等）搜索。智能日期解析：今天/明天/后天/本周/下周/周一~周日，以及 HH:MM 时间和 YYYY-MM-DD 日期格式。结果按事件链分组显示，匹配文字高亮，点击结果跳转到对应事件。',
+    content: 'Ctrl+K 打开全局搜索：按事件名称、事件链名、类型名、属性值搜索，支持自然语言日期（今天/明天/本周），支持星期和时间筛选。',
+    detail: 'Ctrl+K 或点击顶部搜索栏打开全局搜索对话框。支持按事件名称、事件链名、组名、类型名、属性值（位置/教师等）搜索。智能日期解析：今天/明天/后天/本周/下周/周一~周日，以及 HH:MM 时间和 YYYY-MM-DD 日期格式。结果按分类分组显示，点击事件结果跳转并闪烁定位，点击链/组/类型自动选中。',
     animation: (
       <div className="flex flex-col gap-1.5 w-full">
         <div className="flex items-center gap-1.5 bg-slate-100 dark:bg-slate-700 rounded-lg px-2 py-1.5">
@@ -210,11 +210,11 @@ const CARDS: CardData[] = [
   {
     icon: <Keyboard className="w-5 h-5" />,
     title: '快捷键',
-    content: 'Ctrl+N 新建 · Ctrl+C 复制 · Ctrl+X 剪切 · Ctrl+V 粘贴 · Ctrl+Z 撤销 · Ctrl+Y 重做 · Ctrl+F 搜索 · Ctrl+A 全选 · Delete 删除 · Escape 关闭弹窗',
-    detail: 'Ctrl+N 新建事件 · Ctrl+C 复制选中事件 · Ctrl+X 剪切 · Ctrl+V 粘贴 · Ctrl+Z 撤销（50步历史）· Ctrl+Y/Ctrl+Shift+Z 重做 · Ctrl+F 搜索 · Ctrl+A 全选可见事件 · Delete 删除选中事件 · Escape 依次关闭弹窗/浮窗/取消选择。所有核心操作均可键盘完成，无需鼠标。',
+    content: 'Ctrl+N 新建 · Ctrl+C 复制 · Ctrl+X 剪切 · Ctrl+V 粘贴 · Ctrl+Z 撤销 · Ctrl+Y 重做 · Ctrl+K 搜索 · Ctrl+A 全选 · Delete 删除 · Escape 关闭弹窗',
+    detail: 'Ctrl+N 新建事件 · Ctrl+C 复制选中事件 · Ctrl+X 剪切 · Ctrl+V 粘贴 · Ctrl+Z 撤销（50步历史）· Ctrl+Y/Ctrl+Shift+Z 重做 · Ctrl+K/Ctrl+F 搜索 · Ctrl+A 全选可见事件 · Delete 删除选中事件 · Escape 依次关闭弹窗/浮窗/取消选择。所有核心操作均可键盘完成，无需鼠标。',
     animation: (
       <div className="flex flex-wrap gap-1 justify-center w-full">
-        {['Ctrl', 'N', 'Ctrl', 'C', 'Ctrl', 'V', 'Ctrl', 'Z', 'Ctrl', 'F', 'Esc'].map((key, i) => (
+        {['Ctrl', 'N', 'Ctrl', 'C', 'Ctrl', 'V', 'Ctrl', 'Z', 'Ctrl', 'K', 'Esc'].map((key, i) => (
           <span key={`${key}-${i}`} className="animate-key-glow inline-flex items-center justify-center min-w-[28px] h-7 px-1.5 rounded border border-slate-300 dark:border-slate-600 bg-slate-100 dark:bg-slate-700 text-xs font-mono text-slate-600 dark:text-slate-300"
             style={{ animationDelay: `${i * 0.25}s` }}>{key}</span>
         ))}
@@ -237,15 +237,27 @@ export default function WelcomeGuide({ onClose }: WelcomeGuideProps) {
     setTimeout(() => onClose(), 200)
   }
 
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && visible) handleClose()
+    }
+    document.addEventListener('keydown', handler)
+    return () => document.removeEventListener('keydown', handler)
+  }, [visible])
+
   const openDetail = (index: number) => setSelectedIndex(index)
   const closeDetail = () => setSelectedIndex(null)
 
   const goPrev = () => {
-    setSelectedIndex(prev => prev === null ? null : prev === 0 ? CARDS.length - 1 : prev - 1)
+    setSelectedIndex(prev => prev === null ? null : prev > 0 ? prev - 1 : prev)
   }
 
   const goNext = () => {
-    setSelectedIndex(prev => prev === null ? null : prev === CARDS.length - 1 ? 0 : prev + 1)
+    setSelectedIndex(prev => {
+      if (prev === null) return null
+      if (prev < CARDS.length - 1) return prev + 1
+      return null
+    })
   }
 
   if (!visible) return null
@@ -254,13 +266,13 @@ export default function WelcomeGuide({ onClose }: WelcomeGuideProps) {
   if (selectedIndex !== null) {
     const card = CARDS[selectedIndex]
     return (
-      <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={closeDetail}>
+      <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4 animate-modal-backdrop" onClick={closeDetail}>
         <div
-          className="bg-white dark:bg-slate-800 rounded-2xl shadow-2xl max-w-lg w-full overflow-hidden flex flex-col animate-modal-in"
+          className="bg-white dark:bg-slate-900 rounded-2xl shadow-modal dark:shadow-modal-dark border border-slate-200/60 dark:border-slate-700/60 max-w-lg w-full overflow-hidden flex flex-col animate-modal-panel"
           onClick={e => e.stopPropagation()}
         >
           {/* Detail Header */}
-          <div className="flex items-center justify-between px-5 py-4 border-b border-slate-200 dark:border-slate-700 flex-shrink-0">
+          <div className="flex items-center justify-between px-5 py-4 border-b border-slate-200/60 dark:border-slate-700/60 flex-shrink-0">
             <button onClick={closeDetail}
               className="flex items-center gap-1 text-sm text-slate-500 hover:text-slate-700 dark:hover:text-slate-300 transition-colors">
               <ArrowLeft className="w-4 h-4" /> 返回
@@ -277,20 +289,24 @@ export default function WelcomeGuide({ onClose }: WelcomeGuideProps) {
             <p className="text-sm text-slate-600 dark:text-slate-300 leading-relaxed mb-5">{card.detail}</p>
 
             {/* Animation Demo Area */}
-            <div className="bg-slate-50 dark:bg-slate-700/30 rounded-xl border border-slate-100 dark:border-slate-700 p-4 flex items-center justify-center" style={{ minHeight: '160px' }}>
+            <div className="bg-slate-50 dark:bg-slate-800/50 rounded-xl border border-slate-100 dark:border-slate-700 p-4 flex items-center justify-center" style={{ minHeight: '160px' }}>
               {card.animation}
             </div>
           </div>
 
           {/* Detail Footer with prev/next */}
-          <div className="flex items-center justify-between px-5 py-3 border-t border-slate-200 dark:border-slate-700 flex-shrink-0">
-            <button onClick={goPrev}
-              className="flex items-center gap-1 px-3 py-1.5 text-sm text-slate-500 hover:text-slate-700 dark:hover:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg transition-colors">
+          <div className="flex items-center justify-between px-5 py-3 border-t border-slate-200/60 dark:border-slate-700/60 flex-shrink-0">
+            <button onClick={goPrev} disabled={selectedIndex === 0}
+              className="flex items-center gap-1 px-3 py-1.5 text-sm text-slate-500 hover:text-slate-700 dark:hover:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700/50 rounded-lg transition-colors disabled:opacity-30 disabled:cursor-not-allowed">
               <ChevronLeft className="w-4 h-4" /> 上一个
             </button>
             <button onClick={goNext}
-              className="flex items-center gap-1 px-3 py-1.5 text-sm text-slate-500 hover:text-slate-700 dark:hover:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg transition-colors">
-              下一个 <ChevronRight className="w-4 h-4" />
+              className={`flex items-center gap-1 px-3 py-1.5 text-sm rounded-lg transition-colors ${
+                selectedIndex === CARDS.length - 1
+                  ? 'bg-accent-600 hover:bg-accent-700 text-white font-medium shadow-sm shadow-accent-600/20'
+                  : 'text-slate-500 hover:text-slate-700 dark:hover:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700/50'
+              }`}>
+              {selectedIndex === CARDS.length - 1 ? '完成' : <>{'下一个'} <ChevronRight className="w-4 h-4" /></>}
             </button>
           </div>
         </div>
@@ -300,23 +316,23 @@ export default function WelcomeGuide({ onClose }: WelcomeGuideProps) {
 
   // Card grid view
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={handleClose}>
+    <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4 animate-modal-backdrop" onClick={handleClose}>
       <div
-        className="bg-white dark:bg-slate-800 rounded-2xl shadow-2xl max-w-3xl w-full max-h-[90vh] overflow-hidden flex flex-col"
+        className="bg-white dark:bg-slate-900 rounded-2xl shadow-modal dark:shadow-modal-dark border border-slate-200/60 dark:border-slate-700/60 max-w-3xl w-full max-h-[90vh] overflow-hidden flex flex-col animate-modal-panel"
         onClick={e => e.stopPropagation()}
       >
         {/* Header */}
-        <div className="flex items-center justify-between px-6 py-5 border-b border-slate-200 dark:border-slate-700 flex-shrink-0">
+        <div className="flex items-center justify-between px-6 py-5 border-b border-slate-200/60 dark:border-slate-700/60 flex-shrink-0">
           <div>
             <h1 className="text-xl font-bold text-slate-900 dark:text-white flex items-center gap-2">
-              <Calendar className="w-6 h-6 text-blue-500" />
+              <Calendar className="w-6 h-6 text-accent-500" />
               欢迎使用时间规划器
             </h1>
             <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">现代化大学生日程管理工具 — 单击卡片查看详情</p>
           </div>
           <button
             onClick={handleClose}
-            className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 p-1 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"
+            className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 p-1 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors"
           >
             <X className="w-5 h-5" />
           </button>
@@ -334,10 +350,10 @@ export default function WelcomeGuide({ onClose }: WelcomeGuideProps) {
         </div>
 
         {/* Footer */}
-        <div className="flex justify-center px-6 py-4 border-t border-slate-200 dark:border-slate-700 flex-shrink-0">
+        <div className="flex justify-center px-6 py-4 border-t border-slate-200/60 dark:border-slate-700/60 flex-shrink-0">
           <button
             onClick={handleClose}
-            className="px-8 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-medium transition-colors shadow-sm shadow-blue-600/20"
+            className="px-8 py-2.5 bg-accent-600 hover:bg-accent-700 text-white rounded-lg text-sm font-medium transition-colors shadow-sm shadow-accent-600/20"
           >
             开始使用
           </button>

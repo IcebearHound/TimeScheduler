@@ -5,6 +5,7 @@ import { useEffect } from 'react'
 import useEventStore from '../stores/eventStore'
 import useEventGroupStore from '../stores/eventGroupStore'
 import useUIStore from '../stores/uiStore'
+import { sideSelection } from '../stores/sideSelection'
 
 export default function KeyboardShortcuts() {
   useEffect(() => {
@@ -12,7 +13,7 @@ export default function KeyboardShortcuts() {
       const ctrl = e.ctrlKey || e.metaKey
       const store = useEventStore.getState()
 
-      if (ctrl && e.key === 'f') {
+      if (ctrl && (e.key === 'f' || e.key === 'k')) {
         e.preventDefault()
         useUIStore.getState().setIsSearchOpen(true)
       }
@@ -77,22 +78,74 @@ export default function KeyboardShortcuts() {
 
       if (ctrl && e.key === 'z' && !e.shiftKey) {
         e.preventDefault()
-        useEventStore.getState().undo()
-        useEventGroupStore.getState().undo()
+        const es = useEventStore.getState()
+        if (!es.canUndo) return
+        es.undo()
+        const esAfter = useEventStore.getState()
+        useUIStore.getState().addToast(`已撤销: ${esAfter.lastRedoAction || '操作'}`, '重做', () => {
+          useEventStore.getState().redo()
+        }, esAfter.lastAffected)
       }
 
       if (ctrl && (e.key === 'y' || (e.key === 'z' && e.shiftKey))) {
         e.preventDefault()
-        useEventStore.getState().redo()
-        useEventGroupStore.getState().redo()
+        const es = useEventStore.getState()
+        if (!es.canRedo) return
+        es.redo()
+        const esAfter = useEventStore.getState()
+        useUIStore.getState().addToast(`已重做: ${esAfter.lastUndoAction || '操作'}`, '撤销', () => {
+          useEventStore.getState().undo()
+        }, esAfter.lastAffected)
       }
 
       if (e.key === 'Delete' && !(e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement)) {
         const uis = useUIStore.getState()
+        const estore = useEventStore.getState()
+        const gstore = useEventGroupStore.getState()
+
+        // 1. 多选事件 → 批量删除
+        if (uis.selectedEventIds.size > 0) {
+          const ids = Array.from(uis.selectedEventIds)
+          estore.deleteEvents(ids)
+          uis.clearMultiSelect()
+          uis.addToast(`已删除 ${ids.length} 个事件 · Ctrl+Z 撤回`, '撤回', () => { estore.undo() })
+          return
+        }
+
+        // 2. 单选事件
         const eventId = uis.selectedEventId
         if (eventId) {
-          store.deleteEvent(eventId)
+          estore.deleteEvent(eventId)
           uis.setSelectedEvent(undefined)
+          uis.addToast('已删除事件 · Ctrl+Z 撤回', '撤回', () => { estore.undo() })
+          return
+        }
+
+        // 3. 侧栏多选/单选事件链
+        const chainIds = Array.from(sideSelection.chainIds)
+        if (chainIds.length > 0) {
+          estore.deleteEventChains(chainIds)
+          sideSelection.chainIds = new Set()
+          uis.addToast(`已删除 ${chainIds.length} 个事件链 · Ctrl+Z 撤回`, '撤回', () => { estore.undo() })
+          return
+        }
+
+        // 4. 侧栏多选/单选事件组
+        const groupIds = Array.from(sideSelection.groupIds)
+        if (groupIds.length > 0) {
+          groupIds.forEach(id => gstore.deleteGroup(id))
+          sideSelection.groupIds = new Set()
+          uis.addToast(`已删除 ${groupIds.length} 个事件组 · Ctrl+Z 撤回`, '撤回', () => { estore.undo() })
+          return
+        }
+
+        // 5. 侧栏多选/单选事件类型
+        const typeIds = Array.from(sideSelection.typeIds)
+        if (typeIds.length > 0) {
+          estore.deleteEventTypes(typeIds)
+          sideSelection.typeIds = new Set()
+          uis.addToast(`已删除 ${typeIds.length} 个事件类型 · Ctrl+Z 撤回`, '撤回', () => { estore.undo() })
+          return
         }
       }
     }

@@ -33,6 +33,9 @@ export interface EventProperty {
   notes?: string
   teacher?: string
   courseCode?: string
+  授课老师?: string
+  课序号?: string
+  [key: string]: string | undefined
 }
 
 export interface Event {
@@ -69,6 +72,7 @@ export interface BatchRule {
     endWeek?: number
     startDate?: Date
     endDate?: Date
+    weekStartDate?: Date  // 周起始日期（周一），仅在按周编号模式使用
   }
   createTime?: {
     startTime: string          // "08:00"

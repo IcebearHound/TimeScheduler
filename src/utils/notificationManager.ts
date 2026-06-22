@@ -11,38 +11,30 @@ interface NotificationOptions {
 }
 
 export class NotificationManager {
-  private static requestPermission(): Promise<NotificationPermission> {
+  static async requestPermission(): Promise<NotificationPermission> {
     if (!('Notification' in window)) {
-      console.warn('This browser does not support desktop notifications')
-      return Promise.resolve('denied')
+      return 'denied'
     }
-
-    if (Notification.permission === 'granted') {
-      return Promise.resolve('granted')
+    if (Notification.permission !== 'default') {
+      return Notification.permission
     }
-
-    if (Notification.permission !== 'denied') {
-      return Notification.requestPermission()
-    }
-
-    return Promise.resolve('denied')
+    return Notification.requestPermission()
   }
 
   static async showNotification(options: NotificationOptions): Promise<void> {
-    const permission = await this.requestPermission()
-    
-    if (permission === 'granted') {
-      const notification = new Notification(options.title, {
-        body: options.body,
-        icon: options.icon || '/notification-icon.png',
-        badge: options.badge,
-        tag: options.tag,
-      })
+    if (!('Notification' in window) || Notification.permission !== 'granted') {
+      return
+    }
+    const notification = new Notification(options.title, {
+      body: options.body,
+      icon: options.icon || '/notification-icon.png',
+      badge: options.badge,
+      tag: options.tag,
+    })
 
-      notification.onclick = () => {
-        window.focus()
-        notification.close()
-      }
+    notification.onclick = () => {
+      window.focus()
+      notification.close()
     }
   }
 

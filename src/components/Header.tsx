@@ -116,6 +116,7 @@ export default function Header() {
   }, [showInlineResults])
 
   function handleInlineSelectEvent(eventId: string) {
+    useUIStore.getState().setSelectedChain(undefined)
     const e = eventStore.getEvent(eventId)
     if (!e) return
     setCurrentDate(new Date(e.startTime))
@@ -128,6 +129,7 @@ export default function Header() {
   }
 
   function handleInlineSelectChain(chainId: string) {
+    useUIStore.getState().setSelectedChain(chainId)
     const evts = eventStore.getEventsByChain(chainId)
     if (evts.length > 0) {
       setCurrentDate(new Date(evts[0].startTime))
@@ -141,12 +143,14 @@ export default function Header() {
   }
 
   function handleInlineSelectGroup(groupId: string) {
+    useUIStore.getState().setSelectedChain(undefined)
     setActiveGroup(groupId)
     setShowInlineResults(false)
     setInlineQuery('')
   }
 
   function handleInlineSelectType(typeId: string) {
+    useUIStore.getState().setSelectedChain(undefined)
     useUIStore.getState().setTypeToEditId(typeId)
     setIsTypeManagerOpen(true)
     setShowInlineResults(false)

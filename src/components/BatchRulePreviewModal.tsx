@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react'
+import React, { useMemo, useEffect } from 'react'
 import { X, Play } from 'lucide-react'
 import { BatchRule, Event } from '../types/event'
 import useEventStore from '../stores/eventStore'
@@ -16,6 +16,14 @@ export default function BatchRulePreviewModal({ chainId, rule, onExecute, onClos
   const eventChains = useEventStore((s) => s.eventChains)
   const semesterStartDate = useEventStore((s) => s.semesterStartDate)
   const chain = eventChains.get(chainId)
+
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose()
+    }
+    document.addEventListener('keydown', handler)
+    return () => document.removeEventListener('keydown', handler)
+  }, [onClose])
 
   const createResults = useMemo(() => {
     if (rule.mode !== 'create') return []
@@ -47,9 +55,9 @@ export default function BatchRulePreviewModal({ chainId, rule, onExecute, onClos
   const dayLabel = rule.daysOfWeek.map((d) => ['日', '一', '二', '三', '四', '五', '六'][d]).join('、')
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[70]">
-      <div className="bg-white dark:bg-slate-800 rounded-xl shadow-2xl max-w-xl w-full max-h-[85vh] flex flex-col">
-        <div className="flex items-center justify-between p-6 border-b border-slate-200 dark:border-slate-700 shrink-0">
+    <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-[70] animate-modal-backdrop" onClick={onClose}>
+      <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-modal dark:shadow-modal-dark max-w-xl w-full max-h-[85vh] flex flex-col animate-modal-panel border border-slate-200/60 dark:border-slate-700/60" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center justify-between p-6 border-b border-slate-200 dark:border-slate-800 shrink-0">
           <div>
             <h2 className="text-xl font-bold text-slate-900 dark:text-white">规则预览</h2>
             <p className="text-sm text-slate-500 mt-0.5">{rule.name}</p>
@@ -59,7 +67,7 @@ export default function BatchRulePreviewModal({ chainId, rule, onExecute, onClos
           </button>
         </div>
 
-        <div className="p-6 border-b border-slate-200 dark:border-slate-700 shrink-0 space-y-2 text-sm text-slate-600 dark:text-slate-400">
+        <div className="p-6 border-b border-slate-200 dark:border-slate-800 shrink-0 space-y-2 text-sm text-slate-600 dark:text-slate-400">
           <p>模式：{rule.mode === 'create' ? '批量创建' : '批量修改'} | {weekLabel} | 周{dayLabel}</p>
           {rule.mode === 'create' && rule.createTime && (
             <p>时间段：{rule.createTime.startTime} ~ {rule.createTime.endTime}</p>
@@ -69,7 +77,7 @@ export default function BatchRulePreviewModal({ chainId, rule, onExecute, onClos
           )}
           <p>
             将影响
-            <span className="font-semibold text-blue-600">
+            <span className="font-semibold text-accent-600">
               {rule.mode === 'create' ? createResults.length : modifyResults.length}
             </span>
             个事件
@@ -92,7 +100,7 @@ export default function BatchRulePreviewModal({ chainId, rule, onExecute, onClos
                   <span className="text-slate-400 w-6 text-right">{i + 1}</span>
                   <span className="text-slate-700 dark:text-slate-300">{fmtDate(r.startTime)}</span>
                   <span className="text-slate-500">周{getDayLabel(r.startTime)}</span>
-                  <span className="text-blue-600 font-medium">{fmtTime(r.startTime)} ~ {fmtTime(r.endTime)}</span>
+                  <span className="text-accent-600 font-medium">{fmtTime(r.startTime)} ~ {fmtTime(r.endTime)}</span>
                 </div>
               ))}
               {createResults.length > 100 && (
@@ -129,14 +137,14 @@ export default function BatchRulePreviewModal({ chainId, rule, onExecute, onClos
           )}
         </div>
 
-        <div className="flex gap-3 p-6 border-t border-slate-200 dark:border-slate-700 shrink-0">
+        <div className="flex gap-3 p-6 border-t border-slate-200 dark:border-slate-800 shrink-0">
           <button onClick={onClose} className="flex-1 px-4 py-2 bg-slate-200 dark:bg-slate-700 hover:bg-slate-300 dark:hover:bg-slate-600 text-slate-900 dark:text-white rounded-lg font-medium transition-colors">
             取消
           </button>
           <button
             onClick={onExecute}
             disabled={rule.mode === 'create' ? createResults.length === 0 : modifyResults.length === 0}
-            className="flex-1 px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 disabled:cursor-not-allowed text-white rounded-lg font-medium transition-colors flex items-center justify-center gap-2"
+            className="flex-1 px-4 py-2 bg-accent-600 hover:bg-accent-700 shadow-sm shadow-accent-600/20 disabled:bg-accent-400 disabled:cursor-not-allowed text-white rounded-lg font-medium transition-colors flex items-center justify-center gap-2"
           >
             <Play className="w-4 h-4" />
             确认执行

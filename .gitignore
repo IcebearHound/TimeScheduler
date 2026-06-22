@@ -7,8 +7,11 @@ build/
 *.swo
 .vscode/
 .idea/
+.env
 .env.local
+.env.*.local
 *.pem
 coverage/
 .cache/
 out/
+test-results/

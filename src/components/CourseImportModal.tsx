@@ -1,9 +1,10 @@
-import React, { useState, useRef } from 'react'
+import React, { useState, useRef, useEffect } from 'react'
 import { X, Upload, ExternalLink, AlertTriangle, CheckCircle, Info } from 'lucide-react'
 import useUIStore from '../stores/uiStore'
 import useEventStore from '../stores/eventStore'
 import useEventGroupStore from '../stores/eventGroupStore'
 import { parseCourseTableFile, coursesToEvents } from '../utils/courseTableParser'
+import { generateId } from '../utils/idGenerator'
 
 const SDU_URL = 'https://bkzhjx.wh.sdu.edu.cn/'
 
@@ -12,20 +13,27 @@ export default function CourseImportModal() {
   const setIsOpen = useUIStore((s) => s.setIsImportDialogOpen)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
-  const [semesterDate, setSemesterDate] = useState(() => {
-    // 默认学期开始日期：下一个周一
-    const now = new Date()
-    const day = now.getDay()
-    const daysUntilMonday = day === 0 ? 1 : (8 - day)
-    const monday = new Date(now)
-    monday.setDate(now.getDate() + daysUntilMonday)
-    return monday.toISOString().split('T')[0]
-  })
+  const [semesterDate, setSemesterDate] = useState('2026-03-02')
 
   const [loading, setLoading] = useState(false)
   const [resultMsg, setResultMsg] = useState<{ type: 'success' | 'error' | 'warning'; text: string } | null>(null)
   const [showRemarksWarning, setShowRemarksWarning] = useState(false)
   const [remarksContent, setRemarksContent] = useState('')
+
+  const handleClose = () => {
+    setIsOpen(false)
+    setResultMsg(null)
+    setShowRemarksWarning(false)
+  }
+
+  useEffect(() => {
+    if (!isOpen) return
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') handleClose()
+    }
+    document.addEventListener('keydown', handler)
+    return () => document.removeEventListener('keydown', handler)
+  }, [isOpen])
 
   const openSduWebsite = () => {
     window.open(SDU_URL, '_blank')
@@ -69,64 +77,61 @@ export default function CourseImportModal() {
       const semesterStartDate = new Date(semesterDate)
       const { eventChains, events } = coursesToEvents(courses, semesterStartDate)
 
-      const eventStore = useEventStore.getState()
-      const groupStore = useEventGroupStore.getState()
+      const gs = useEventGroupStore.getState()
+      const es = useEventStore.getState()
+
+      // 批量操作
+      es.pushHistory()
 
       // 插入事件链
       const chainIds: string[] = []
-      for (const chain of eventChains) {
-        const created = eventStore.addEventChain({
-          name: chain.name,
-          typeId: chain.typeId,
-          color: chain.color,
-          defaultReminders: chain.defaultReminders,
-        })
-        chainIds.push(created.id)
-      }
+      useEventStore.setState(s => {
+        const nc = new Map(s.eventChains)
+        const now = new Date()
+        for (const chain of eventChains) {
+          const id = generateId('chain')
+          nc.set(id, { ...chain, id, createdAt: now, updatedAt: now })
+          chainIds.push(id)
+        }
+        return { eventChains: nc }
+      })
 
-      // 为事件更新正确的 chainId 映射
       const nameToChainId = new Map<string, string>()
-      for (let i = 0; i < eventChains.length; i++) {
-        nameToChainId.set(eventChains[i].name, chainIds[i])
-      }
+      for (let i = 0; i < eventChains.length; i++) nameToChainId.set(eventChains[i].name, chainIds[i])
 
+      // 插入事件
       const eventIds: string[] = []
-      for (const evt of events) {
-        const resolvedChainId = nameToChainId.get(evt.name) || chainIds[0]
-        const created = eventStore.addEvent({
-          name: evt.name,
-          startTime: new Date(evt.startTime),
-          endTime: new Date(evt.endTime),
-          chainId: resolvedChainId,
-          typeId: evt.typeId,
-          reminders: evt.reminders,
-          properties: evt.properties,
-          isHighlight: false,
-          priority: 0,
-        })
-        eventIds.push(created.id)
-      }
+      useEventStore.setState(s => {
+        const ne = new Map(s.events)
+        const now = new Date()
+        for (const evt of events) {
+          const id = generateId('event')
+          const cid = nameToChainId.get(evt.name) || chainIds[0]
+          let st = new Date(evt.startTime)
+          let et = new Date(evt.endTime)
+          if (et <= st) et = new Date(st.getTime() + 50 * 60 * 1000)
+          ne.set(id, { ...evt, id, chainId: cid, startTime: st, endTime: et, createdAt: now, updatedAt: now })
+          eventIds.push(id)
+        }
+        return { events: ne }
+      })
 
-      // 同步学期开始日期到 eventStore
-      eventStore.setSemesterStartDate(semesterStartDate)
+      es.setSemesterStartDate(semesterStartDate)
 
-      // 创建事件组
-      groupStore.ensureActiveGroup()
-      const activeGroup = groupStore.getActiveGroup()
-      if (activeGroup) {
-        groupStore.updateGroup(activeGroup.id, {
-          eventChainIds: [...new Set([...activeGroup.eventChainIds, ...chainIds])],
-          eventIds: [...new Set([...activeGroup.eventIds, ...eventIds])],
-        })
-      } else {
-        groupStore.addGroup({
-          name: '导入的课程',
-          emoji: '📚',
-          eventChainIds: chainIds,
-          eventIds,
-          description: `学期开始: ${semesterDate}`,
-        })
+      // 新建事件组，重名自动+1
+      let baseName = `课程表 ${semesterDate}`
+      let groupName = baseName
+      let n = 1
+      while (gs.getAllGroups().some(g => g.name === groupName)) {
+        n++
+        groupName = `${baseName} (${n})`
       }
+      const newGroup = gs.addGroup({
+        name: groupName, emoji: '📚',
+        eventChainIds: chainIds, eventIds,
+        description: `学期开始: ${semesterDate}，共 ${eventChains.length} 门课程`,
+      })
+      gs.setActiveGroup(newGroup.id)
 
       setResultMsg({
         type: 'success',
@@ -144,15 +149,15 @@ export default function CourseImportModal() {
   if (!isOpen) return null
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-      <div className="bg-white dark:bg-slate-800 rounded-xl shadow-2xl max-w-xl w-full mx-4">
+    <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 animate-modal-backdrop" onClick={handleClose}>
+      <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-modal dark:shadow-modal-dark border border-slate-200/60 dark:border-slate-700/60 max-w-xl w-full mx-4 animate-modal-panel" onClick={(e) => e.stopPropagation()}>
         {/* Header */}
-        <div className="flex items-center justify-between p-5 border-b border-slate-200 dark:border-slate-700">
+        <div className="flex items-center justify-between p-5 border-b border-slate-200/60 dark:border-slate-700/60">
           <h2 className="text-xl font-bold text-slate-900 dark:text-white">
             导入课程表
           </h2>
           <button
-            onClick={() => { setIsOpen(false); setResultMsg(null); setShowRemarksWarning(false) }}
+            onClick={handleClose}
             className="text-slate-500 hover:text-slate-700 dark:hover:text-slate-300 p-1"
           >
             <X className="w-5 h-5" />
@@ -170,7 +175,7 @@ export default function CourseImportModal() {
             </p>
             <button
               onClick={openSduWebsite}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-sm rounded-lg font-medium transition-colors"
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-accent-600 hover:bg-accent-700 shadow-sm shadow-accent-600/20 text-white text-sm rounded-lg font-medium transition-colors"
             >
               <ExternalLink className="w-4 h-4" />
               打开教务系统
@@ -189,7 +194,7 @@ export default function CourseImportModal() {
                 setSemesterDate(e.target.value)
                 setResultMsg(null)
               }}
-              className="w-full px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-700 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+              className="w-full px-3 py-2 border border-slate-200 dark:border-slate-700 rounded-lg bg-white dark:bg-slate-700 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-accent-500/40 text-sm"
             />
             <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
               系统将自动计算该日期起20周内的课程事件
@@ -277,10 +282,10 @@ export default function CourseImportModal() {
         </div>
 
         {/* Footer */}
-        <div className="flex justify-end px-5 py-4 border-t border-slate-200 dark:border-slate-700">
+        <div className="flex justify-end px-5 py-4 border-t border-slate-200/60 dark:border-slate-700/60">
           <button
-            onClick={() => { setIsOpen(false); setResultMsg(null); setShowRemarksWarning(false) }}
-            className="px-4 py-2 bg-slate-200 dark:bg-slate-700 hover:bg-slate-300 dark:hover:bg-slate-600 text-slate-900 dark:text-white rounded-lg font-medium text-sm transition-colors"
+            onClick={handleClose}
+            className="px-4 py-2 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-900 dark:text-white rounded-lg font-medium text-sm transition-colors"
           >
             关闭
           </button>

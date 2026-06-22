@@ -1,7 +1,7 @@
 /**
  * 事件组加载冲突解决模态框
  */
-import React, { useState, useMemo } from 'react'
+import React, { useState, useMemo, useEffect } from 'react'
 import { X, ChevronUp, ChevronDown } from 'lucide-react'
 import useEventStore from '../stores/eventStore'
 import useEventGroupStore from '../stores/eventGroupStore'
@@ -20,6 +20,13 @@ export default function GroupLoadConflictModal({
   onClose,
   onResolve,
 }: GroupLoadConflictModalProps) {
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose()
+    }
+    document.addEventListener('keydown', handler)
+    return () => document.removeEventListener('keydown', handler)
+  }, [onClose])
   const eventStore = useEventStore.getState()
   const groupStore = useEventGroupStore.getState()
   const groups = groupStore.getAllGroups()
@@ -35,9 +42,9 @@ export default function GroupLoadConflictModal({
   }
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-      <div className="bg-white dark:bg-slate-800 rounded-xl shadow-2xl max-w-md w-full">
-        <div className="flex items-center justify-between p-6 border-b border-slate-200 dark:border-slate-700">
+    <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 animate-modal-backdrop" onClick={onClose}>
+      <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-modal dark:shadow-modal-dark max-w-md w-full animate-modal-panel border border-slate-200/60 dark:border-slate-700/60" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center justify-between p-6 border-b border-slate-200 dark:border-slate-800">
           <h2 className="text-xl font-bold text-slate-900 dark:text-white">加载事件组</h2>
           <button onClick={onClose} className="text-slate-500 hover:text-slate-700 dark:hover:text-slate-300">
             <X className="w-6 h-6" />
@@ -51,9 +58,9 @@ export default function GroupLoadConflictModal({
 
           <button
             onClick={() => handleResolve('top')}
-            className="w-full text-left p-4 rounded-lg border border-blue-200 dark:border-blue-700 hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-colors"
+            className="w-full text-left p-4 rounded-lg border border-accent-200 dark:border-accent-700 hover:bg-accent-50 dark:hover:bg-accent-900/20 transition-colors"
           >
-            <div className="font-medium text-blue-700 dark:text-blue-300">置顶事件组</div>
+            <div className="font-medium text-accent-700 dark:text-accent-300">置顶事件组</div>
             <div className="text-xs text-slate-500 dark:text-slate-400 mt-1">
               导入的事件组优先级最高，冲突时优先显示
             </div>

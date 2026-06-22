@@ -34,6 +34,7 @@ export default function BatchRuleModal({ mode, rule, onSave, onClose }: BatchRul
   const [endWeek, setEndWeek] = useState(16)
   const [startDate, setStartDate] = useState('')
   const [endDate, setEndDate] = useState('')
+  const [weekStartDate, setWeekStartDate] = useState('')
   const [createStartTime, setCreateStartTime] = useState('08:00')
   const [createEndTime, setCreateEndTime] = useState('10:00')
   const [position, setPosition] = useState(1)
@@ -53,6 +54,7 @@ export default function BatchRuleModal({ mode, rule, onSave, onClose }: BatchRul
       setEndWeek(rule.weekRange.endWeek ?? 16)
       setStartDate(rule.weekRange.startDate ? toDateInput(rule.weekRange.startDate) : '')
       setEndDate(rule.weekRange.endDate ? toDateInput(rule.weekRange.endDate) : '')
+      setWeekStartDate(rule.weekRange.weekStartDate ? toDateInput(rule.weekRange.weekStartDate) : '')
       if (rule.mode === 'create' && rule.createTime) {
         setCreateStartTime(rule.createTime.startTime)
         setCreateEndTime(rule.createTime.endTime)
@@ -90,7 +92,7 @@ export default function BatchRuleModal({ mode, rule, onSave, onClose }: BatchRul
       weekPattern,
       daysOfWeek,
       weekRange: rangeType === 'weekNumber'
-        ? { type: 'weekNumber', startWeek, endWeek }
+        ? { type: 'weekNumber', startWeek, endWeek, weekStartDate: weekStartDate ? new Date(weekStartDate) : undefined }
         : { type: 'dateRange', startDate: startDate ? new Date(startDate) : undefined, endDate: endDate ? new Date(endDate) : undefined },
       ...(ruleMode === 'create' ? { createTime: { startTime: createStartTime, endTime: createEndTime } } : {}),
       ...(ruleMode === 'modify' ? {
@@ -108,14 +110,22 @@ export default function BatchRuleModal({ mode, rule, onSave, onClose }: BatchRul
   }
 
   const btnBase = 'px-3 py-1.5 rounded-lg text-sm font-medium transition-colors'
-  const activeBtn = 'bg-blue-600 text-white'
+  const activeBtn = 'bg-accent-600 text-white shadow-sm shadow-accent-600/20'
   const inactiveBtn = 'bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-300 dark:hover:bg-slate-600'
-  const inputClass = 'w-full px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500'
+  const inputClass = 'w-full px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:outline-none focus:ring-accent-500/40 focus:border-accent-500'
+
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose()
+    }
+    document.addEventListener('keydown', handler)
+    return () => document.removeEventListener('keydown', handler)
+  }, [onClose])
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[60]">
-      <div className="bg-white dark:bg-slate-800 rounded-xl shadow-2xl max-w-lg w-full max-h-[90vh] overflow-y-auto">
-        <div className="flex items-center justify-between p-6 border-b border-slate-200 dark:border-slate-700">
+    <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-[60] animate-modal-backdrop" onClick={onClose}>
+      <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-modal dark:shadow-modal-dark max-w-lg w-full max-h-[90vh] overflow-y-auto animate-modal-panel border border-slate-200/60 dark:border-slate-700/60" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center justify-between p-6 border-b border-slate-200 dark:border-slate-800">
           <h2 className="text-xl font-bold text-slate-900 dark:text-white">
             {mode === 'create' ? '添加规则' : '编辑规则'}
           </h2>
@@ -167,15 +177,22 @@ export default function BatchRuleModal({ mode, rule, onSave, onClose }: BatchRul
               <button onClick={() => setRangeType('dateRange')} className={`${btnBase} ${rangeType === 'dateRange' ? activeBtn : inactiveBtn}`}>按日期范围</button>
             </div>
             {rangeType === 'weekNumber' ? (
-              <div className="flex gap-3 items-center">
-                <div className="flex-1">
-                  <label className="block text-xs text-slate-500 mb-1">起始周</label>
-                  <input type="number" min={1} max={52} value={startWeek} onChange={(e) => setStartWeek(Number(e.target.value))} className={inputClass} />
+              <div className="space-y-3">
+                <div className="flex gap-3 items-center">
+                  <div className="flex-1">
+                    <label className="block text-xs text-slate-500 mb-1">起始周</label>
+                    <input type="number" min={1} max={52} value={startWeek} onChange={(e) => setStartWeek(Number(e.target.value))} className={inputClass} />
+                  </div>
+                  <span className="text-slate-400 mt-5">~</span>
+                  <div className="flex-1">
+                    <label className="block text-xs text-slate-500 mb-1">结束周</label>
+                    <input type="number" min={1} max={52} value={endWeek} onChange={(e) => setEndWeek(Number(e.target.value))} className={inputClass} />
+                  </div>
                 </div>
-                <span className="text-slate-400 mt-5">~</span>
-                <div className="flex-1">
-                  <label className="block text-xs text-slate-500 mb-1">结束周</label>
-                  <input type="number" min={1} max={52} value={endWeek} onChange={(e) => setEndWeek(Number(e.target.value))} className={inputClass} />
+                <div>
+                  <label className="block text-xs text-slate-500 mb-1">周起始日期（周一）</label>
+                  <input type="date" value={weekStartDate} onChange={(e) => setWeekStartDate(e.target.value)} className={inputClass} />
+                  <p className="text-xs text-slate-400 mt-1">作为第一周的周一，留空则使用全局学期起始日</p>
                 </div>
               </div>
             ) : (
@@ -217,7 +234,7 @@ export default function BatchRuleModal({ mode, rule, onSave, onClose }: BatchRul
                 <input type="number" min={1} value={position} onChange={(e) => setPosition(Math.max(1, Number(e.target.value)))} className={inputClass} />
               </div>
 
-              <div className="border-t border-slate-200 dark:border-slate-700 pt-4">
+              <div className="border-t border-slate-200 dark:border-slate-800 pt-4">
                 <p className="text-sm font-medium text-slate-700 dark:text-slate-300 mb-3">修改字段（留空表示不修改）</p>
 
                 <div className="space-y-3">
@@ -244,11 +261,11 @@ export default function BatchRuleModal({ mode, rule, onSave, onClose }: BatchRul
             </>
           )}
 
-          <div className="flex gap-3 pt-4 border-t border-slate-200 dark:border-slate-700">
+          <div className="flex gap-3 pt-4 border-t border-slate-200 dark:border-slate-800">
             <button onClick={onClose} className="flex-1 px-4 py-2 bg-slate-200 dark:bg-slate-700 hover:bg-slate-300 dark:hover:bg-slate-600 text-slate-900 dark:text-white rounded-lg font-medium transition-colors">
               取消
             </button>
-            <button onClick={handleSave} disabled={!name.trim()} className="flex-1 px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 disabled:cursor-not-allowed text-white rounded-lg font-medium transition-colors">
+            <button onClick={handleSave} disabled={!name.trim()} className="flex-1 px-4 py-2 bg-accent-600 hover:bg-accent-700 shadow-sm shadow-accent-600/20 disabled:bg-accent-400 disabled:cursor-not-allowed text-white rounded-lg font-medium transition-colors">
               保存规则
             </button>
           </div>

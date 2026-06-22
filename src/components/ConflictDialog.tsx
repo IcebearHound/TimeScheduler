@@ -1,7 +1,7 @@
 /**
  * 冲突解决对话框 - 拖拽排序设置优先级
  */
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
 import { X, GripVertical, Star, ChevronUp, ChevronDown } from 'lucide-react'
 import { EventConflict } from '../types/event'
 import useEventStore from '../stores/eventStore'
@@ -17,6 +17,14 @@ export default function ConflictDialog({ conflicts, onClose, onResolve }: Props)
   const allEventIds = conflicts.flatMap(c => c.eventIds)
   const uniqueIds = [...new Set(allEventIds)]
   const [orderedIds, setOrderedIds] = useState<string[]>(uniqueIds)
+
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose()
+    }
+    document.addEventListener('keydown', handler)
+    return () => document.removeEventListener('keydown', handler)
+  }, [onClose])
 
   const moveUp = (i: number) => {
     if (i === 0) return
@@ -37,9 +45,9 @@ export default function ConflictDialog({ conflicts, onClose, onResolve }: Props)
   const formatDT = (d: Date) => d.toLocaleString('zh-CN', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-      <div className="bg-white dark:bg-slate-800 rounded-xl shadow-2xl max-w-lg w-full max-h-[80vh] overflow-y-auto">
-        <div className="flex items-center justify-between p-6 border-b border-slate-200 dark:border-slate-700">
+    <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 animate-modal-backdrop" onClick={onClose}>
+      <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-modal dark:shadow-modal-dark border border-slate-200/60 dark:border-slate-700/60 max-w-lg w-full max-h-[80vh] overflow-y-auto animate-modal-panel" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center justify-between p-6 border-b border-slate-200/60 dark:border-slate-700/60">
           <div>
             <h2 className="text-xl font-bold text-slate-900 dark:text-white">时间冲突检测</h2>
             <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">以下事件存在重叠，请调整优先级（越靠上越优先）</p>
@@ -60,7 +68,7 @@ export default function ConflictDialog({ conflicts, onClose, onResolve }: Props)
                   if (!evt) return null
                   return (
                     <div key={eid}
-                      className="flex items-center gap-3 p-3 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-700/30"
+                      className="flex items-center gap-3 p-3 rounded-lg border border-slate-200/60 dark:border-slate-700/60 bg-slate-50 dark:bg-slate-800/50"
                       style={{ borderLeft: `4px solid ${chain?.color || '#3B82F6'}` }}>
                       <div className="flex flex-col gap-1">
                         <button onClick={() => moveUp(idx)} className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"><ChevronUp className="w-4 h-4" /></button>
@@ -82,9 +90,9 @@ export default function ConflictDialog({ conflicts, onClose, onResolve }: Props)
               </div>
             </div>
           ))}
-          <div className="flex gap-3 mt-6 pt-4 border-t border-slate-200 dark:border-slate-700">
-            <button onClick={onClose} className="flex-1 px-4 py-2 bg-slate-200 dark:bg-slate-700 hover:bg-slate-300 dark:hover:bg-slate-600 text-slate-900 dark:text-white rounded-lg font-medium transition-colors">取消</button>
-            <button onClick={handleConfirm} className="flex-1 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium transition-colors">确认优先级</button>
+          <div className="flex gap-3 mt-6 pt-4 border-t border-slate-200/60 dark:border-slate-700/60">
+            <button onClick={onClose} className="flex-1 px-4 py-2 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-900 dark:text-white rounded-lg font-medium transition-colors">取消</button>
+            <button onClick={handleConfirm} className="flex-1 px-4 py-2 bg-accent-600 hover:bg-accent-700 shadow-sm shadow-accent-600/20 text-white rounded-lg font-medium transition-colors">确认优先级</button>
           </div>
         </div>
       </div>

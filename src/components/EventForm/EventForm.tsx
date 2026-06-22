@@ -2,12 +2,40 @@
  * 事件编辑表单 - duration时间选择、优雅重点标记、按类型自定义属性
  */
 import React, { useState, useEffect, useCallback } from 'react'
-import { Plus, Star, ChevronDown, ChevronUp } from 'lucide-react'
+import { Plus, Star, ChevronDown, Settings, MapPin, User, BookOpen, Clock, Bell, Flag, Home, Award, Heart, Zap, Smile, Pin, Hash, Paperclip, Eye, Music, Gift, Coffee } from 'lucide-react'
 import useEventStore from '../../stores/eventStore'
 import useEventGroupStore from '../../stores/eventGroupStore'
 import useUIStore from '../../stores/uiStore'
 import ReminderSelector from './ReminderSelector'
 import { Event, EventChain, Reminder, EventProperty } from '../../types/event'
+
+const CN_TO_EN: Record<string, string> = {
+  '地点': 'location', '授课老师': 'teacher', '课序号': 'courseCode',
+  '考试形式': 'examForm', '监考老师': 'supervisor',
+  '实验指导老师': 'labTeacher', '实验内容': 'labContent',
+}
+
+const CUSTOM_PROP_ICONS = [
+  { key: 'pin', icon: <Pin className="w-3.5 h-3.5 text-slate-400" />, label: '图钉' },
+  { key: 'map', icon: <MapPin className="w-3.5 h-3.5 text-slate-400" />, label: '地点' },
+  { key: 'user', icon: <User className="w-3.5 h-3.5 text-slate-400" />, label: '人员' },
+  { key: 'book', icon: <BookOpen className="w-3.5 h-3.5 text-slate-400" />, label: '书本' },
+  { key: 'clock', icon: <Clock className="w-3.5 h-3.5 text-slate-400" />, label: '时间' },
+  { key: 'bell', icon: <Bell className="w-3.5 h-3.5 text-slate-400" />, label: '提醒' },
+  { key: 'flag', icon: <Flag className="w-3.5 h-3.5 text-slate-400" />, label: '标记' },
+  { key: 'home', icon: <Home className="w-3.5 h-3.5 text-slate-400" />, label: '地点' },
+  { key: 'star', icon: <Star className="w-3.5 h-3.5 text-slate-400" />, label: '星标' },
+  { key: 'award', icon: <Award className="w-3.5 h-3.5 text-slate-400" />, label: '奖项' },
+  { key: 'heart', icon: <Heart className="w-3.5 h-3.5 text-slate-400" />, label: '重要' },
+  { key: 'zap', icon: <Zap className="w-3.5 h-3.5 text-slate-400" />, label: '快速' },
+  { key: 'smile', icon: <Smile className="w-3.5 h-3.5 text-slate-400" />, label: '表情' },
+  { key: 'hash', icon: <Hash className="w-3.5 h-3.5 text-slate-400" />, label: '编号' },
+  { key: 'clip', icon: <Paperclip className="w-3.5 h-3.5 text-slate-400" />, label: '附件' },
+  { key: 'eye', icon: <Eye className="w-3.5 h-3.5 text-slate-400" />, label: '查看' },
+  { key: 'music', icon: <Music className="w-3.5 h-3.5 text-slate-400" />, label: '音乐' },
+  { key: 'gift', icon: <Gift className="w-3.5 h-3.5 text-slate-400" />, label: '礼物' },
+  { key: 'coffee', icon: <Coffee className="w-3.5 h-3.5 text-slate-400" />, label: '咖啡' },
+]
 import EventChainModal from '../EventChainModal'
 import { dialogAlert } from '../../utils/dialog'
 
@@ -51,14 +79,44 @@ export default function EventForm({ eventId, chainId, onClose, defaultStart, def
   const [typeId, setTypeId] = useState(editEvent?.typeId || 'type-course')
   const [isHighlight, setIsHighlight] = useState(editEvent?.isHighlight || false)
   const [reminders, setReminders] = useState<Reminder[]>(editEvent?.reminders || [])
-  const [properties, setProperties] = useState<Record<string, string>>(editEvent?.properties as Record<string, string> || {})
   const [showExtraProps, setShowExtraProps] = useState(false)
-
+  const [showEmojiPicker, setShowEmojiPicker] = useState(false)
+  const [customPropIcon, setCustomPropIcon] = useState('pin')
+  const [customPropIcons, setCustomPropIcons] = useState<Record<string, string>>({})
+  const [editingCustomPropIcon, setEditingCustomPropIcon] = useState<string | null>(null)
+  const [showTimePicker, setShowTimePicker] = useState(false)
+  const [properties, setProperties] = useState<Record<string, string>>(() => {
+    if (!editEvent) return {}
+    // 将事件属性（可能中英文混存）统一转换为英文键
+    const raw = (editEvent.properties as Record<string, string>) || {}
+    const mapped: Record<string, string> = {}
+    for (const [cn, en] of Object.entries(CN_TO_EN)) {
+      if (raw[cn]) mapped[en] = raw[cn]
+      else if (raw[en]) mapped[en] = raw[en]
+    }
+    // 保留不在映射表内的自定义属性
+    for (const [k, v] of Object.entries(raw)) {
+      if (!Object.values(CN_TO_EN).includes(k) && !CN_TO_EN[k]) mapped[k] = v
+    }
+    return mapped
+  })
   const [chains, setChains] = useState<EventChain[]>([])
   const [showChainModal, setShowChainModal] = useState(false)
   const [chainModalKey, setChainModalKey] = useState(0)
 
-  // 当前类型推荐的属性字段
+  // 根据图标key渲染图标组件
+  const renderIcon = (key: string) => {
+    const item = CUSTOM_PROP_ICONS.find(ic => ic.key === key)
+    return item ? item.icon : <Pin className="w-3.5 h-3.5 text-slate-400" />
+  }
+  const formatDisplayDate = (dt: string) => {
+    const d = new Date(dt); if (isNaN(d.getTime())) return dt
+    return `${d.getMonth() + 1}/${d.getDate()}`
+  }
+  const formatDisplayTime = (dt: string) => {
+    const d = new Date(dt); if (isNaN(d.getTime())) return dt
+    return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
+  }
   const propFields = (() => {
     const t = eventStore.getEventType(typeId)
     if (t?.propertyFields && t.propertyFields.length > 0) return t.propertyFields.map(f => typeof f === 'string' ? f : f.name)
@@ -78,7 +136,17 @@ export default function EventForm({ eventId, chainId, onClose, defaultStart, def
         setTypeId(evt.typeId)
         setIsHighlight(evt.isHighlight)
         setReminders(evt.reminders)
-        setProperties(evt.properties as Record<string, string> || {})
+        // 统一转换为英文键
+        const raw = (evt.properties as Record<string, string>) || {}
+        const mapped: Record<string, string> = {}
+        for (const [cn, en] of Object.entries(CN_TO_EN)) {
+          if (raw[cn]) mapped[en] = raw[cn]
+          else if (raw[en]) mapped[en] = raw[en]
+        }
+        for (const [k, v] of Object.entries(raw)) {
+          if (!Object.values(CN_TO_EN).includes(k) && !CN_TO_EN[k]) mapped[k] = v
+        }
+        setProperties(mapped)
       }
     }
   }, [eventId])
@@ -144,150 +212,177 @@ export default function EventForm({ eventId, chainId, onClose, defaultStart, def
 
   return (
     <>
-      <form onSubmit={handleSubmit} className="space-y-4">
-        {/* 名称 + 重点 */}
-        <div className="flex items-start gap-3">
-          <div className="flex-1">
-            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">事件名称 *</label>
-            <input type="text" value={name} onChange={e => setName(e.target.value)}
-              className="w-full px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="输入事件名称" />
-          </div>
+      <form onSubmit={handleSubmit} className="space-y-3">
+        {/* 名称 */}
+        <div className="flex items-center gap-2">
+          <input type="text" value={name} onChange={e => setName(e.target.value)}
+            className="flex-1 text-lg font-bold text-slate-900 dark:text-white bg-transparent border-b-2 border-slate-200 dark:border-slate-700 focus:border-accent-500 focus:outline-none pb-1 transition-colors" placeholder="事件名称 *" />
           <button type="button" onClick={() => setIsHighlight(!isHighlight)}
-            className={`mt-7 p-2 rounded-xl border-2 transition-all flex-shrink-0 ${
-              isHighlight ? 'border-yellow-400 bg-yellow-50 dark:bg-yellow-900/20 text-yellow-600 shadow-[0_0_8px_rgba(250,204,21,0.4)]' : 'border-slate-200 dark:border-slate-600 text-slate-300 hover:border-yellow-300 hover:text-yellow-400'
+            className={`p-1.5 rounded-lg transition-all flex-shrink-0 ${
+              isHighlight ? 'text-yellow-400 bg-yellow-50 dark:bg-yellow-900/20' : 'text-slate-300 hover:text-yellow-400 hover:bg-slate-50 dark:hover:bg-slate-700/50'
             }`} title="重点事件">
-            <Star className={`w-6 h-6 transition-transform ${isHighlight ? 'fill-yellow-400 scale-110' : ''}`} />
+            <Star className={`w-5 h-5 ${isHighlight ? 'fill-yellow-400' : ''}`} />
           </button>
         </div>
 
-        {/* 事件链 */}
-        <div>
-          <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">所属事件链</label>
-          <select value={chainIdState} onChange={e => setChainIdState(e.target.value)}
-            className="w-full px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500">
-            <option value="">无（独立事件）</option>
-            {chains.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-          </select>
-          <button type="button" onClick={handleOpenChainModal}
-            className="mt-2 flex items-center gap-1 text-sm text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300">
-            <Plus className="w-4 h-4" /> 创建新的事件链
-          </button>
-        </div>
-
-        {/* 时间 + Duration */}
-        <div>
-          <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">开始时间</label>
-          <input type="datetime-local" value={startTime} onChange={e => handleStartChange(e.target.value)}
-            className="w-full px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500" />
-        </div>
-
-        <div>
-          <div className="flex items-center justify-between mb-2">
-            <label className="text-sm font-medium text-slate-700 dark:text-slate-300">持续时长</label>
-            <span className="text-xs text-slate-400">{durationMin >= 60 ? `${Math.floor(durationMin / 60)}h${durationMin % 60 ? ` ${durationMin % 60}min` : ''}` : `${durationMin}分钟`}</span>
-          </div>
-          <div className="flex flex-wrap gap-1.5">
-            {DURATION_PRESETS.map(p => (
-              <button key={p.minutes} type="button"
-                onClick={() => handleDurationChange(p.minutes)}
-                className={`px-3 py-1 text-xs rounded-full border transition-all ${
-                  durationMin === p.minutes
-                    ? 'bg-blue-600 text-white border-blue-600 shadow'
-                    : 'bg-white dark:bg-slate-700 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-600 hover:border-blue-300 hover:text-blue-600'
-                }`}>{p.label}</button>
-            ))}
-            <input type="number" min="5" max="1440" value={durationMin}
-              onChange={e => { const v = parseInt(e.target.value); if (v >= 5 && v <= 1440) handleDurationChange(v) }}
-              className="w-20 px-2 py-1 text-xs border border-slate-300 dark:border-slate-600 rounded-full bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:outline-none focus:ring-1 focus:ring-blue-500" placeholder="自定义分钟" />
-          </div>
-        </div>
-
-        <div>
-          <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">结束时间</label>
-          <input type="datetime-local" value={endTime} onChange={e => handleEndChange(e.target.value)}
-            className="w-full px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500" />
-        </div>
-
-        {/* 事件类型 */}
-        <div>
-          <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">事件类型</label>
+        {/* 类型 + 事件链 */}
+        <div className="flex gap-2">
           <select value={typeId} onChange={e => { setTypeId(e.target.value); setProperties({}) }}
-            className="w-full px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500">
+            className="flex-1 px-2.5 py-1.5 text-sm border border-slate-200 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 focus:outline-none focus:ring-accent-500/40 focus:border-accent-500">
             {eventTypes.map(t => (
               <option key={t.id} value={t.id}>{t.emoji} {t.name}</option>
             ))}
           </select>
-        </div>
-
-        {/* 自定义属性 — 按事件类型 */}
-        <div className="space-y-2 p-3 bg-slate-50 dark:bg-slate-700/30 rounded-lg">
-          <div className="flex items-center justify-between">
-            <h3 className="text-sm font-bold text-slate-700 dark:text-slate-300">属性</h3>
-            <button type="button" onClick={() => setShowExtraProps(!showExtraProps)}
-              className="text-xs text-blue-600 dark:text-blue-400 hover:underline flex items-center gap-1">
-              {showExtraProps ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
-              {showExtraProps ? '收起' : '展开全部'}
+          <div className="flex-1 flex gap-1">
+            <select value={chainIdState} onChange={e => setChainIdState(e.target.value)}
+              className="flex-1 px-2.5 py-1.5 text-sm border border-slate-200 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 focus:outline-none focus:ring-accent-500/40 focus:border-accent-500">
+              <option value="">无事件链</option>
+              {chains.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+            </select>
+            <button type="button" onClick={handleOpenChainModal} title="新建事件链"
+              className="px-2 py-1.5 text-sm text-accent-500 hover:text-accent-600 hover:bg-accent-50 dark:hover:bg-accent-900/20 rounded-lg border border-dashed border-slate-300 dark:border-slate-600 flex-shrink-0">
+              <Plus className="w-4 h-4" />
             </button>
           </div>
+        </div>
 
-          {/* 前两个属性始终可见 */}
-          <div className="grid grid-cols-2 gap-2">
-            {propFields.slice(0, 2).map(field => (
-              <div key={field}>
-                <label className="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">{field}</label>
-                <input type="text" value={properties[field] || ''} onChange={e => setProperties(p => ({ ...p, [field]: e.target.value }))}
-                  className="w-full px-2 py-1 border border-slate-300 dark:border-slate-600 rounded bg-white dark:bg-slate-800 text-slate-900 dark:text-white text-sm focus:outline-none focus:ring-1 focus:ring-blue-500" placeholder={field} />
+        {/* 时间 */}
+        <div>
+          <button type="button" onClick={() => setShowTimePicker(!showTimePicker)}
+            className="flex items-center gap-2 w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 text-sm text-slate-700 dark:text-slate-300 hover:border-accent-300 transition-colors">
+            <Clock className="w-4 h-4 text-slate-400 flex-shrink-0" />
+            <span>{formatDisplayDate(startTime)} {formatDisplayTime(startTime)}</span>
+            <span className="text-slate-400">→</span>
+            <span>{formatDisplayTime(endTime)}</span>
+            <span className="text-xs text-slate-400">({durationMin >= 60 ? `${Math.floor(durationMin / 60)}h${durationMin % 60 ? ` ${durationMin % 60}min` : ''}` : `${durationMin}分钟`})</span>
+            <ChevronDown className={`w-4 h-4 text-slate-400 ml-auto flex-shrink-0 transition-transform ${showTimePicker ? 'rotate-180' : ''}`} />
+          </button>
+          {showTimePicker && (
+            <div className="mt-2 p-3 bg-slate-50 dark:bg-slate-700/30 rounded-lg space-y-2">
+              <div>
+                <label className="text-xs text-slate-500">开始时间</label>
+                <input type="datetime-local" value={startTime} onChange={e => handleStartChange(e.target.value)}
+                  className="w-full px-2 py-1 mt-0.5 text-xs border border-slate-300 dark:border-slate-600 rounded bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:outline-none focus:ring-accent-500/40 focus:border-accent-500" />
               </div>
-            ))}
-          </div>
-
-          {/* 额外的属性折叠显示 */}
-          {showExtraProps && propFields.length > 2 && (
-            <div className="grid grid-cols-2 gap-2 pt-1 border-t border-slate-200 dark:border-slate-600">
-              {propFields.slice(2).map(field => (
-                <div key={field}>
-                  <label className="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">{field}</label>
-                  <input type="text" value={properties[field] || ''} onChange={e => setProperties(p => ({ ...p, [field]: e.target.value }))}
-                    className="w-full px-2 py-1 border border-slate-300 dark:border-slate-600 rounded bg-white dark:bg-slate-800 text-slate-900 dark:text-white text-sm focus:outline-none focus:ring-1 focus:ring-blue-500" placeholder={field} />
-                </div>
-              ))}
+              <div className="flex flex-wrap gap-1.5">
+                {DURATION_PRESETS.map(p => (
+                  <button key={p.minutes} type="button"
+                    onClick={() => handleDurationChange(p.minutes)}
+                    className={`px-2 py-0.5 text-xs rounded-full border transition-all ${
+                      durationMin === p.minutes
+                        ? 'bg-accent-600 text-white border-accent-600 shadow-sm shadow-accent-600/20'
+                        : 'bg-white dark:bg-slate-700 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-600 hover:border-accent-300'
+                    }`}>{p.label}</button>
+                ))}
+              </div>
+              <div>
+                <label className="text-xs text-slate-500">结束时间</label>
+                <input type="datetime-local" value={endTime} onChange={e => handleEndChange(e.target.value)}
+                  className="w-full px-2 py-1 mt-0.5 text-xs border border-slate-300 dark:border-slate-600 rounded bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:outline-none focus:ring-accent-500/40 focus:border-accent-500" />
+              </div>
             </div>
           )}
+        </div>
 
-          {/* 自定义添加属性 */}
-          <div className="flex gap-1 pt-1">
-            <input type="text" placeholder="添加自定义属性名..."
-              className="flex-1 px-2 py-1 text-xs border border-dashed border-slate-300 dark:border-slate-600 rounded bg-transparent text-slate-700 dark:text-slate-300 focus:outline-none focus:ring-1 focus:ring-blue-500"
-              onKeyDown={e => {
-                if (e.key === 'Enter') {
-                  const v = (e.target as HTMLInputElement).value.trim()
-                  if (v && !(v in properties)) { setProperties(p => ({ ...p, [v]: '' })); (e.target as HTMLInputElement).value = '' }
-                  e.preventDefault()
-                }
-              }} />
-          </div>
-
-          {/* 已添加的自定义属性 */}
-          {Object.keys(properties).filter(k => !propFields.includes(k)).length > 0 && (
-            <div className="space-y-1.5 pt-1 border-t border-slate-200 dark:border-slate-600">
-              {Object.keys(properties).filter(k => !propFields.includes(k)).map(k => (
-                <div key={k} className="flex items-center gap-2">
-                  <span className="text-xs font-medium text-slate-500 dark:text-slate-400 w-24 flex-shrink-0 truncate">{k}</span>
-                  <input type="text" value={properties[k] || ''} onChange={e => setProperties(p => ({ ...p, [k]: e.target.value }))}
-                    className="flex-1 px-2 py-1 text-xs border border-slate-300 dark:border-slate-600 rounded bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:outline-none focus:ring-1 focus:ring-blue-500" placeholder={k} />
-                  <button type="button" onClick={() => { const np = { ...properties }; delete np[k]; setProperties(np) }}
-                    className="text-slate-400 hover:text-red-500 flex-shrink-0">&times;</button>
+        {/* 属性 — 可折叠 */}
+        <div className="border border-slate-200 dark:border-slate-600 rounded-lg overflow-hidden">
+          <button type="button" onClick={() => setShowExtraProps(!showExtraProps)}
+            className="flex items-center gap-2 w-full px-3 py-2 hover:bg-slate-50 dark:hover:bg-slate-700/30 transition-colors">
+            <Settings className="w-4 h-4 text-slate-400" />
+            <span className="text-sm font-medium text-slate-700 dark:text-slate-300">属性</span>
+            {!showExtraProps && (() => {
+              const customKeys = Object.keys(properties).filter(k => !propFields.includes(k) && !Object.values(CN_TO_EN).includes(k) && !(k in CN_TO_EN))
+              const total = propFields.length + customKeys.length
+              return <span className="text-xs text-slate-400">({total}项)</span>
+            })()}
+            <ChevronDown className={`w-4 h-4 text-slate-400 ml-auto transition-transform ${showExtraProps ? '' : '-rotate-90'}`} />
+          </button>
+          {showExtraProps && (
+          <div className="px-3 pb-3 space-y-2">
+            {/* 类型属性 + 自定义属性统一 grid */}
+            {(() => {
+              const customKeys = Object.keys(properties).filter(k => !propFields.includes(k) && !Object.values(CN_TO_EN).includes(k) && !(k in CN_TO_EN))
+              const allFields = [...propFields.map(f => ({ name: f, storeKey: CN_TO_EN[f] || f, isCustom: false })), ...customKeys.map(k => ({ name: k, storeKey: k, isCustom: true }))]
+              return allFields.length > 0 ? (
+                <div className="grid grid-cols-2 gap-2">
+                  {allFields.map(({ name, storeKey, isCustom }) => (
+                    <div key={name}>
+                      <label className="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1 flex items-center gap-1">
+                        {isCustom ? (
+                          <button type="button" onClick={(e) => { e.preventDefault(); setEditingCustomPropIcon(name); setShowEmojiPicker(true) }}
+                            className="hover:scale-110 transition-transform cursor-pointer" title="点击更换图标">
+                            {renderIcon(customPropIcons[name])}
+                          </button>
+                        ) : (
+                          renderIcon(customPropIcons[name])
+                        )}
+                        {name}
+                      </label>
+                      <div className="flex items-center gap-1">
+                        <input type="text" value={properties[storeKey] || ''} onChange={e => setProperties(p => ({ ...p, [storeKey]: e.target.value }))}
+                          className="flex-1 px-2 py-1 border border-slate-300 dark:border-slate-600 rounded bg-white dark:bg-slate-800 text-slate-900 dark:text-white text-sm focus:outline-none focus:ring-accent-500/40 focus:border-accent-500" placeholder={name} />
+                        {isCustom && (
+                          <button type="button" onClick={() => { const np = { ...properties }; delete np[storeKey]; setProperties(np) }}
+                            className="text-slate-400 hover:text-red-500 flex-shrink-0">&times;</button>
+                        )}
+                      </div>
+                    </div>
+                  ))}
                 </div>
-              ))}
+              ) : <div className="text-xs text-slate-400 py-1">无属性</div>
+            })()}
+
+            {/* 添加自定义属性 */}
+            <div className="flex gap-1 pt-1 border-t border-slate-200 dark:border-slate-600">
+              <div className="relative">
+                <button type="button" onClick={() => { if (!editingCustomPropIcon) setShowEmojiPicker(!showEmojiPicker); else { setShowEmojiPicker(true) } }}
+                  className={`w-7 h-7 border border-dashed rounded bg-transparent flex items-center justify-center ${
+                    editingCustomPropIcon ? 'border-accent-400 bg-accent-50 dark:bg-accent-900/20' : 'border-slate-300 dark:border-slate-600 hover:bg-slate-100 dark:hover:bg-slate-700'
+                  }`} title={editingCustomPropIcon ? `正在更换「${editingCustomPropIcon}」的图标` : '选择新属性图标'}>
+                  {renderIcon(editingCustomPropIcon ? (customPropIcons[editingCustomPropIcon] || 'pin') : customPropIcon)}
+                </button>
+                {showEmojiPicker && (
+                  <div className="absolute bottom-full left-0 mb-1 p-2 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl shadow-overlay z-50 w-64">
+                    {editingCustomPropIcon && (
+                      <div className="text-[10px] text-accent-600 dark:text-accent-400 px-1 pb-1 mb-1 border-b border-slate-100 dark:border-slate-700">
+                        更换「{editingCustomPropIcon}」的图标
+                        <button type="button" onClick={() => { setEditingCustomPropIcon(null); setShowEmojiPicker(false) }}
+                          className="ml-2 text-slate-400 hover:text-red-500">&times; 取消</button>
+                      </div>
+                    )}
+                    <div className="grid grid-cols-7 gap-1">
+                      {CUSTOM_PROP_ICONS.map(ic => (
+                        <button key={ic.key} type="button" onClick={() => {
+                          if (editingCustomPropIcon) { setCustomPropIcons(p => ({ ...p, [editingCustomPropIcon]: ic.key })); setEditingCustomPropIcon(null) }
+                          else setCustomPropIcon(ic.key)
+                          setShowEmojiPicker(false)
+                        }} className={`w-7 h-7 hover:bg-slate-100 dark:hover:bg-slate-700 rounded flex items-center justify-center ${
+                          editingCustomPropIcon && customPropIcons[editingCustomPropIcon] === ic.key ? 'bg-accent-100 dark:bg-accent-900/30 ring-1 ring-accent-400' : ''
+                        }`} title={ic.label}>{ic.icon}</button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+              <input type="text" placeholder="添加自定义属性名..."
+                className="flex-1 px-2 py-1 text-xs border border-dashed border-slate-300 dark:border-slate-600 rounded bg-transparent text-slate-700 dark:text-slate-300 focus:outline-none focus:ring-accent-500/40 focus:border-accent-500"
+                onKeyDown={e => {
+                  if (e.key === 'Enter') {
+                    const v = (e.target as HTMLInputElement).value.trim()
+                    if (v && !(v in properties)) { setProperties(p => ({ ...p, [v]: '' })); setCustomPropIcons(p => ({ ...p, [v]: customPropIcon })); (e.target as HTMLInputElement).value = '' }
+                    e.preventDefault()
+                  }
+                }} />
             </div>
+          </div>
           )}
         </div>
 
         <ReminderSelector reminders={reminders} onChange={setReminders} isHighlight={isHighlight} />
 
-        <div className="flex gap-3 pt-4 border-t border-slate-200 dark:border-slate-700">
-          <button type="button" onClick={onClose} className="flex-1 px-4 py-2 bg-slate-200 dark:bg-slate-700 hover:bg-slate-300 dark:hover:bg-slate-600 text-slate-900 dark:text-white rounded-lg font-medium transition-colors">取消</button>
-          <button type="submit" className="flex-1 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium transition-colors">{eventId ? '保存更改' : '创建事件'}</button>
+        <div className="flex gap-3 pt-3 border-t border-slate-200 dark:border-slate-700">
+          <button type="button" onClick={onClose} className="flex-1 px-4 py-2 bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 dark:hover:bg-slate-600 text-slate-700 dark:text-slate-300 rounded-lg font-medium text-sm transition-colors">取消</button>
+          <button type="submit" className="flex-1 px-4 py-2 bg-accent-600 hover:bg-accent-700 shadow-sm shadow-accent-600/20 text-white rounded-lg font-medium text-sm transition-colors">{eventId ? '保存更改' : '创建事件'}</button>
         </div>
       </form>
 

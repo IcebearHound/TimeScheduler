@@ -3,15 +3,41 @@
  */
 import { create } from 'zustand'
 import { subscribeWithSelector } from 'zustand/middleware'
-import { Event, EventChain, EventConflict, Reminder, ReminderTime, EventType, BatchRule, PropertyField } from '../types/event'
+import { Event, EventChain, EventConflict, Reminder, ReminderTime, EventType, BatchRule, PropertyField, EventGroup } from '../types/event'
 import { generateId } from '../utils/idGenerator'
 import { getConflictingEvents } from '../utils/eventUtils'
 import { executeCreateRule, executeModifyRule } from '../utils/batchRuleUtils'
+import useEventGroupStore from './eventGroupStore'
+import { debugLog } from '../utils/debugStore'
 
 interface HistoryEntry {
   events: [string, Event][]
   eventChains: [string, EventChain][]
   eventTypes: [string, EventType][]
+  groups: [string, EventGroup][]
+  groupOrder: string[]
+  activeGroupId: string
+  action: string
+  affected?: Array<{ type: 'event' | 'chain' | 'group' | 'type'; id: string; name: string }>
+}
+
+function collectGroupState(): { groups: [string, EventGroup][]; groupOrder: string[]; activeGroupId: string } {
+  const gs = useEventGroupStore.getState()
+  return {
+    groups: Array.from(gs.groups.entries()),
+    groupOrder: [...gs.groupOrder],
+    activeGroupId: gs.activeGroupId,
+  }
+}
+
+function applyGroupState(entry: HistoryEntry) {
+  const gs = useEventGroupStore.getState()
+  useEventGroupStore.setState({
+    groups: new Map(entry.groups),
+    groupOrder: entry.groupOrder,
+    activeGroupId: entry.activeGroupId,
+  })
+  gs.save()
 }
 
 interface EventStore {
@@ -32,11 +58,16 @@ interface EventStore {
   canRedo: boolean
   undo: () => void
   redo: () => void
-  pushHistory: () => void
+  pushHistory: (action?: string, affected?: Array<{ type: 'event' | 'chain' | 'group' | 'type'; id: string; name: string }>) => void
+  lastUndoAction: string
+  lastRedoAction: string
+  lastAffected?: Array<{ type: 'event' | 'chain' | 'group' | 'type'; id: string; name: string }>
+  setLastAction: (action: string) => void
 
   addEvent: (event: Omit<Event, 'id' | 'createdAt' | 'updatedAt'>) => Event
   updateEvent: (id: string, updates: Partial<Event>) => void
   deleteEvent: (id: string) => void
+  deleteEvents: (ids: string[]) => void
   getEvent: (id: string) => Event | undefined
   getEventsByChain: (chainId: string) => Event[]
   getEventsByType: (typeId: string) => Event[]
@@ -47,6 +78,7 @@ interface EventStore {
   addEventChain: (chain: Omit<EventChain, 'id' | 'createdAt' | 'updatedAt'>) => EventChain
   updateEventChain: (id: string, updates: Partial<EventChain>) => void
   deleteEventChain: (id: string) => void
+  deleteEventChains: (ids: string[]) => void
   mergeEventChains: (targetId: string, sourceIds: string[]) => void
   getEventChain: (id: string) => EventChain | undefined
   getAllEventChains: () => EventChain[]
@@ -60,6 +92,7 @@ interface EventStore {
   addEventType: (type: Omit<EventType, 'id'>) => EventType
   updateEventType: (id: string, updates: Partial<EventType>) => void
   deleteEventType: (id: string) => void
+  deleteEventTypes: (ids: string[]) => void
   getEventType: (id: string) => EventType | undefined
   getAllEventTypes: () => EventType[]
 
@@ -71,15 +104,18 @@ interface EventStore {
   loadDefaultData: () => void
 }
 
-function snapshot(state: EventStore): HistoryEntry {
+function snapshot(state: EventStore, action: string): HistoryEntry {
   return {
     events: Array.from(state.events.entries()),
     eventChains: Array.from(state.eventChains.entries()),
     eventTypes: Array.from(state.eventTypes.entries()),
+    ...collectGroupState(),
+    action,
   }
 }
 
 function restore(entry: HistoryEntry): Partial<EventStore> {
+  applyGroupState(entry)
   return {
     events: new Map(entry.events),
     eventChains: new Map(entry.eventChains),
@@ -106,43 +142,58 @@ const useEventStore = create<EventStore>()(
     redoStack: [],
     canUndo: false,
     canRedo: false,
+    lastUndoAction: '',
+    lastRedoAction: '',
+    lastAffected: undefined,
+    setLastAction: (action) => set({ lastUndoAction: action }),
 
-    pushHistory: () => {
+    pushHistory: (action, affected) => {
       const s = get()
+      const a = action || s.lastUndoAction || '操作'
       set({
-        undoStack: [...s.undoStack.slice(-49), snapshot(s)],
+        undoStack: [...s.undoStack.slice(-49), { ...snapshot(s, a), affected }],
         redoStack: [],
         canUndo: true,
         canRedo: false,
+        lastUndoAction: '',
       })
+      debugLog({ type: 'pushHistory', action: a, affected, undoStackLen: get().undoStack.length, redoStackLen: get().redoStack.length })
     },
 
     undo: () => {
       const s = get()
       if (s.undoStack.length === 0) return
       const prev = s.undoStack[s.undoStack.length - 1]
+      const redoEntry = { ...snapshot(s, prev.action), affected: prev.affected }
       set({
         ...restore(prev),
         undoStack: s.undoStack.slice(0, -1),
-        redoStack: [...s.redoStack, snapshot(s)],
+        redoStack: [...s.redoStack, redoEntry],
         canUndo: s.undoStack.length > 1,
         canRedo: true,
+        lastRedoAction: prev.action,
+        lastAffected: prev.affected,
       })
       get().save()
+      debugLog({ type: 'undo', action: prev.action, affected: prev.affected, undoStackLen: get().undoStack.length, redoStackLen: get().redoStack.length })
     },
 
     redo: () => {
       const s = get()
       if (s.redoStack.length === 0) return
       const next = s.redoStack[s.redoStack.length - 1]
+      const undoEntry = { ...snapshot(s, next.action), affected: next.affected }
       set({
         ...restore(next),
         redoStack: s.redoStack.slice(0, -1),
-        undoStack: [...s.undoStack, snapshot(s)],
+        undoStack: [...s.undoStack, undoEntry],
         canUndo: true,
         canRedo: s.redoStack.length > 1,
+        lastUndoAction: next.action,
+        lastAffected: next.affected,
       })
       get().save()
+      debugLog({ type: 'redo', action: next.action, affected: next.affected, undoStackLen: get().undoStack.length, redoStackLen: get().redoStack.length })
     },
 
     copyEvent: (eventId) => {
@@ -182,10 +233,16 @@ const useEventStore = create<EventStore>()(
     },
 
     addEvent: (eventData) => {
-      get().pushHistory()
+      const id = generateId('event')
+      get().pushHistory('添加事件', [{ type: 'event', id, name: eventData.name }])
+      let endTime = new Date(eventData.endTime)
+      if (endTime <= new Date(eventData.startTime)) {
+        endTime = new Date(new Date(eventData.startTime).getTime() + 50 * 60 * 1000)
+      }
       const event: Event = {
         ...eventData,
-        id: generateId('event'),
+        id,
+        endTime,
         createdAt: new Date(),
         updatedAt: new Date(),
       }
@@ -195,7 +252,8 @@ const useEventStore = create<EventStore>()(
     },
 
     updateEvent: (id, updates) => {
-      get().pushHistory()
+      debugLog({ type: 'pushHistory', action: '修改事件', affected: [{ type: 'event', id, name: get().events.get(id)?.name || id }], undoStackLen: get().undoStack.length, redoStackLen: get().redoStack.length })
+      get().pushHistory('修改事件', [{ type: 'event', id, name: get().events.get(id)?.name || id }])
       const event = get().events.get(id)
       if (!event) return
 
@@ -229,10 +287,22 @@ const useEventStore = create<EventStore>()(
     },
 
     deleteEvent: (id) => {
-      get().pushHistory()
+      get().pushHistory('删除事件', [{ type: 'event', id, name: get().events.get(id)?.name || id }])
       set((s) => {
         const ne = new Map(s.events)
         ne.delete(id)
+        return { events: ne }
+      })
+      get().save()
+    },
+
+    deleteEvents: (ids) => {
+      if (ids.length === 0) return
+      const evts = ids.map(id => get().events.get(id)).filter(Boolean) as Event[]
+      get().pushHistory('批量删除事件', evts.map(e => ({ type: 'event' as const, id: e.id, name: e.name })))
+      set((s) => {
+        const ne = new Map(s.events)
+        ids.forEach(id => ne.delete(id))
         return { events: ne }
       })
       get().save()
@@ -252,7 +322,8 @@ const useEventStore = create<EventStore>()(
     getAllEvents: () => Array.from(get().events.values()),
 
     moveEvent: (eventId, newStartTime, newEndTime) => {
-      get().pushHistory()
+      debugLog({ type: 'move', action: '移动事件', affected: [{ type: 'event', id: eventId, name: get().events.get(eventId)?.name || eventId }], undoStackLen: get().undoStack.length, redoStackLen: get().redoStack.length })
+      get().pushHistory('移动事件', [{ type: 'event', id: eventId, name: get().events.get(eventId)?.name || eventId }])
       const event = get().events.get(eventId)
       if (!event) return
       const ns = new Date(newStartTime)
@@ -265,10 +336,11 @@ const useEventStore = create<EventStore>()(
     },
 
     addEventChain: (chainData) => {
-      get().pushHistory()
+      const id = generateId('chain')
+      get().pushHistory('添加事件链', [{ type: 'chain', id, name: chainData.name }])
       const chain: EventChain = {
         ...chainData,
-        id: generateId('chain'),
+        id,
         createdAt: new Date(),
         updatedAt: new Date(),
       }
@@ -278,7 +350,7 @@ const useEventStore = create<EventStore>()(
     },
 
     updateEventChain: (id, updates) => {
-      get().pushHistory()
+      get().pushHistory('修改事件链', [{ type: 'chain', id, name: get().eventChains.get(id)?.name || id }])
       const chain = get().eventChains.get(id)
       if (!chain) return
       const updated = { ...chain, ...updates, updatedAt: new Date() }
@@ -287,7 +359,7 @@ const useEventStore = create<EventStore>()(
     },
 
     deleteEventChain: (id) => {
-      get().pushHistory()
+      get().pushHistory('删除事件链', [{ type: 'chain', id, name: get().eventChains.get(id)?.name || id }])
       const chainEvents = get().getEventsByChain(id)
       set((s) => {
         const nc = new Map(s.eventChains)
@@ -299,19 +371,84 @@ const useEventStore = create<EventStore>()(
       get().save()
     },
 
+    deleteEventChains: (ids) => {
+      if (ids.length === 0) return
+      const chains = ids.map(id => get().eventChains.get(id)).filter(Boolean) as EventChain[]
+      get().pushHistory('批量删除事件链', chains.map(c => ({ type: 'chain' as const, id: c.id, name: c.name })))
+      set((s) => {
+        const nc = new Map(s.eventChains)
+        const ne = new Map(s.events)
+        ids.forEach(id => {
+          nc.delete(id)
+          // 级联删除该链下的事件
+          Array.from(s.events.values()).filter(e => e.chainId === id).forEach(e => ne.delete(e.id))
+        })
+        return { eventChains: nc, events: ne }
+      })
+      get().save()
+    },
+
     mergeEventChains: (targetId, sourceIds) => {
-      get().pushHistory()
       const target = get().eventChains.get(targetId)
       if (!target) return
+      const sources = sourceIds.map(sid => get().eventChains.get(sid)).filter(Boolean) as EventChain[]
+      const affected: Array<{ type: 'chain'; id: string; name: string }> = [
+        { type: 'chain', id: targetId, name: target.name },
+        ...sources.map(c => ({ type: 'chain' as const, id: c.id, name: c.name })),
+      ]
+      get().pushHistory('合并事件链', affected)
+
+      const mergedBatchRules = [...(target.batchRules || [])]
+
       for (const sid of sourceIds) {
         if (sid === targetId) continue
+        const src = get().eventChains.get(sid)
+        if (src) {
+          // 保留源链的批处理规则（去重）
+          for (const rule of (src.batchRules || [])) {
+            if (!mergedBatchRules.some(r => r.name === rule.name)) {
+              mergedBatchRules.push(rule)
+            }
+          }
+        }
+
         const srcEvents = get().getEventsByChain(sid)
-        srcEvents.forEach(e => get().updateEvent(e.id, { chainId: targetId }))
+        srcEvents.forEach(e => {
+          const targetEvents = get().getEventsByChain(targetId)
+          const conflicts = targetEvents.some(
+            te => te.name === e.name &&
+            new Date(te.startTime).getTime() === new Date(e.startTime).getTime()
+          )
+          if (conflicts) {
+            // 冲突事件：分配新ID避免覆盖，标记为"(合并)"
+            get().deleteEvent(e.id)
+            get().addEvent({
+              name: e.name + ' (合并)',
+              description: e.description,
+              startTime: new Date(e.startTime),
+              endTime: new Date(e.endTime),
+              chainId: targetId,
+              typeId: e.typeId,
+              reminders: [...(e.reminders || [])],
+              properties: { ...e.properties },
+              isHighlight: e.isHighlight,
+              priority: e.priority,
+            })
+          } else {
+            get().updateEvent(e.id, { chainId: targetId })
+          }
+        })
+
         set((s) => {
           const nc = new Map(s.eventChains)
           nc.delete(sid)
           return { eventChains: nc }
         })
+      }
+
+      // 更新目标链的批处理规则
+      if (mergedBatchRules.length > 0) {
+        get().updateEventChain(targetId, { batchRules: mergedBatchRules })
       }
       get().save()
     },
@@ -319,68 +456,52 @@ const useEventStore = create<EventStore>()(
     getEventChain: (id) => get().eventChains.get(id),
 
     getAllEventChains: () => Array.from(get().eventChains.values()),
-
     executeBatchRule: (chainId, ruleId) => {
       const chain = get().eventChains.get(chainId)
       if (!chain) return
       const rule = (chain.batchRules || []).find((r) => r.id === ruleId)
       if (!rule) return
 
-      get().pushHistory()
+      if (rule.mode === 'create') {
+        // 重建所有创建规则：先清空该链全部事件，再重新生成
+        get().applyAllBatchRules(chainId)
+        return
+      }
+
+      get().pushHistory('执行批量规则', [{ type: 'chain', id: chainId, name: chain.name }])
       const allEvents = Array.from(get().events.values())
       const semesterStart = get().semesterStartDate
 
-      if (rule.mode === 'create') {
-        const results = executeCreateRule(rule, chainId, semesterStart)
-        const now = new Date()
-        const newEvents = results.map((r) => ({
-          id: generateId('event'),
-          name: rule.name || chain.name,
-          description: '',
-          startTime: r.startTime,
-          endTime: r.endTime,
-          chainId,
-          typeId: chain.typeId,
-          reminders: [],
-          properties: {},
-          isHighlight: false,
-          priority: 0,
-          color: undefined,
-          createdAt: now,
-          updatedAt: now,
-        }))
-        set((s) => {
-          const ne = new Map(s.events)
-          newEvents.forEach((e) => ne.set(e.id, e as Event))
-          return { events: ne }
-        })
-      } else {
-        const results = executeModifyRule(rule, chainId, allEvents, semesterStart)
-        set((s) => {
-          const ne = new Map(s.events)
-          for (const { event, updates } of results) {
-            const existing = ne.get(event.id)
-            if (existing) {
-              ne.set(event.id, { ...existing, ...updates, updatedAt: new Date() })
-            }
+      const results = executeModifyRule(rule, chainId, allEvents, semesterStart)
+      set((s) => {
+        const ne = new Map(s.events)
+        for (const { event, updates } of results) {
+          const existing = ne.get(event.id)
+          if (existing) {
+            ne.set(event.id, { ...existing, ...updates, updatedAt: new Date() })
           }
-          return { events: ne }
-        })
-      }
+        }
+        return { events: ne }
+      })
       get().save()
     },
 
     applyAllBatchRules: (chainId) => {
       const chain = get().eventChains.get(chainId)
       if (!chain || (chain.batchRules || []).length === 0) return
-
-      get().pushHistory()
-      const allEvents = Array.from(get().events.values())
+      get().pushHistory('应用批量规则', [{ type: 'chain', id: chainId, name: chain.name }])
       const semesterStart = get().semesterStartDate
       const now = new Date()
 
       set((s) => {
         const ne = new Map(s.events)
+
+        // 删除该链所有旧事件
+        for (const [id, evt] of ne) {
+          if (evt.chainId === chainId) {
+            ne.delete(id)
+          }
+        }
 
         for (const rule of (chain.batchRules || [])) {
           if (rule.mode === 'create') {
@@ -432,7 +553,11 @@ const useEventStore = create<EventStore>()(
     },
 
     reorderTodo: (eventIds) => {
-      get().pushHistory()
+      const aff = eventIds.map(id => {
+        const evt = get().events.get(id)
+        return { type: 'event' as const, id, name: evt?.name || id }
+      })
+      get().pushHistory('排序待办', aff)
       set((s) => {
         const ne = new Map(s.events)
         eventIds.forEach((id, index) => {
@@ -453,15 +578,16 @@ const useEventStore = create<EventStore>()(
     },
 
     addEventType: (typeData) => {
-      get().pushHistory()
-      const type: EventType = { ...typeData, id: generateId('type') }
+      const id = generateId('type')
+      get().pushHistory('添加事件类型', [{ type: 'type', id, name: typeData.name }])
+      const type: EventType = { ...typeData, id }
       set((s) => ({ eventTypes: new Map(s.eventTypes).set(type.id, type) }))
       get().save()
       return type
     },
 
     updateEventType: (id, updates) => {
-      get().pushHistory()
+      get().pushHistory('修改事件类型', [{ type: 'type', id, name: get().eventTypes.get(id)?.name || id }])
       const type = get().eventTypes.get(id)
       if (!type) return
       set((s) => ({ eventTypes: new Map(s.eventTypes).set(id, { ...type, ...updates }) }))
@@ -469,10 +595,22 @@ const useEventStore = create<EventStore>()(
     },
 
     deleteEventType: (id) => {
-      get().pushHistory()
+      get().pushHistory('删除事件类型', [{ type: 'type', id, name: get().eventTypes.get(id)?.name || id }])
       set((s) => {
         const nt = new Map(s.eventTypes)
         nt.delete(id)
+        return { eventTypes: nt }
+      })
+      get().save()
+    },
+
+    deleteEventTypes: (ids) => {
+      if (ids.length === 0) return
+      const types = ids.map(id => get().eventTypes.get(id)).filter(Boolean) as EventType[]
+      get().pushHistory('批量删除事件类型', types.map(t => ({ type: 'type' as const, id: t.id, name: t.name })))
+      set((s) => {
+        const nt = new Map(s.eventTypes)
+        ids.forEach(id => nt.delete(id))
         return { eventTypes: nt }
       })
       get().save()
@@ -512,6 +650,7 @@ const useEventStore = create<EventStore>()(
               ...r.weekRange,
               startDate: r.weekRange?.startDate ? new Date(r.weekRange.startDate) : undefined,
               endDate: r.weekRange?.endDate ? new Date(r.weekRange.endDate) : undefined,
+              weekStartDate: r.weekRange?.weekStartDate ? new Date(r.weekRange.weekStartDate) : undefined,
             },
           }))
           return [k, { ...v, batchRules, createdAt: new Date(v.createdAt), updatedAt: new Date(v.updatedAt) }]

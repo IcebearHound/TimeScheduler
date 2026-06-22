@@ -5,7 +5,9 @@ import React, { useMemo, useEffect, useRef, useState } from 'react'
 import { ChevronLeft, ChevronRight } from 'lucide-react'
 import useUIStore from '../../stores/uiStore'
 import useEventStore from '../../stores/eventStore'
+import useEventGroupStore from '../../stores/eventGroupStore'
 import { getStartOfDay, getEndOfDay } from '../../utils/dateUtils'
+import { isJumping } from '../../utils/scrollTarget'
 import DayColumn from './DayColumn'
 
 export default function DayView() {
@@ -13,14 +15,32 @@ export default function DayView() {
   const currentDate = useUIStore((s) => s.currentDate)
   const setCurrentDate = useUIStore((s) => s.setCurrentDate)
   const filterTypeIds = useUIStore((s) => s.filterTypeIds)
+  const hiddenGroupIds = useUIStore((s) => s.hiddenGroupIds)
   const events = useEventStore((s) => s.events)
+  const eventStore = useEventStore.getState()
+  const groupStore = useEventGroupStore.getState()
 
   const dayStart = useMemo(() => getStartOfDay(currentDate), [currentDate])
   const dayEnd = useMemo(() => getEndOfDay(currentDate), [currentDate])
+
+  const hiddenEventIds = useMemo(() => {
+    if (hiddenGroupIds.size === 0) return null
+    const ids = new Set<string>()
+    hiddenGroupIds.forEach(gid => {
+      const g = groupStore.groups.get(gid)
+      if (!g) return
+      g.eventIds.forEach(eid => ids.add(eid))
+      g.eventChainIds.forEach(cid => {
+        eventStore.getEventsByChain(cid).forEach(e => ids.add(e.id))
+      })
+    })
+    return ids
+  }, [hiddenGroupIds, groupStore, eventStore, events])
+
   const dayEvents = useMemo(() =>
     Array.from(events.values()).filter(e =>
-      e.startTime <= dayEnd && e.endTime >= dayStart && !filterTypeIds.has(e.typeId)
-    ), [events, dayStart, dayEnd, filterTypeIds])
+      e.startTime <= dayEnd && e.endTime >= dayStart && !filterTypeIds.has(e.typeId) && (!hiddenEventIds || !hiddenEventIds.has(e.id))
+    ), [events, dayStart, dayEnd, filterTypeIds, hiddenEventIds])
   const wd = ['星期日', '星期一', '星期二', '星期三', '星期四', '星期五', '星期六'][currentDate.getDay()]
   const isToday = currentDate.toDateString() === new Date().toDateString()
 
@@ -32,9 +52,9 @@ export default function DayView() {
     calc(); window.addEventListener('resize', calc); return () => window.removeEventListener('resize', calc)
   }, [])
 
-  // 默认滚动到 6:00
+  // 默认滚动到 6:00（跳转中跳过）
   useEffect(() => {
-    if (scrollRef.current) scrollRef.current.scrollTop = 6 * slotH
+    if (scrollRef.current && !isJumping()) scrollRef.current.scrollTop = 6 * slotH
   }, [currentDate, slotH])
 
   const nav = {
@@ -43,18 +63,18 @@ export default function DayView() {
   }
 
   return (
-    <div className="h-full flex flex-col bg-white dark:bg-slate-800 overflow-hidden">
-      <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200 dark:border-slate-700">
+    <div className="h-full flex flex-col bg-white dark:bg-slate-900 overflow-hidden">
+      <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200/60 dark:border-slate-800/60">
         <div className="flex items-center gap-4">
-          <button onClick={nav.p} className="p-2 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg"><ChevronLeft className="w-5 h-5 text-slate-600 dark:text-slate-300" /></button>
+          <button onClick={nav.p} className="p-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-colors"><ChevronLeft className="w-5 h-5 text-slate-600 dark:text-slate-300" /></button>
           <h2 className="text-lg font-bold text-slate-900 dark:text-white min-w-60">{currentDate.toLocaleDateString('zh-CN', { year: 'numeric', month: 'numeric', day: 'numeric' })} {wd}</h2>
-          <button onClick={nav.n} className="p-2 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg"><ChevronRight className="w-5 h-5 text-slate-600 dark:text-slate-300" /></button>
+          <button onClick={nav.n} className="p-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-colors"><ChevronRight className="w-5 h-5 text-slate-600 dark:text-slate-300" /></button>
         </div>
-        <button onClick={() => setCurrentDate(new Date())} className="px-3 py-1.5 text-xs font-medium rounded-lg bg-blue-100 dark:bg-blue-900/20 text-blue-700 dark:text-blue-300 hover:bg-blue-200 dark:hover:bg-blue-900/40 shadow-sm transition-colors">今天</button>
+        <button onClick={() => setCurrentDate(new Date())} className="px-3 py-1.5 text-xs font-medium rounded-lg bg-accent-50 dark:bg-accent-900/20 text-accent-700 dark:text-accent-300 hover:bg-accent-100 dark:hover:bg-accent-900/30 shadow-sm transition-colors">今天</button>
       </div>
       <div className="flex-1 overflow-hidden">
         <div ref={scrollRef} className="flex h-full overflow-y-auto">
-          <div className="w-16 bg-slate-50 dark:bg-slate-900 border-r border-slate-200 dark:border-slate-700 flex-shrink-0">
+          <div className="w-16 bg-slate-50 dark:bg-slate-950 border-r border-slate-200 dark:border-slate-800 flex-shrink-0">
             {Array.from({ length: 24 }, (_, i) => (
               <div key={i} className="flex items-start justify-end pr-2 pt-1 text-xs text-slate-500 dark:text-slate-400 font-medium" style={{ height: slotH, minHeight: 36 }}>
                 {`${String(i).padStart(2, '0')}:00`}

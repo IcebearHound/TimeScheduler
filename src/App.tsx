@@ -252,7 +252,7 @@ export default function App() {
       {isTypeManagerOpen && <TypeManagerModal editTypeId={typeToEditId} onClose={() => { setIsTypeManagerOpen(false); useUIStore.getState().setTypeToEditId(null) }} />}
       {dialogConfig && <DialogModal config={dialogConfig} onClose={closeDialog} />}
       <ToastContainer />
-      {showDebugPanel && <DebugOverlay />}
+      {import.meta.env.DEV && showDebugPanel && <DebugOverlay />}
       {isWelcomeGuideOpen && <WelcomeGuide onClose={() => setIsWelcomeGuideOpen(false)} />}
       {isNotificationPromptOpen && <NotificationPermissionPrompt onClose={() => setIsNotificationPromptOpen(false)} />}
       {isTodoModalOpen && <TodoModal onClose={() => setIsTodoModalOpen(false)} />}

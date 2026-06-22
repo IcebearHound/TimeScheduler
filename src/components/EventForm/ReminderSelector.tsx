@@ -83,7 +83,7 @@ export default function ReminderSelector({ reminders, onChange, isHighlight }: R
     <div className="space-y-2">
       <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">提醒时间</label>
 
-      <button onClick={() => setIsOpen(!isOpen)}
+      <button type="button" onClick={() => setIsOpen(!isOpen)}
         className="w-full flex items-center justify-between px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800 text-slate-900 dark:text-white hover:border-slate-400 dark:hover:border-slate-500 transition-colors">
         <div className="flex items-center gap-2 text-left">
           <Bell className="w-4 h-4 text-slate-500" />
@@ -105,7 +105,7 @@ export default function ReminderSelector({ reminders, onChange, isHighlight }: R
                     <input type="checkbox" checked={r.enabled} onChange={() => handleToggle(r.id)} className="w-4 h-4 rounded" />
                     <span className="text-sm text-slate-700 dark:text-slate-200">{TIME_LABELS[r.time] || r.time}</span>
                   </label>
-                  <button onClick={() => handleRemove(r.id)} className="text-red-400 hover:text-red-600 text-xs"><X className="w-4 h-4" /></button>
+                  <button type="button" onClick={() => handleRemove(r.id)} className="text-red-400 hover:text-red-600 text-xs"><X className="w-4 h-4" /></button>
                 </div>
               ))}
             </div>
@@ -118,10 +118,10 @@ export default function ReminderSelector({ reminders, onChange, isHighlight }: R
               {pinnedOpts.map(opt => (
                 <button key={opt.value} type="button"
                   onClick={() => handleAdd(opt.value)}
-                  className="group flex items-center gap-1 px-2 py-1 text-xs rounded-full bg-blue-100 dark:bg-blue-900/20 text-blue-700 dark:text-blue-300 hover:bg-blue-200 dark:hover:bg-blue-900/40 transition-colors">
+                  className="group flex items-center gap-1 px-2 py-1 text-xs rounded-full bg-accent-100 dark:bg-accent-900/20 text-accent-700 dark:text-accent-300 hover:bg-accent-200 dark:hover:bg-accent-900/40 transition-colors">
                   {opt.label}
                   <span onClick={e => { e.stopPropagation(); togglePin(opt.value) }}
-                    className="opacity-0 group-hover:opacity-100 text-blue-400 hover:text-blue-600" title="取消置顶">
+                    className="opacity-0 group-hover:opacity-100 text-accent-400 hover:text-accent-600" title="取消置顶">
                     <PinOff className="w-2.5 h-2.5" />
                   </span>
                 </button>
@@ -152,11 +152,13 @@ export default function ReminderSelector({ reminders, onChange, isHighlight }: R
             <h4 className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase mb-2">自定义提醒时间</h4>
             <div className="flex gap-2">
               <input type="number" value={customMin} onChange={e => setCustomMin(e.target.value)} min="1" max="10080"
-                className="w-24 px-2 py-1 text-xs border border-slate-300 dark:border-slate-600 rounded bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:outline-none focus:ring-1 focus:ring-blue-500" placeholder="分钟数" />
+                onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); handleCustomAdd() } }}
+                className="w-24 px-2 py-1 text-xs border border-slate-300 dark:border-slate-600 rounded bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:outline-none focus:ring-accent-500/40 focus:border-accent-500" placeholder="分钟数" />
               <input type="text" value={customLabel} onChange={e => setCustomLabel(e.target.value)}
-                className="flex-1 px-2 py-1 text-xs border border-slate-300 dark:border-slate-600 rounded bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:outline-none focus:ring-1 focus:ring-blue-500" placeholder="标签（可选）" />
+                onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); handleCustomAdd() } }}
+                className="flex-1 px-2 py-1 text-xs border border-slate-300 dark:border-slate-600 rounded bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:outline-none focus:ring-accent-500/40 focus:border-accent-500" placeholder="标签（可选）" />
               <button type="button" onClick={handleCustomAdd}
-                className="px-3 py-1 text-xs bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors">添加</button>
+                className="px-3 py-1 text-xs bg-accent-600 text-white rounded hover:bg-accent-700 shadow-sm shadow-accent-600/20 transition-colors">添加</button>
             </div>
           </div>
         </div>

@@ -5,17 +5,21 @@ import { create } from 'zustand'
 import { subscribeWithSelector } from 'zustand/middleware'
 import { EventGroup } from '../types/event'
 import { generateId } from '../utils/idGenerator'
+import useEventStore from './eventStore'
 
 interface EventGroupStore {
   groups: Map<string, EventGroup>
   activeGroupId: string
   groupOrder: string[]
 
-  undoStack: Array<{ groups: [string, EventGroup][]; groupOrder: string[]; activeGroupId: string }>
-  redoStack: Array<{ groups: [string, EventGroup][]; groupOrder: string[]; activeGroupId: string }>
-  pushHistory: () => void
+  undoStack: Array<{ groups: [string, EventGroup][]; groupOrder: string[]; activeGroupId: string; action: string; affected?: Array<{ type: 'event' | 'chain' | 'group' | 'type'; id: string; name: string }> }>
+  redoStack: Array<{ groups: [string, EventGroup][]; groupOrder: string[]; activeGroupId: string; action: string; affected?: Array<{ type: 'event' | 'chain' | 'group' | 'type'; id: string; name: string }> }>
+  pushHistory: (action?: string, affected?: Array<{ type: 'event' | 'chain' | 'group' | 'type'; id: string; name: string }>) => void
   undo: () => void
   redo: () => void
+  lastUndoAction: string
+  lastRedoAction: string
+  setLastAction: (action: string) => void
 
   addGroup: (group: Omit<EventGroup, 'id' | 'createdAt' | 'updatedAt'>) => EventGroup
   updateGroup: (id: string, updates: Partial<EventGroup>) => void
@@ -50,13 +54,19 @@ const useEventGroupStore = create<EventGroupStore>()(
     groupOrder: [],
     undoStack: [],
     redoStack: [],
+    lastUndoAction: '',
+    lastRedoAction: '',
+    setLastAction: (action) => set({ lastUndoAction: action }),
 
-    pushHistory: () => {
+    pushHistory: (action, affected) => {
       const s = get()
+      const a = action || s.lastUndoAction || '操作'
       set({
-        undoStack: [...s.undoStack.slice(-49), { groups: Array.from(s.groups.entries()), groupOrder: [...s.groupOrder], activeGroupId: s.activeGroupId }],
+        undoStack: [...s.undoStack.slice(-49), { groups: Array.from(s.groups.entries()), groupOrder: [...s.groupOrder], activeGroupId: s.activeGroupId, action: a, affected }],
         redoStack: [],
+        lastUndoAction: '',
       })
+      useEventStore.getState().pushHistory(a, affected)
     },
 
     undo: () => {
@@ -66,7 +76,8 @@ const useEventGroupStore = create<EventGroupStore>()(
       set({
         groups: new Map(prev.groups), groupOrder: prev.groupOrder, activeGroupId: prev.activeGroupId,
         undoStack: s.undoStack.slice(0, -1),
-        redoStack: [...s.redoStack, { groups: Array.from(s.groups.entries()), groupOrder: [...s.groupOrder], activeGroupId: s.activeGroupId }],
+        redoStack: [...s.redoStack, { groups: Array.from(s.groups.entries()), groupOrder: [...s.groupOrder], activeGroupId: s.activeGroupId, action: prev.action }],
+        lastRedoAction: prev.action,
       })
       get().save()
     },
@@ -78,17 +89,19 @@ const useEventGroupStore = create<EventGroupStore>()(
       set({
         groups: new Map(next.groups), groupOrder: next.groupOrder, activeGroupId: next.activeGroupId,
         redoStack: s.redoStack.slice(0, -1),
-        undoStack: [...s.undoStack, { groups: Array.from(s.groups.entries()), groupOrder: [...s.groupOrder], activeGroupId: s.activeGroupId }],
+        undoStack: [...s.undoStack, { groups: Array.from(s.groups.entries()), groupOrder: [...s.groupOrder], activeGroupId: s.activeGroupId, action: next.action }],
+        lastUndoAction: next.action,
       })
       get().save()
     },
 
     addGroup: (groupData) => {
-      get().pushHistory()
+      const id = generateId('group')
+      get().pushHistory('添加事件组', [{ type: 'group', id, name: groupData.name }])
       const group: EventGroup = {
         ...groupData,
         emoji: groupData.emoji || '📁',
-        id: generateId('group'),
+        id,
         createdAt: new Date(),
         updatedAt: new Date(),
       }
@@ -102,7 +115,7 @@ const useEventGroupStore = create<EventGroupStore>()(
     },
 
     updateGroup: (id, updates) => {
-      get().pushHistory()
+      get().pushHistory('修改事件组', [{ type: 'group', id, name: get().groups.get(id)?.name || id }])
       const group = get().groups.get(id)
       if (!group) return
       const updated = { ...group, ...updates, updatedAt: new Date() }
@@ -113,7 +126,7 @@ const useEventGroupStore = create<EventGroupStore>()(
     deleteGroup: (id) => {
       const group = get().groups.get(id)
       if (!group) return
-      get().pushHistory()
+      get().pushHistory('删除事件组', [{ type: 'group', id, name: group.name }])
       set((s) => {
         const ng = new Map(s.groups); ng.delete(id)
         const no = s.groupOrder.filter(i => i !== id)
@@ -255,7 +268,6 @@ const useEventGroupStore = create<EventGroupStore>()(
         const order: string[] = (p.groupOrder != null && p.groupOrder.length > 0) ? p.groupOrder : Array.from(groups.keys())
         let active = (p.activeGroupId && groups.has(p.activeGroupId)) ? p.activeGroupId : order[0] || ''
         
-        // 防御：如果没有组或 active 无效，创建默认组
         if (groups.size === 0 || !active || !groups.has(active)) {
           const dg: EventGroup = {
             id: generateId('group'), name: '默认事件组', emoji: '📁',
@@ -268,7 +280,6 @@ const useEventGroupStore = create<EventGroupStore>()(
         }
         
         set({ groups, activeGroupId: active, groupOrder: order })
-        // Final safety: if still empty after all checks, force create
         if (get().groups.size === 0) {
           get().createDefaultGroup()
         }

@@ -1,16 +1,20 @@
 import React, { useState, useMemo, useCallback, useRef, useEffect } from 'react'
 import {
   PanelRightClose, Pin, Star, Clock, GripVertical, ChevronDown, ChevronRight,
-  RefreshCw, Settings, Layers, Link2
+  RefreshCw, Settings, Layers, Link2, ListTodo
 } from 'lucide-react'
 import useUIStore from '../stores/uiStore'
 import useEventStore from '../stores/eventStore'
 import useEventGroupStore from '../stores/eventGroupStore'
 import { Event } from '../types/event'
+import EventContextMenu from './EventContextMenu'
+import { scrollToEventBlock } from '../utils/scrollTarget'
 
 export default function TodoView() {
   const setIsRightPanelOpen = useUIStore((s) => s.setIsRightPanelOpen)
   const setSelectedEvent = useUIStore((s) => s.setSelectedEvent)
+  const setCurrentDate = useUIStore((s) => s.setCurrentDate)
+  const setFlashEventId = useUIStore((s) => s.setFlashEventId)
   const todoHighlightDays = useUIStore((s) => s.todoHighlightDays)
   const setTodoHighlightDays = useUIStore((s) => s.setTodoHighlightDays)
   const todoUpcomingDays = useUIStore((s) => s.todoUpcomingDays)
@@ -27,14 +31,32 @@ export default function TodoView() {
   const popoverCloseToken = useUIStore((s) => s.popoverCloseToken)
 
   const [showSettings, setShowSettings] = useState(false)
+  const settingsWrapperRef = useRef<HTMLDivElement>(null)
   const [collapsedSections, setCollapsedSections] = useState<Set<string>>(new Set())
   const [dragId, setDragId] = useState<string | null>(null)
+  const dragIdRef = useRef<string | null>(null)
   const dragOverId = useRef<string | null>(null)
+  const dragPositionRef = useRef<'above' | 'below' | null>(null)
   const [dragPosition, setDragPosition] = useState<'above' | 'below' | null>(null)
+  const [ctxMenu, setCtxMenu] = useState<{ event: Event; x: number; y: number } | null>(null)
+  const [selectedTodoId, setSelectedTodoId] = useState<string | null>(null)
 
   useEffect(() => { setShowSettings(false) }, [popoverCloseToken])
 
+  // 点击外部关闭设置菜单
+  useEffect(() => {
+    if (!showSettings) return
+    const handler = (e: MouseEvent) => {
+      if (settingsWrapperRef.current && !settingsWrapperRef.current.contains(e.target as Node)) {
+        setShowSettings(false)
+      }
+    }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [showSettings])
+
   const now = new Date()
+  const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate())
   const highlightCutoff = new Date(now.getTime() + todoHighlightDays * 24 * 60 * 60 * 1000)
   const upcomingCutoff = new Date(now.getTime() + todoUpcomingDays * 24 * 60 * 60 * 1000)
 
@@ -65,16 +87,26 @@ export default function TodoView() {
 
   const highlightEvents = useMemo(() =>
     allEvents.filter(e =>
-      !e.pinned && e.isHighlight && e.startTime >= now && e.startTime <= highlightCutoff
-    ).sort((a, b) => new Date(a.startTime).getTime() - new Date(b.startTime).getTime()),
+      !e.pinned && e.isHighlight && e.startTime >= todayStart && e.startTime <= highlightCutoff
+    ).sort((a, b) => {
+      if (a.todoOrder !== undefined && b.todoOrder !== undefined) return a.todoOrder - b.todoOrder
+      if (a.todoOrder !== undefined) return -1
+      if (b.todoOrder !== undefined) return 1
+      return new Date(a.startTime).getTime() - new Date(b.startTime).getTime()
+    }),
   [allEvents, highlightCutoff])
 
   const upcomingEvents = useMemo(() =>
     allEvents.filter(e =>
       !e.pinned && !e.isHighlight &&
-      e.startTime >= now && e.startTime <= upcomingCutoff &&
+      e.startTime >= todayStart && e.startTime <= upcomingCutoff &&
       isInTodo(e)
-    ).sort((a, b) => new Date(a.startTime).getTime() - new Date(b.startTime).getTime()),
+    ).sort((a, b) => {
+      if (a.todoOrder !== undefined && b.todoOrder !== undefined) return a.todoOrder - b.todoOrder
+      if (a.todoOrder !== undefined) return -1
+      if (b.todoOrder !== undefined) return 1
+      return new Date(a.startTime).getTime() - new Date(b.startTime).getTime()
+    }),
   [allEvents, upcomingCutoff])
 
   const allTodoEvents = useMemo(() => {
@@ -102,6 +134,7 @@ export default function TodoView() {
 
   function handleDragStart(e: React.DragEvent, eventId: string) {
     setDragId(eventId)
+    dragIdRef.current = eventId
     e.dataTransfer.effectAllowed = 'move'
     e.dataTransfer.setData('text/plain', eventId)
   }
@@ -113,81 +146,136 @@ export default function TodoView() {
 
     const rect = (e.currentTarget as HTMLElement).getBoundingClientRect()
     const mid = rect.top + rect.height / 2
-    setDragPosition(e.clientY < mid ? 'above' : 'below')
+    const pos = e.clientY < mid ? 'above' : 'below'
+    dragPositionRef.current = pos
+    setDragPosition(pos)
   }
 
-  function handleDragLeave() {
+  function handleDragLeave(e: React.DragEvent) {
+    const rel = e.relatedTarget as Node | null
+    if (!rel || e.currentTarget.contains(rel)) return
     dragOverId.current = null
+    dragPositionRef.current = null
     setDragPosition(null)
   }
 
   function handleDrop(e: React.DragEvent) {
     e.preventDefault()
+    const droppedId = dragIdRef.current
+    const dropPos = dragPositionRef.current
+    const targetId = dragOverId.current
     setDragId(null)
+    dragIdRef.current = null
+    dragPositionRef.current = null
     setDragPosition(null)
-    if (!dragId || !dragOverId.current || dragId === dragOverId.current) return
+    if (!droppedId || !targetId || droppedId === targetId) return
 
     const ids = allTodoEvents.map(ev => ev.id)
-    const fromIdx = ids.indexOf(dragId)
-    const toIdx = ids.indexOf(dragOverId.current)
-    if (fromIdx === -1 || toIdx === -1) return
+    const fromIdx = ids.indexOf(droppedId)
+    const toIdx = ids.indexOf(targetId)
+    if (toIdx === -1) return
+
+    // 确定目标事件所在分区，同步拖拽事件的分区状态
+    const targetEvent = eventStore.getEvent(targetId)
+    if (targetEvent) {
+      if (targetEvent.pinned) {
+        useEventStore.getState().updateEvent(droppedId, { pinned: true })
+      } else if (targetEvent.isHighlight) {
+        useEventStore.getState().updateEvent(droppedId, { isHighlight: true, pinned: false })
+      } else {
+        useEventStore.getState().updateEvent(droppedId, { pinned: false, isHighlight: false })
+      }
+    }
 
     const newIds = [...ids]
-    newIds.splice(fromIdx, 1)
-    const insertIdx = dragPosition === 'below'
+    if (fromIdx !== -1) newIds.splice(fromIdx, 1)
+    const insertIdx = dropPos === 'below'
       ? (toIdx >= fromIdx ? toIdx : toIdx + 1)
       : (toIdx > fromIdx ? toIdx - 1 : toIdx)
-    newIds.splice(Math.max(0, insertIdx), 0, dragId)
+    newIds.splice(Math.max(0, fromIdx === -1 ? toIdx + (dropPos === 'below' ? 1 : 0) : insertIdx), 0, droppedId)
 
-    reorderTodo(newIds)
+    requestAnimationFrame(() => {
+      reorderTodo(newIds)
+    })
   }
 
   function handleDragEnd() {
     setDragId(null)
+    dragIdRef.current = null
+    dragPositionRef.current = null
     setDragPosition(null)
   }
 
+  function handleToggleHighlight(eventId: string) {
+    const ev = eventStore.getEvent(eventId)
+    if (ev) useEventStore.getState().updateEvent(eventId, { isHighlight: !ev.isHighlight })
+  }
+
+  function handleContextMenu(e: React.MouseEvent, event: Event) {
+    e.preventDefault()
+    setCtxMenu({ event, x: e.clientX, y: e.clientY })
+  }
+
+  function jumpToEvent(event: Event) {
+    scrollToEventBlock(event.id)
+    setFlashEventId(event.id)
+    setCurrentDate(new Date(event.startTime))
+    setSelectedEvent(event.id)
+  }
+
   return (
+    <>
     <div
-      className="w-[min(22vw,20rem)] bg-white dark:bg-slate-800 border-l border-slate-200 dark:border-slate-700 flex flex-col overflow-hidden"
+      className="w-[min(22vw,20rem)] bg-white dark:bg-slate-800 border-l border-slate-200 dark:border-slate-700/60 flex flex-col overflow-hidden"
       onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = 'move' }}
       onDrop={(e) => {
         e.preventDefault()
-        const eventId = e.dataTransfer.getData('text/plain')
-        if (eventId) togglePinEvent(eventId)
-        useUIStore.getState().setDraggedEvent(undefined)
+        const evtId = dragIdRef.current || e.dataTransfer.getData('text/plain')
+        if (evtId) {
+          useEventStore.getState().updateEvent(evtId, { pinned: false, isHighlight: false })
+        }
+        setDragId(null); dragIdRef.current = null; setDragPosition(null)
       }}>
-      <div className="flex items-center justify-between p-3 border-b border-slate-200 dark:border-slate-700 flex-shrink-0">
-        <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">Todo</span>
+      <div className="flex items-center justify-between p-3 border-b border-slate-200 dark:border-slate-700/60 flex-shrink-0"
+        onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); e.dataTransfer.dropEffect = 'move' }}
+        onDrop={(e) => {
+          e.preventDefault(); e.stopPropagation()
+          const evtId = dragIdRef.current || e.dataTransfer.getData('text/plain')
+          if (evtId) {
+            useEventStore.getState().updateEvent(evtId, { pinned: true })
+          }
+          setDragId(null); dragIdRef.current = null; setDragPosition(null)
+        }}>
+        <span className="text-xs font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1.5"><ListTodo className="w-3.5 h-3.5" /> Todo</span>
         <div className="flex items-center gap-1">
-          <button onClick={handleReorder} className="p-1 hover:bg-slate-100 dark:hover:bg-slate-700 rounded text-slate-400" title="一键重排">
+          <button onClick={handleReorder} className="p-1 hover:bg-slate-50 dark:hover:bg-slate-700/50 rounded text-slate-400" title="一键重排">
             <RefreshCw className="w-3.5 h-3.5" />
           </button>
-          <div className="relative flex items-center">
-            <button onClick={() => setShowSettings(!showSettings)} className="p-1 hover:bg-slate-100 dark:hover:bg-slate-700 rounded text-slate-400" title="Todo 设置">
+          <div className="relative flex items-center" ref={settingsWrapperRef}>
+            <button onClick={() => setShowSettings(!showSettings)} className="p-1 hover:bg-slate-50 dark:hover:bg-slate-700/50 rounded text-slate-400" title="Todo 设置">
               <Settings className="w-3.5 h-3.5" />
             </button>
             {showSettings && (
-              <div className="absolute right-0 top-full mt-1 w-60 bg-white dark:bg-slate-800 rounded-lg shadow-xl border border-slate-200 dark:border-slate-700 p-3 z-50 space-y-3">
+              <div className="absolute right-0 top-full mt-1 w-60 bg-white dark:bg-slate-800 rounded-lg shadow-xl border border-slate-200/60 dark:border-slate-700/60 p-3 z-50 space-y-3" onClick={(e) => e.stopPropagation()}>
                 <div>
                   <label className="block text-xs text-slate-500 mb-1">重点事项时间范围（天）</label>
                   <input type="number" min={1} max={365} value={todoHighlightDays}
                     onChange={e => setTodoHighlightDays(Math.max(1, Number(e.target.value)))}
-                    className="w-full px-2 py-1 text-xs border border-slate-300 dark:border-slate-600 rounded bg-white dark:bg-slate-700 text-slate-900 dark:text-white focus:outline-none focus:ring-1 focus:ring-blue-500" />
+                    className="w-full px-2 py-1 text-xs border border-slate-200 dark:border-slate-700 rounded-lg bg-white dark:bg-slate-700 text-slate-900 dark:text-white focus:outline-none focus:ring-1 focus:ring-accent-500/40" />
                 </div>
                 <div>
                   <label className="block text-xs text-slate-500 mb-1">待办事项时间范围（天）</label>
                   <input type="number" min={1} max={365} value={todoUpcomingDays}
                     onChange={e => setTodoUpcomingDays(Math.max(1, Number(e.target.value)))}
-                    className="w-full px-2 py-1 text-xs border border-slate-300 dark:border-slate-600 rounded bg-white dark:bg-slate-700 text-slate-900 dark:text-white focus:outline-none focus:ring-1 focus:ring-blue-500" />
+                    className="w-full px-2 py-1 text-xs border border-slate-200 dark:border-slate-700 rounded-lg bg-white dark:bg-slate-700 text-slate-900 dark:text-white focus:outline-none focus:ring-1 focus:ring-accent-500/40" />
                 </div>
-                <div className="border-t border-slate-200 dark:border-slate-600 pt-3">
+                <div className="border-t border-slate-200/60 dark:border-slate-600/60 pt-3">
                   <p className="text-[10px] text-slate-400 mb-1.5">Todo 来源</p>
                   <div className="space-y-1.5 max-h-32 overflow-y-auto">
                     <div>
                       <p className="text-[10px] text-slate-400 px-0.5 mb-0.5 flex items-center gap-1"><Layers className="w-2.5 h-2.5" /> 事件组</p>
                       {Array.from(groups.values()).map(g => (
-                        <label key={g.id} className="flex items-center gap-2 px-0.5 py-0.5 text-xs cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-700 rounded">
+                        <label key={g.id} className="flex items-center gap-2 px-0.5 py-0.5 text-xs cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-700/50 rounded">
                           <input type="checkbox" checked={g.includeInTodo !== false}
                             onChange={() => toggleGroupIncludeInTodo(g.id)} className="w-3 h-3" />
                           <span className="text-slate-600 dark:text-slate-400 truncate">{g.emoji} {g.name}</span>
@@ -197,7 +285,7 @@ export default function TodoView() {
                     <div>
                       <p className="text-[10px] text-slate-400 px-0.5 mb-0.5 flex items-center gap-1"><Link2 className="w-2.5 h-2.5" /> 事件链</p>
                       {Array.from(eventChains.values()).map(c => (
-                        <label key={c.id} className="flex items-center gap-2 px-0.5 py-0.5 text-xs cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-700 rounded">
+                        <label key={c.id} className="flex items-center gap-2 px-0.5 py-0.5 text-xs cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-700/50 rounded">
                           <input type="checkbox" checked={c.includeInTodo !== false}
                             onChange={() => toggleChainIncludeInTodo(c.id)} className="w-3 h-3" />
                           <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: c.color }} />
@@ -210,7 +298,7 @@ export default function TodoView() {
               </div>
             )}
           </div>
-          <button onClick={() => setIsRightPanelOpen(false)} className="p-1 hover:bg-slate-100 dark:hover:bg-slate-700 rounded text-slate-400">
+          <button onClick={() => setIsRightPanelOpen(false)} className="p-1 hover:bg-slate-50 dark:hover:bg-slate-700/50 rounded text-slate-400">
             <PanelRightClose className="w-3.5 h-3.5" />
           </button>
         </div>
@@ -218,26 +306,39 @@ export default function TodoView() {
 
       <div className="flex-1 overflow-y-auto">
         {/* 置顶区 */}
-        <div className="border-b border-slate-100 dark:border-slate-700">
+        <div className="border-b border-slate-100 dark:border-slate-800"
+          onDragOver={(e) => { e.preventDefault(); e.stopPropagation() }}
+          onDrop={(e) => {
+            e.preventDefault(); e.stopPropagation()
+            const evtId = dragIdRef.current
+            if (evtId) {
+              useEventStore.getState().updateEvent(evtId, { pinned: true })
+            }
+            setDragId(null); dragIdRef.current = null; setDragPosition(null)
+          }}>
           <button onClick={() => toggleSection('pinned')}
             className="flex items-center gap-1.5 w-full px-3 py-2 text-xs font-medium text-slate-500 hover:bg-slate-50 dark:hover:bg-slate-700/50">
             {collapsedSections.has('pinned') ? <ChevronRight className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
             <Pin className="w-3 h-3" /> 置顶 ({pinnedEvents.length})
           </button>
           {!collapsedSections.has('pinned') && (
-            <div className="px-1 pb-1">
+            <div className="px-1 pb-1 min-h-[2rem]">
               {pinnedEvents.length === 0 && (
                 <p className="text-xs text-slate-400 px-3 py-2">拖拽事件到此处置顶</p>
               )}
               {pinnedEvents.map(event => (
                 <TodoItem key={event.id} event={event}
-                  onSelect={() => setSelectedEvent(event.id)}
+                  selected={selectedTodoId === event.id}
+                  onSelect={() => setSelectedTodoId(event.id)}
+                  onDoubleClick={() => jumpToEvent(event)}
                   onTogglePin={() => togglePinEvent(event.id)}
                   onDragStart={handleDragStart}
                   onDragOver={handleDragOver}
                   onDragLeave={handleDragLeave}
                   onDrop={handleDrop}
                   onDragEnd={handleDragEnd}
+                  onContextMenu={handleContextMenu}
+                  onToggleHighlight={() => handleToggleHighlight(event.id)}
                   dragId={dragId}
                   dragPosition={dragId && dragOverId.current === event.id ? dragPosition : null}
                   eventStore={eventStore} />
@@ -247,26 +348,39 @@ export default function TodoView() {
         </div>
 
         {/* 重点区 */}
-        <div className="border-b border-slate-100 dark:border-slate-700">
+        <div className="border-b border-slate-100 dark:border-slate-800"
+          onDragOver={(e) => { e.preventDefault(); e.stopPropagation() }}
+          onDrop={(e) => {
+            e.preventDefault(); e.stopPropagation()
+            const evtId = dragIdRef.current
+            if (evtId) {
+              useEventStore.getState().updateEvent(evtId, { isHighlight: true, pinned: false })
+            }
+            setDragId(null); dragIdRef.current = null; setDragPosition(null)
+          }}>
           <button onClick={() => toggleSection('highlight')}
             className="flex items-center gap-1.5 w-full px-3 py-2 text-xs font-medium text-slate-500 hover:bg-slate-50 dark:hover:bg-slate-700/50">
             {collapsedSections.has('highlight') ? <ChevronRight className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
             <Star className="w-3 h-3 text-yellow-500" /> 重点事项 ({highlightEvents.length})
           </button>
           {!collapsedSections.has('highlight') && (
-            <div className="px-1 pb-1">
+            <div className="px-1 pb-1 min-h-[2rem]">
               {highlightEvents.length === 0 && (
-                <p className="text-xs text-slate-400 px-3 py-2">暂无重点事项</p>
+                <p className="text-xs text-slate-400 px-3 py-2">拖拽事件到此设置重点事项</p>
               )}
               {highlightEvents.map(event => (
                 <TodoItem key={event.id} event={event}
-                  onSelect={() => setSelectedEvent(event.id)}
+                  selected={selectedTodoId === event.id}
+                  onSelect={() => setSelectedTodoId(event.id)}
+                  onDoubleClick={() => jumpToEvent(event)}
                   onTogglePin={() => togglePinEvent(event.id)}
                   onDragStart={handleDragStart}
                   onDragOver={handleDragOver}
                   onDragLeave={handleDragLeave}
                   onDrop={handleDrop}
                   onDragEnd={handleDragEnd}
+                  onContextMenu={handleContextMenu}
+                  onToggleHighlight={() => handleToggleHighlight(event.id)}
                   dragId={dragId}
                   dragPosition={dragId && dragOverId.current === event.id ? dragPosition : null}
                   eventStore={eventStore} />
@@ -276,26 +390,39 @@ export default function TodoView() {
         </div>
 
         {/* 待办区 */}
-        <div>
+        <div
+          onDragOver={(e) => { e.preventDefault(); e.stopPropagation() }}
+          onDrop={(e) => {
+            e.preventDefault(); e.stopPropagation()
+            const evtId = dragIdRef.current
+            if (evtId) {
+              useEventStore.getState().updateEvent(evtId, { isHighlight: false, pinned: false })
+            }
+            setDragId(null); dragIdRef.current = null; setDragPosition(null)
+          }}>
           <button onClick={() => toggleSection('upcoming')}
             className="flex items-center gap-1.5 w-full px-3 py-2 text-xs font-medium text-slate-500 hover:bg-slate-50 dark:hover:bg-slate-700/50">
             {collapsedSections.has('upcoming') ? <ChevronRight className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
             <Clock className="w-3 h-3" /> 待办事项 ({upcomingEvents.length})
           </button>
           {!collapsedSections.has('upcoming') && (
-            <div className="px-1 pb-1">
+            <div className="px-1 pb-1 min-h-[2rem]">
               {upcomingEvents.length === 0 && (
-                <p className="text-xs text-slate-400 px-3 py-2">暂无待办事项</p>
+                <p className="text-xs text-slate-400 px-3 py-2">拖拽事件到此归入待办</p>
               )}
               {upcomingEvents.slice(0, 10).map(event => (
                 <TodoItem key={event.id} event={event}
-                  onSelect={() => setSelectedEvent(event.id)}
+                  selected={selectedTodoId === event.id}
+                  onSelect={() => setSelectedTodoId(event.id)}
+                  onDoubleClick={() => jumpToEvent(event)}
                   onTogglePin={() => togglePinEvent(event.id)}
                   onDragStart={handleDragStart}
                   onDragOver={handleDragOver}
                   onDragLeave={handleDragLeave}
                   onDrop={handleDrop}
                   onDragEnd={handleDragEnd}
+                  onContextMenu={handleContextMenu}
+                  onToggleHighlight={() => handleToggleHighlight(event.id)}
                   dragId={dragId}
                   dragPosition={dragId && dragOverId.current === event.id ? dragPosition : null}
                   eventStore={eventStore} />
@@ -308,24 +435,38 @@ export default function TodoView() {
         </div>
       </div>
     </div>
+    {ctxMenu && (
+      <EventContextMenu event={ctxMenu.event} position={{ x: ctxMenu.x, y: ctxMenu.y }}
+        onClose={() => setCtxMenu(null)}
+        onEdit={() => {
+          useUIStore.getState().setSelectedEvent(ctxMenu.event.id)
+          useUIStore.getState().setIsEventPanelOpen(true)
+          setCtxMenu(null)
+        }} />
+    )}
+    </>
   )
 }
 
 interface TodoItemProps {
   event: Event
+  selected: boolean
   onSelect: () => void
+  onDoubleClick: () => void
   onTogglePin: () => void
+  onToggleHighlight: () => void
   onDragStart: (e: React.DragEvent, id: string) => void
   onDragOver: (e: React.DragEvent, id: string) => void
-  onDragLeave: () => void
+  onDragLeave: (e: React.DragEvent) => void
   onDrop: (e: React.DragEvent) => void
   onDragEnd: () => void
+  onContextMenu: (e: React.MouseEvent, event: Event) => void
   dragId: string | null
   dragPosition: 'above' | 'below' | null
   eventStore: ReturnType<typeof useEventStore.getState>
 }
 
-function TodoItem({ event, onSelect, onTogglePin, onDragStart, onDragOver, onDragLeave, onDrop, onDragEnd, dragId, dragPosition, eventStore }: TodoItemProps) {
+function TodoItem({ event, selected, onSelect, onDoubleClick, onTogglePin, onToggleHighlight, onDragStart, onDragOver, onDragLeave, onDrop, onDragEnd, onContextMenu, dragId, dragPosition, eventStore }: TodoItemProps) {
   const type = eventStore.getEventType(event.typeId)
   const chain = eventStore.getEventChain(event.chainId)
   const isDragging = dragId === event.id
@@ -347,21 +488,29 @@ function TodoItem({ event, onSelect, onTogglePin, onDragStart, onDragOver, onDra
   return (
     <div
       draggable
-      onDragStart={(e) => onDragStart(e, event.id)}
+      onDragStart={(e) => {
+        onDragStart(e, event.id);
+        (e.currentTarget as HTMLElement).style.opacity = '0.4'
+      }}
       onDragOver={(e) => onDragOver(e, event.id)}
       onDragLeave={onDragLeave}
       onDrop={onDrop}
-      onDragEnd={onDragEnd}
-      className={`relative ${isDragging ? 'opacity-50' : ''}`}
+      onDragEnd={(e) => {
+        onDragEnd();
+        (e.currentTarget as HTMLElement).style.opacity = ''
+      }}
+      onContextMenu={(e) => onContextMenu(e, event)}
+      className="relative"
     >
       {dragPosition === 'above' && (
-        <div className="h-0.5 bg-blue-500 mx-3 rounded" />
+        <div className="h-0.5 bg-accent-500 mx-3 rounded pointer-events-none" />
       )}
       <div onClick={onSelect}
-        className={`flex items-center gap-2 px-3 py-1.5 cursor-pointer rounded mx-1 transition-colors hover:bg-slate-50 dark:hover:bg-slate-700/50 ${event.isHighlight ? 'bg-yellow-50 dark:bg-yellow-900/10' : ''}`}>
+        onDoubleClick={onDoubleClick}
+        className={`flex items-center gap-2 px-3 py-1.5 cursor-pointer rounded mx-1 transition-colors hover:bg-slate-50 dark:hover:bg-slate-700/50 ${event.isHighlight ? 'bg-yellow-50 dark:bg-yellow-900/10' : ''} ${selected ? 'ring-2 ring-accent-400 bg-accent-50 dark:bg-accent-900/20' : ''}`}>
         <GripVertical className="w-3 h-3 text-slate-300 flex-shrink-0 cursor-grab" />
         <button onClick={e => { e.stopPropagation(); onTogglePin() }}
-          className={`flex-shrink-0 ${event.pinned ? 'text-blue-500' : 'text-slate-300 hover:text-slate-500'}`}>
+          className={`flex-shrink-0 ${event.pinned ? 'text-accent-500' : 'text-slate-300 hover:text-slate-500'}`}>
           <Pin className="w-3 h-3" />
         </button>
         <span className="text-sm flex-shrink-0">{type?.emoji || '📌'}</span>
@@ -372,10 +521,13 @@ function TodoItem({ event, onSelect, onTogglePin, onDragStart, onDragOver, onDra
             {chain && <span className="ml-1">· {chain.name}</span>}
           </p>
         </div>
-        {event.isHighlight && <Star className="w-3 h-3 fill-yellow-400 text-yellow-400 flex-shrink-0" />}
+        <button onClick={e => { e.stopPropagation(); onToggleHighlight() }}
+          className={`flex-shrink-0 ml-auto ${event.isHighlight ? 'text-yellow-400' : 'text-slate-300 hover:text-yellow-400'}`}>
+          <Star className={`w-3 h-3 ${event.isHighlight ? 'fill-yellow-400' : ''}`} />
+        </button>
       </div>
       {dragPosition === 'below' && (
-        <div className="h-0.5 bg-blue-500 mx-3 rounded" />
+        <div className="h-0.5 bg-accent-500 mx-3 rounded pointer-events-none" />
       )}
     </div>
   )

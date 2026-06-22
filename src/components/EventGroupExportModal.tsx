@@ -1,7 +1,7 @@
 /**
  * 事件组导出模态框 - 支持单击选择、Ctrl多选、双击选中整个事件链
  */
-import React, { useState, useRef, useCallback } from 'react'
+import React, { useState, useRef, useCallback, useEffect } from 'react'
 import { X, Check, FolderOpen, Link, Eye, CheckSquare } from 'lucide-react'
 import useEventStore from '../stores/eventStore'
 import useEventGroupStore from '../stores/eventGroupStore'
@@ -17,6 +17,14 @@ export default function EventGroupExportModal({ groupId, onClose }: EventGroupEx
   const eventStore = useEventStore.getState()
   const groupStore = useEventGroupStore.getState()
   const group = groupStore.getGroup(groupId)
+
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose()
+    }
+    document.addEventListener('keydown', handler)
+    return () => document.removeEventListener('keydown', handler)
+  }, [onClose])
 
   const [selectedEventIds, setSelectedEventIds] = useState<Set<string>>(new Set(group?.eventIds || []))
   const [selectedChainIds, setSelectedChainIds] = useState<Set<string>>(new Set(group?.eventChainIds || []))
@@ -96,9 +104,9 @@ export default function EventGroupExportModal({ groupId, onClose }: EventGroupEx
   const previewType = previewEvent ? eventStore.getEventType(previewEvent.typeId) : undefined
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-      <div className="bg-white dark:bg-slate-800 rounded-xl shadow-2xl max-w-2xl w-full max-h-[85vh] flex flex-col">
-        <div className="flex items-center justify-between p-5 border-b border-slate-200 dark:border-slate-700 flex-shrink-0">
+    <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 animate-modal-backdrop" onClick={onClose}>
+      <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-modal dark:shadow-modal-dark max-w-2xl w-full max-h-[85vh] flex flex-col animate-modal-panel border border-slate-200/60 dark:border-slate-700/60" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center justify-between p-5 border-b border-slate-200 dark:border-slate-800 flex-shrink-0">
           <div>
             <h2 className="text-xl font-bold text-slate-900 dark:text-white">导出事件组 "{group.name}"</h2>
             <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
@@ -112,14 +120,14 @@ export default function EventGroupExportModal({ groupId, onClose }: EventGroupEx
 
         <div className="flex flex-1 min-h-0">
           {/* 左侧选择列表 */}
-          <div className="flex-1 overflow-y-auto p-5 border-r border-slate-200 dark:border-slate-700">
+          <div className="flex-1 overflow-y-auto p-5 border-r border-slate-200 dark:border-slate-800">
             {/* 事件链 */}
             <div className="mb-5">
               <h3 className="text-sm font-bold text-slate-700 dark:text-slate-300 mb-2 flex items-center gap-2">
                 <Link className="w-4 h-4" /> 事件链
                 <button
                   onClick={toggleSelectAll}
-                  className="ml-auto text-xs text-blue-500 hover:text-blue-700 dark:text-blue-400 flex items-center gap-1"
+                  className="ml-auto text-xs text-accent-500 hover:text-accent-700 dark:text-accent-400 flex items-center gap-1"
                 >
                   <CheckSquare className="w-3 h-3" /> {allSelected ? '取消全选' : '全选'}
                 </button>
@@ -134,7 +142,7 @@ export default function EventGroupExportModal({ groupId, onClose }: EventGroupEx
                       onClick={() => toggleChain(chain.id)}
                       onDoubleClick={(e) => { e.preventDefault(); handleDoubleClickChain(chain.id) }}
                       className={`w-full text-left flex items-center gap-3 p-2 rounded-lg transition-colors cursor-pointer ${
-                        isSelected ? 'bg-blue-50 dark:bg-blue-900/20 ring-1 ring-blue-300' : 'hover:bg-slate-100 dark:hover:bg-slate-700'
+                        isSelected ? 'bg-accent-50 dark:bg-accent-900/20 ring-1 ring-accent-300' : 'hover:bg-slate-50 dark:hover:bg-slate-700/50'
                       }`}
                     >
                       <div className="w-5 h-5 rounded border-2 flex items-center justify-center flex-shrink-0"
@@ -157,7 +165,7 @@ export default function EventGroupExportModal({ groupId, onClose }: EventGroupEx
                 <FolderOpen className="w-4 h-4" /> 单独事件
                 <button
                   onClick={toggleSelectAll}
-                  className="ml-auto text-xs text-blue-500 hover:text-blue-700 dark:text-blue-400 flex items-center gap-1"
+                  className="ml-auto text-xs text-accent-500 hover:text-accent-700 dark:text-accent-400 flex items-center gap-1"
                 >
                   <CheckSquare className="w-3 h-3" /> {allSelected ? '取消全选' : '全选'}
                 </button>
@@ -171,7 +179,7 @@ export default function EventGroupExportModal({ groupId, onClose }: EventGroupEx
                       key={event.id}
                       onClick={() => toggleEvent(event.id)}
                       className={`w-full text-left flex items-center gap-3 p-2 rounded-lg transition-colors cursor-pointer ${
-                        isSelected ? 'bg-blue-50 dark:bg-blue-900/20 ring-1 ring-blue-300' : 'hover:bg-slate-100 dark:hover:bg-slate-700'
+                        isSelected ? 'bg-accent-50 dark:bg-accent-900/20 ring-1 ring-accent-300' : 'hover:bg-slate-50 dark:hover:bg-slate-700/50'
                       }`}
                     >
                       <div className="w-5 h-5 rounded border-2 flex items-center justify-center flex-shrink-0"
@@ -239,7 +247,7 @@ export default function EventGroupExportModal({ groupId, onClose }: EventGroupEx
         </div>
 
         {/* 底部信息栏 */}
-        <div className="p-4 border-t border-slate-200 dark:border-slate-700 flex-shrink-0">
+        <div className="p-4 border-t border-slate-200 dark:border-slate-800 flex-shrink-0">
           <div className="flex items-center justify-between mb-3">
             <span className="text-sm text-slate-600 dark:text-slate-300">
               已选择: {selectedChainIds.size} 个事件链, {selectedEventIds.size} 个事件
@@ -252,7 +260,7 @@ export default function EventGroupExportModal({ groupId, onClose }: EventGroupEx
             </button>
             <button
               onClick={toggleSelectAll}
-              className="text-xs text-blue-500 hover:text-blue-700 dark:text-blue-400 underline"
+              className="text-xs text-accent-500 hover:text-accent-700 dark:text-accent-400 underline"
             >
               {allSelected ? '取消全选' : '全选'}
             </button>
@@ -264,7 +272,7 @@ export default function EventGroupExportModal({ groupId, onClose }: EventGroupEx
             </button>
             <button onClick={handleExport}
               disabled={selectedEventIds.size === 0 && selectedChainIds.size === 0}
-              className="flex-1 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium text-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
+              className="flex-1 px-4 py-2 bg-accent-600 hover:bg-accent-700 shadow-sm shadow-accent-600/20 text-white rounded-lg font-medium text-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
               导出 .events 文件
             </button>
           </div>
