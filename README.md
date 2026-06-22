@@ -1,17 +1,18 @@
 # 📅 现代化大学生时间规划器
 
 <div align="center">
+
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](./LICENSE)
 [![React](https://img.shields.io/badge/React-18-61DAFB?logo=react)](https://react.dev/)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5-3178C6?logo=typescript)](https://www.typescriptlang.org/)
 [![Vite](https://img.shields.io/badge/Vite-4-646CFF?logo=vite)](https://vitejs.dev/)
 [![Tailwind CSS](https://img.shields.io/badge/Tailwind-3-06B6D4?logo=tailwindcss)](https://tailwindcss.com/)
 [![Zustand](https://img.shields.io/badge/Zustand-4-433e38)](https://zustand.docs.pmnd.rs/)
+
+**工程级质量 · 现代美观 · 专为大学生设计**
+
 > [!TIP]
->
->
-> 直接访问GithubPages使用：[时间规划器 - University Time Planner](https://icebearhound.github.io/TimeScheduler/)
->
+> 推荐直接访问 GitHub Pages 使用：[时间规划器](https://icebearhound.github.io/TimeScheduler/)
 
 [功能概览](#核心功能) · [快速开始](#快速开始) · [快捷键](#快捷键) · [技术栈](#技术栈) · [课程导入](#课程表导入指南)
 
@@ -250,24 +251,10 @@ TimeScheduler/
 | `Ctrl + V` | 粘贴事件 | 粘贴剪贴板中的事件 |
 | `Ctrl + Z` | 撤销 | 撤销上一步操作 |
 | `Ctrl + Y` | 重做 | 重做已撤销的操作 |
+| `Ctrl + F` | 搜索     | 全局高级搜索           |
 | `Delete` | 删除 | 删除当前选中的事件 |
 
----
 
-## 🔔 提醒时间说明
-
-| 时间 | 说明 |
-|------|------|
-| 1w | 事件开始前 1 周 |
-| 3d | 事件开始前 3 天 |
-| 1d | 事件开始前 1 天 |
-| 6h | 事件开始前 6 小时 |
-| 2h | 事件开始前 2 小时 |
-| 30min | 事件开始前 30 分钟 |
-| 10min | 事件开始前 10 分钟 |
-| 5min | 事件开始前 5 分钟 |
-| 2min | 事件开始前 2 分钟 |
-| at-time | 事件开始时刻 |
 
 ---
 
@@ -308,7 +295,6 @@ TimeScheduler/
 |------|-------------|
 | 浏览器切换时数据不同步 | 云端数据同步 |
 | 超大数据量时性能下降 | 虚拟化滚动 |
-| 不支持跨浏览器同步 | 账号系统 + 云端存储 |
 
 ---
 
@@ -332,9 +318,9 @@ TimeScheduler/
 欢迎提交 Issue 和 Pull Request！
 
 1. Fork 本仓库
-2. 创建特性分支：`git checkout -b feature/amazing-feature`
-3. 提交更改：`git commit -m 'feat: add amazing feature'`
-4. 推送分支：`git push origin feature/amazing-feature`
+2. 创建特性分支：`git checkout -b feature/new-feature`
+3. 提交更改：`git commit -m 'feat: add feature'`
+4. 推送分支：`git push origin feature/new-feature`
 5. 提交 Pull Request
 
 ---
@@ -352,7 +338,6 @@ TimeScheduler/
 ---
 
 <div align="center">
-
 **⭐ 如果这个项目对你有帮助，请给一个 Star！**
 
 </div>
