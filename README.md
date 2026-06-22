@@ -13,10 +13,7 @@
 
 <p align="center">
   <a href="https://icebearhound.github.io/TimeScheduler/">
-    <picture>
-      <source media="(prefers-color-scheme: dark)" srcset="https://img.shields.io/badge/%F0%9F%9A%80-立即体验-818cf8?style=for-the-badge&logo=githubpages&logoColor=white&labelColor=1e293b">
-      <img src="https://img.shields.io/badge/%F0%9F%9A%80-立即体验-2563eb?style=for-the-badge&logo=githubpages&logoColor=white" alt="立即体验">
-    </picture>
+    <img src="./public/demo-btn.svg" alt="🚀 Live Demo →">
   </a>
 </p>
 
