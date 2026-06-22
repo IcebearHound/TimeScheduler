@@ -1,4 +1,4 @@
-# 📅 现代化大学生时间规划器
+# 📅 大学生时间规划器
 
 <div align="center">
 
@@ -9,10 +9,16 @@
 [![Tailwind CSS](https://img.shields.io/badge/Tailwind-3-06B6D4?logo=tailwindcss)](https://tailwindcss.com/)
 [![Zustand](https://img.shields.io/badge/Zustand-4-433e38)](https://zustand.docs.pmnd.rs/)
 
-**工程级质量 · 现代美观 · 专为大学生设计**
+**专为大学生设计的时间规划工具，管理你的课程、实验、考试、Deadline等活动。支持Todo功能、支持设置提醒、支持事件链/组并按高级规则批量创建事件等。支持课程表无缝导入（山东大学）**
 
-> [!TIP]
-> 推荐直接访问 GitHub Pages 使用：[时间规划器](https://icebearhound.github.io/TimeScheduler/)
+<p align="center">
+  <a href="https://icebearhound.github.io/TimeScheduler/">
+    <picture>
+      <source media="(prefers-color-scheme: dark)" srcset="https://img.shields.io/badge/%F0%9F%9A%80-立即体验-818cf8?style=for-the-badge&logo=githubpages&logoColor=white&labelColor=1e293b">
+      <img src="https://img.shields.io/badge/%F0%9F%9A%80-立即体验-2563eb?style=for-the-badge&logo=githubpages&logoColor=white" alt="立即体验">
+    </picture>
+  </a>
+</p>
 
 [功能概览](#核心功能) · [快速开始](#快速开始) · [快捷键](#快捷键) · [技术栈](#技术栈) · [课程导入](#课程表导入指南)
 
