@@ -184,6 +184,9 @@ export default function App() {
                 body: `${new Date(event.startTime).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })}`,
                 tag: event.id,
               })
+              store.updateEvent(event.id, {
+                reminders: event.reminders.map(r => r.id === reminder.id ? { ...r, notified: true } : r),
+              })
             } else if (Notification.permission === 'default' && !notifiedPermissionRef.current) {
               notifiedPermissionRef.current = true
               useUIStore.getState().addToast(
@@ -192,9 +195,6 @@ export default function App() {
                 () => { Notification.requestPermission() },
               )
             }
-            store.updateEvent(event.id, {
-              reminders: event.reminders.map(r => r.id === reminder.id ? { ...r, notified: true } : r),
-            })
           }
         }
       }
