@@ -13,7 +13,7 @@
 
 <p align="center">
   <a href="https://icebearhound.github.io/TimeScheduler/">
-    <img src="./public/demo-btn.svg" alt="🚀 Live Demo →">
+    <img src="https://raw.githubusercontent.com/IcebearHound/TimeScheduler/main/public/demo-btn.svg" alt="🚀 Live Demo →">
   </a>
 </p>
 
