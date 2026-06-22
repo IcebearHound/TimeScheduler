@@ -30,16 +30,16 @@ export default function NotificationPermissionPrompt({ onClose }: Props) {
 
   const handleEnable = () => {
     if (!('Notification' in window)) return
-    try {
-      Notification.requestPermission((p) => {
+    Notification.requestPermission()
+      .then((p) => {
         setPermState(p)
         if (p === 'granted') {
           setTimeout(() => handleDismiss(), 1500)
         }
       })
-    } catch {
-      setPermState('denied')
-    }
+      .catch(() => {
+        setPermState('denied')
+      })
   }
 
   if (!visible) return null
@@ -64,12 +64,17 @@ export default function NotificationPermissionPrompt({ onClose }: Props) {
             <>
               <div className="text-5xl mb-4">🔕</div>
               <h2 className="text-lg font-bold text-slate-900 dark:text-white mb-2">
-                通知权限已被浏览器阻止
+                浏览器已阻止通知
               </h2>
-              <p className="text-sm text-slate-500 dark:text-slate-400 leading-relaxed mb-6">
-                请在浏览器地址栏左侧点击锁/信息图标，<br />
-                找到"通知"选项，改为"允许"后刷新页面。
+              <p className="text-sm text-slate-500 dark:text-slate-400 leading-relaxed mb-4">
+                Chrome 对不熟悉的网站会自动拦截通知弹窗。<br />
+                请按以下步骤手动开启：
               </p>
+              <ol className="text-xs text-slate-500 dark:text-slate-400 text-left space-y-1 mb-4 px-2">
+                <li>1. 点击地址栏左侧的 <span className="text-slate-700 dark:text-slate-200 font-medium">🔒 锁图标</span></li>
+                <li>2. 找到"通知"，点击 <span className="text-slate-700 dark:text-slate-200 font-medium">允许</span></li>
+                <li>3. 刷新页面即可</li>
+              </ol>
               <div className="flex items-center justify-center gap-2 mb-4">
                 <input type="checkbox" id="dontRemindDenied" checked={dontRemind}
                   onChange={e => setDontRemind(e.target.checked)}

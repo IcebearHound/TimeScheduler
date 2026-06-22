@@ -13,9 +13,10 @@
 
 <p align="center">
   <a href="https://icebearhound.github.io/TimeScheduler/">
-    <img src="https://raw.githubusercontent.com/IcebearHound/TimeScheduler/main/public/demo-btn.svg" alt="🚀 Live Demo →">
+    <img src="https://raw.githubusercontent.com/IcebearHound/TimeScheduler/main/public/demo-btn.svg" alt="🚀 访问WebApp →">
   </a>
 </p>
+
 
 [功能概览](#核心功能) · [快速开始](#快速开始) · [快捷键](#快捷键) · [技术栈](#技术栈) · [课程导入](#课程表导入指南)
 
