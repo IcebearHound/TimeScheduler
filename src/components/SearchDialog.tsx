@@ -164,7 +164,7 @@ export default function SearchDialog({ onClose }: SearchDialogProps) {
     const matchedEvents: { event: Event; source: string }[] = []
     for (const e of allEvents) {
       if (dateFilter && !dateFilter(new Date(e.startTime))) continue
-      if (!q) continue
+      if (!q && !dateFilter) continue
       const chain = eventStore.getEventChain(e.chainId)
       const type = eventStore.getEventType(e.typeId)
       let source = ''
