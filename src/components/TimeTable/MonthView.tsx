@@ -8,8 +8,10 @@ import useEventStore from '../../stores/eventStore'
 import useEventGroupStore from '../../stores/eventGroupStore'
 import { getMonthDays } from '../../utils/dateUtils'
 import EventBlockItem from './EventBlockItem'
+import { useMediaQuery } from '../../utils/useMediaQuery'
 
 export default function MonthView() {
+  const isMobile = useMediaQuery('(max-width: 767px)')
   const currentDate = useUIStore((s) => s.currentDate)
   const setCurrentDate = useUIStore((s) => s.setCurrentDate)
   const setViewMode = useUIStore((s) => s.setViewMode)
@@ -60,7 +62,7 @@ export default function MonthView() {
 
   return (
     <div className="h-full flex flex-col bg-white dark:bg-slate-900 overflow-hidden">
-      <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200/60 dark:border-slate-800/60">
+      <div className="hidden md:flex items-center justify-between px-6 py-4 border-b border-slate-200/60 dark:border-slate-800/60">
         <div className="flex items-center gap-4">
           <button onClick={nav.p} className="p-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-colors"><ChevronLeft className="w-5 h-5 text-slate-600 dark:text-slate-300" /></button>
           <h2 className="text-lg font-bold text-slate-900 dark:text-white">{currentDate.toLocaleDateString('zh-CN', { year: 'numeric', month: 'long' })}</h2>
@@ -97,15 +99,26 @@ export default function MonthView() {
             const isCM = day.getMonth() === currentDate.getMonth()
             const isT = day.getFullYear() === new Date().getFullYear() && day.getMonth() === new Date().getMonth() && day.getDate() === new Date().getDate()
             return (
-              <div key={i} onClick={() => setSelectedDay(day)} onDoubleClick={() => { setCurrentDate(day); setViewMode('week') }}
-                className={`min-h-24 p-1.5 bg-white dark:bg-slate-800 cursor-pointer ${isCM ? '' : 'bg-slate-50 dark:bg-slate-900'} ${isT ? 'bg-accent-50/50 dark:bg-accent-900/10' : ''} ${selectedDay && selectedDay.toDateString() === day.toDateString() ? 'ring-2 ring-accent-400 ring-inset' : ''}`}>
+              <div key={i} onClick={() => { if (isMobile) { setCurrentDate(day); setViewMode('day') } else setSelectedDay(day) }} onDoubleClick={() => { setCurrentDate(day); setViewMode('week') }}
+                className={`min-h-[4.75rem] md:min-h-24 p-1 md:p-1.5 bg-white dark:bg-slate-800 cursor-pointer ${isCM ? '' : 'bg-slate-50 dark:bg-slate-900'} ${isT ? 'bg-accent-50/50 dark:bg-accent-900/10' : ''} ${selectedDay && selectedDay.toDateString() === day.toDateString() ? 'ring-2 ring-accent-400 ring-inset' : ''}`}>
                 <div className={`text-sm font-bold mb-1 flex items-center gap-1 ${isCM ? 'text-slate-900 dark:text-white' : 'text-slate-400 dark:text-slate-600'}`}>
                   {day.getDate()}
                   {isT && <span className="w-1.5 h-1.5 rounded-full bg-accent-500 inline-block" title="今天" />}
                 </div>
                 <div className="space-y-0.5">
-                  {de.slice(0, 4).map(e => <EventBlockItem key={e.id} event={e} compact isHighlighted={chainMonthIds.has(e.id)} />)}
-                  {de.length > 4 && <div className="text-xs px-2 py-0.5 text-slate-400 truncate rounded bg-slate-50 dark:bg-slate-700/30">+{de.length - 4} 更多</div>}
+                  {isMobile ? (
+                    <>
+                      <div className="flex flex-wrap gap-1">
+                        {de.slice(0, 4).map(event => <span key={event.id} className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: event.color || eventStore.getEventChain(event.chainId)?.color || '#3B82F6' }} />)}
+                      </div>
+                      {de.length > 0 && <div className="truncate text-[9px] font-medium text-slate-500 dark:text-slate-400">{de[0].name}{de.length > 1 ? ` +${de.length - 1}` : ''}</div>}
+                    </>
+                  ) : (
+                    <>
+                      {de.slice(0, 4).map(e => <EventBlockItem key={e.id} event={e} compact isHighlighted={chainMonthIds.has(e.id)} />)}
+                      {de.length > 4 && <div className="text-xs px-2 py-0.5 text-slate-400 truncate rounded bg-slate-50 dark:bg-slate-700/30">+{de.length - 4} 更多</div>}
+                    </>
+                  )}
                 </div>
               </div>
             )

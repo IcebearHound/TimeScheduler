@@ -173,7 +173,7 @@ export default function RightPanel() {
   const barColor = chain?.color || event.color || '#3B82F6'
 
   return (
-    <div className="w-[min(22vw,20rem)] bg-white/90 dark:bg-slate-900/90 border-l border-slate-200/60 dark:border-slate-800/60 overflow-y-auto flex flex-col">
+    <div className="h-full w-full md:w-[min(22vw,20rem)] bg-white/95 dark:bg-slate-900/95 border-l border-slate-200/60 dark:border-slate-800/60 overflow-y-auto flex flex-col">
       {/* 顶部地铁线路图 — 事件链各事件横向排列 */}
       {chain && (() => {
         const ce = eventStore.getEventsByChain(chain.id)

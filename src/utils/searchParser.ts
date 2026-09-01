@@ -1,3 +1,5 @@
+import { getStartOfWeek } from './dateUtils'
+
 const DAY_NAMES = ['日', '一', '二', '三', '四', '五', '六']
 
 export const EN_TO_CN: Record<string, string> = {
@@ -6,49 +8,87 @@ export const EN_TO_CN: Record<string, string> = {
   labTeacher: '实验指导老师', labContent: '实验内容',
 }
 
-export function parseTimeQuery(q: string): { text: string; dateFilter?: (d: Date) => boolean } {
-  const now = new Date()
-  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate())
+type DatePredicate = (date: Date) => boolean
 
-  if (q.includes('今天')) return { text: q.replace('今天', ''), dateFilter: (d) => new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime() === today.getTime() }
-  if (q.includes('明天')) {
-    const t = new Date(today); t.setDate(t.getDate() + 1)
-    return { text: q.replace('明天', ''), dateFilter: (d) => new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime() === t.getTime() }
+function isSameLocalDate(date: Date, target: Date): boolean {
+  return date.getFullYear() === target.getFullYear() &&
+    date.getMonth() === target.getMonth() &&
+    date.getDate() === target.getDate()
+}
+
+function createExactDate(year: number, month: number, day: number): Date | null {
+  const date = new Date(year, month - 1, day)
+  return date.getFullYear() === year && date.getMonth() === month - 1 && date.getDate() === day
+    ? date
+    : null
+}
+
+function removeToken(text: string, token: string): string {
+  return text.split(token).join(' ')
+}
+
+export function parseTimeQuery(q: string, referenceDate: Date = new Date()): { text: string; dateFilter?: DatePredicate } {
+  const now = referenceDate
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate())
+  const predicates: DatePredicate[] = []
+  let text = q
+
+  const relativeDays: Array<[string, number]> = [['今天', 0], ['明天', 1], ['后天', 2]]
+  for (const [label, offset] of relativeDays) {
+    if (!text.includes(label)) continue
+    const target = new Date(today)
+    target.setDate(target.getDate() + offset)
+    predicates.push(date => isSameLocalDate(date, target))
+    text = removeToken(text, label)
   }
-  if (q.includes('后天')) {
-    const t = new Date(today); t.setDate(t.getDate() + 2)
-    return { text: q.replace('后天', ''), dateFilter: (d) => new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime() === t.getTime() }
+
+  const weekRanges: Array<[string, number]> = [['本周', 0], ['下周', 1]]
+  for (const [label, offset] of weekRanges) {
+    if (!text.includes(label)) continue
+    const start = getStartOfWeek(today, 1)
+    start.setDate(start.getDate() + offset * 7)
+    const end = new Date(start)
+    end.setDate(end.getDate() + 7)
+    predicates.push(date => date >= start && date < end)
+    text = removeToken(text, label)
   }
-  if (q.includes('本周')) {
-    const start = new Date(today); start.setDate(today.getDate() - today.getDay())
-    const end = new Date(start); end.setDate(start.getDate() + 6)
-    return { text: q.replace('本周', ''), dateFilter: (d) => d >= start && d <= new Date(end.getTime() + 86400000) }
-  }
-  if (q.includes('下周')) {
-    const start = new Date(today); start.setDate(today.getDate() - today.getDay() + 7)
-    const end = new Date(start); end.setDate(start.getDate() + 6)
-    return { text: q.replace('下周', ''), dateFilter: (d) => d >= start && d <= new Date(end.getTime() + 86400000) }
-  }
+
   for (let i = 0; i < 7; i++) {
     const label = `周${DAY_NAMES[i]}`
-    if (q.includes(label)) return { text: q.replace(label, ''), dateFilter: (d) => d.getDay() === i }
+    if (!text.includes(label)) continue
+    predicates.push(date => date.getDay() === i)
+    text = removeToken(text, label)
   }
-  const timeMatch = q.match(/(\d{1,2}):(\d{2})/)
-  if (timeMatch) {
-    const h = parseInt(timeMatch[1]), m = parseInt(timeMatch[2])
-    return { text: q.replace(timeMatch[0], ''), dateFilter: (d) => d.getHours() === h && d.getMinutes() === m }
+
+  const timePattern = /(\d{1,2}):(\d{2})/g
+  const timeMatches = [...text.matchAll(timePattern)]
+  for (const match of timeMatches) {
+    const hour = Number(match[1])
+    const minute = Number(match[2])
+    predicates.push(hour <= 23 && minute <= 59
+      ? date => date.getHours() === hour && date.getMinutes() === minute
+      : () => false)
   }
-  const dateMatch = q.match(/(\d{4})[-\/](\d{1,2})[-\/](\d{1,2})/) || q.match(/(\d{1,2})[-\/](\d{1,2})/)
-  if (dateMatch) {
-    if (dateMatch.length === 4) {
-      const [_, y, mo, d] = dateMatch
-      const target = new Date(parseInt(y), parseInt(mo) - 1, parseInt(d))
-      return { text: q.replace(dateMatch[0], ''), dateFilter: (d) => new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime() === target.getTime() }
-    } else if (dateMatch.length === 3) {
-      const [_, mo, d] = dateMatch
-      const target = new Date(today.getFullYear(), parseInt(mo) - 1, parseInt(d))
-      return { text: q.replace(dateMatch[0], ''), dateFilter: (d) => new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime() === target.getTime() }
-    }
+  text = text.replace(timePattern, ' ')
+
+  const fullDatePattern = /(\d{4})[-\/](\d{1,2})[-\/](\d{1,2})/g
+  const fullDateMatches = [...text.matchAll(fullDatePattern)]
+  for (const match of fullDateMatches) {
+    const target = createExactDate(Number(match[1]), Number(match[2]), Number(match[3]))
+    predicates.push(target ? date => isSameLocalDate(date, target) : () => false)
   }
-  return { text: q }
+  text = text.replace(fullDatePattern, ' ')
+
+  const shortDatePattern = /(\d{1,2})[-\/](\d{1,2})/g
+  const shortDateMatches = [...text.matchAll(shortDatePattern)]
+  for (const match of shortDateMatches) {
+    const target = createExactDate(today.getFullYear(), Number(match[1]), Number(match[2]))
+    predicates.push(target ? date => isSameLocalDate(date, target) : () => false)
+  }
+  text = text.replace(shortDatePattern, ' ')
+
+  const normalizedText = text.replace(/\s+/g, ' ').trim()
+  return predicates.length > 0
+    ? { text: normalizedText, dateFilter: date => predicates.every(predicate => predicate(date)) }
+    : { text: normalizedText }
 }

@@ -17,6 +17,8 @@ import KeyboardShortcuts from './components/KeyboardShortcuts'
 import WelcomeGuide from './components/WelcomeGuide'
 import NotificationPermissionPrompt from './components/NotificationPermissionPrompt'
 import TodoModal from './components/TodoModal'
+import MobileHeader from './components/MobileHeader'
+import MobileBottomNav from './components/MobileBottomNav'
 import { PanelLeftOpen, PanelRightOpen } from 'lucide-react'
 import { getReminderMilliseconds } from './utils/eventUtils'
 
@@ -85,6 +87,11 @@ export default function App() {
   useEffect(() => {
     useEventStore.getState().load()
     useEventGroupStore.getState().load()
+    if (window.matchMedia('(max-width: 767px)').matches) {
+      useUIStore.getState().setIsLeftSidebarOpen(false)
+      useUIStore.getState().setIsRightPanelOpen(false)
+      useUIStore.getState().setViewMode('day')
+    }
     setInitialized(true)
   }, [])
 
@@ -214,34 +221,38 @@ export default function App() {
   }
 
   return (
-    <div className="flex flex-col h-screen bg-gradient-to-br from-slate-50 via-white to-slate-100 dark:from-slate-950 dark:via-slate-900 dark:to-slate-800">
+    <div className="app-shell flex flex-col h-screen bg-gradient-to-br from-slate-50 via-white to-slate-100 dark:from-slate-950 dark:via-slate-900 dark:to-slate-800">
       <KeyboardShortcuts />
-      <Header />
-      <div className="flex flex-1 overflow-hidden">
+      <div className="hidden md:block"><Header /></div>
+      <MobileHeader />
+      <div className="app-main flex flex-1 overflow-hidden">
+        {isLeftSidebarOpen && <button type="button" aria-label="关闭导航" className="mobile-panel-backdrop md:hidden" onClick={() => setIsLeftSidebarOpen(false)} />}
         {!isLeftSidebarOpen && (
           <button onClick={() => setIsLeftSidebarOpen(true)}
-            className="absolute left-0 top-1/2 -translate-y-1/2 z-20 p-2 bg-white/80 dark:bg-slate-800/80 backdrop-blur-sm border border-slate-200/80 dark:border-slate-700/80 rounded-r-xl shadow-elevated hover:bg-white dark:hover:bg-slate-800 hover:shadow-overlay transition-all duration-200">
+            className="hidden md:block absolute left-0 top-1/2 -translate-y-1/2 z-20 p-2 bg-white/80 dark:bg-slate-800/80 backdrop-blur-sm border border-slate-200/80 dark:border-slate-700/80 rounded-r-xl shadow-elevated hover:bg-white dark:hover:bg-slate-800 hover:shadow-overlay transition-all duration-200">
             <PanelLeftOpen className="w-4 h-4 text-slate-400 dark:text-slate-500" />
           </button>
         )}
         <div ref={leftRef}
           onTransitionEnd={handleLeftTransitionEnd}
-          className={`overflow-hidden transition-all duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] ${isLeftSidebarOpen ? 'w-[min(20vw,18rem)] opacity-100' : 'w-0 opacity-0'}`}>
-          <div className="w-[min(20vw,18rem)]">{leftRender && <LeftSidebar key={sideKey} />}</div>
+          className={`app-left-panel ${isLeftSidebarOpen ? 'is-open' : 'is-closed'}`}>
+          <div className="h-full w-full">{leftRender && <LeftSidebar key={sideKey} />}</div>
         </div>
         <div className="flex-1 overflow-hidden"><TimeTable /></div>
+        {isRightPanelOpen && <button type="button" aria-label="关闭详情" className="mobile-panel-backdrop md:hidden" onClick={() => setIsRightPanelOpen(false)} />}
         <div ref={rightRef}
           onTransitionEnd={handleRightTransitionEnd}
-          className={`overflow-hidden transition-all duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] ${isRightPanelOpen ? 'w-[min(22vw,20rem)] opacity-100' : 'w-0 opacity-0'}`}>
-          <div className="w-[min(22vw,20rem)]">{rightRender && <RightPanel />}</div>
+          className={`app-right-panel ${isRightPanelOpen ? 'is-open' : 'is-closed'}`}>
+          <div className="h-full w-full">{rightRender && <RightPanel />}</div>
         </div>
         {!isRightPanelOpen && (
           <button onClick={() => setIsRightPanelOpen(true)}
-            className="absolute right-0 top-1/2 -translate-y-1/2 z-20 p-2 bg-white/80 dark:bg-slate-800/80 backdrop-blur-sm border border-slate-200/80 dark:border-slate-700/80 rounded-l-xl shadow-elevated hover:bg-white dark:hover:bg-slate-800 hover:shadow-overlay transition-all duration-200">
+            className="hidden md:block absolute right-0 top-1/2 -translate-y-1/2 z-20 p-2 bg-white/80 dark:bg-slate-800/80 backdrop-blur-sm border border-slate-200/80 dark:border-slate-700/80 rounded-l-xl shadow-elevated hover:bg-white dark:hover:bg-slate-800 hover:shadow-overlay transition-all duration-200">
             <PanelRightOpen className="w-4 h-4 text-slate-400 dark:text-slate-500" />
           </button>
         )}
       </div>
+      <MobileBottomNav />
       <EventModal />
       <CourseImportModal />
       {isConflictDialogOpen && conflictConflicts.length > 0 && (

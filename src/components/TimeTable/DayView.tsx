@@ -47,7 +47,7 @@ export default function DayView() {
   const [slotH, setSlotH] = useState(80)
   useEffect(() => {
     const calc = () => {
-      const h = window.innerHeight - 110; setSlotH(Math.max(40, Math.floor(h / 24)))
+      const h = window.innerHeight - 110; setSlotH(Math.max(60, Math.floor(h / 24)))
     }
     calc(); window.addEventListener('resize', calc); return () => window.removeEventListener('resize', calc)
   }, [])
@@ -64,7 +64,7 @@ export default function DayView() {
 
   return (
     <div className="h-full flex flex-col bg-white dark:bg-slate-900 overflow-hidden">
-      <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200/60 dark:border-slate-800/60">
+      <div className="hidden md:flex items-center justify-between px-6 py-4 border-b border-slate-200/60 dark:border-slate-800/60">
         <div className="flex items-center gap-4">
           <button onClick={nav.p} className="p-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-colors"><ChevronLeft className="w-5 h-5 text-slate-600 dark:text-slate-300" /></button>
           <h2 className="text-lg font-bold text-slate-900 dark:text-white min-w-60">{currentDate.toLocaleDateString('zh-CN', { year: 'numeric', month: 'numeric', day: 'numeric' })} {wd}</h2>
@@ -74,9 +74,9 @@ export default function DayView() {
       </div>
       <div className="flex-1 overflow-hidden">
         <div ref={scrollRef} className="flex h-full overflow-y-auto">
-          <div className="w-16 bg-slate-50 dark:bg-slate-950 border-r border-slate-200 dark:border-slate-800 flex-shrink-0">
+          <div className="w-12 md:w-16 bg-slate-50 dark:bg-slate-950 border-r border-slate-200 dark:border-slate-800 flex-shrink-0">
             {Array.from({ length: 24 }, (_, i) => (
-              <div key={i} className="flex items-start justify-end pr-2 pt-1 text-xs text-slate-500 dark:text-slate-400 font-medium" style={{ height: slotH, minHeight: 36 }}>
+              <div key={i} className="flex items-start justify-end pr-1.5 md:pr-2 pt-1 text-[10px] md:text-xs text-slate-500 dark:text-slate-400 font-medium" style={{ height: slotH, minHeight: 60 }}>
                 {`${String(i).padStart(2, '0')}:00`}
               </div>
             ))}

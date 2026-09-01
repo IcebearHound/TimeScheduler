@@ -133,7 +133,7 @@ export default function KeyboardShortcuts() {
         // 4. 侧栏多选/单选事件组
         const groupIds = Array.from(sideSelection.groupIds)
         if (groupIds.length > 0) {
-          groupIds.forEach(id => gstore.deleteGroup(id))
+          gstore.deleteGroups(groupIds)
           sideSelection.groupIds = new Set()
           uis.addToast(`已删除 ${groupIds.length} 个事件组 · Ctrl+Z 撤回`, '撤回', () => { estore.undo() })
           return

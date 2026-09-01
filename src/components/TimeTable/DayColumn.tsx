@@ -47,6 +47,8 @@ function getDayEventInfo(event: Event, date: Date): DayEventInfo | null {
 export default function DayColumn({ date, events }: DayColumnProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const blankMenuRef = useRef<HTMLDivElement>(null)
+  const slotLongPressRef = useRef<number | null>(null)
+  const slotTouchStartRef = useRef<{ x: number; y: number } | null>(null)
   const [slotH, setSlotH] = useState(MIN_SLOT_H)
   const [blankMenu, setBlankMenu] = useState<{ x: number; y: number; hour: number } | null>(null)
   const [expandPopup, setExpandPopup] = useState<{ eventIds: string[]; anchor: DOMRect } | null>(null)
@@ -145,13 +147,42 @@ export default function DayColumn({ date, events }: DayColumnProps) {
     const st = new Date(date); st.setHours(h, 0, 0, 0); const ed = new Date(date); ed.setHours(h + 1, 0, 0, 0)
     const e = useEventStore.getState().addEvent({ name: '新事件', description: '', startTime: st, endTime: ed, chainId: '', typeId: 'type-course', reminders: [], properties: {}, isHighlight: false, priority: 0 })
     const gid = useEventGroupStore.getState().ensureActiveGroup(); useEventGroupStore.getState().addEventToGroup(gid, e.id)
+    useUIStore.getState().setSelectedEvent(e.id)
+    if (window.matchMedia('(max-width: 767px)').matches) useUIStore.getState().setIsRightPanelOpen(true)
   }
+
+  const clearSlotLongPress = () => {
+    if (slotLongPressRef.current !== null) window.clearTimeout(slotLongPressRef.current)
+    slotLongPressRef.current = null
+    slotTouchStartRef.current = null
+  }
+
+  const startSlotLongPress = (event: React.PointerEvent, hour: number) => {
+    if (event.pointerType !== 'touch' || (event.target as HTMLElement).closest('.event-block, button')) return
+    slotTouchStartRef.current = { x: event.clientX, y: event.clientY }
+    slotLongPressRef.current = window.setTimeout(() => {
+      setBlankMenu({ x: event.clientX, y: event.clientY, hour })
+      navigator.vibrate?.(20)
+      slotLongPressRef.current = null
+    }, 550)
+  }
+
+  const moveSlotTouch = (event: React.PointerEvent) => {
+    const start = slotTouchStartRef.current
+    if (start && Math.hypot(event.clientX - start.x, event.clientY - start.y) > 8) clearSlotLongPress()
+  }
+
+  useEffect(() => clearSlotLongPress, [])
 
   return (
     <div ref={containerRef} className="bg-white dark:bg-slate-900 relative" style={{ minHeight: totalH }}>
       {HOURS.map(hour => (
           <div key={hour} className="border-b border-slate-100 dark:border-slate-800 relative group hover:bg-slate-50 dark:hover:bg-slate-800/50 cursor-pointer"
           style={{ height: slotH }}
+          onPointerDown={event => startSlotLongPress(event, hour)}
+          onPointerMove={moveSlotTouch}
+          onPointerUp={clearSlotLongPress}
+          onPointerCancel={clearSlotLongPress}
           onClick={e => {
             if ((e.target as HTMLElement).closest('.event-block')) return
             useUIStore.getState().setSelectedEvent(undefined)
@@ -159,7 +190,7 @@ export default function DayColumn({ date, events }: DayColumnProps) {
           }}
           onDoubleClick={e => { if ((e.target as HTMLElement).closest('.event-block') || (e.target as HTMLElement).closest('button')) return; handleDoubleClickSlot(hour) }}
           onContextMenu={e => { if ((e.target as HTMLElement).closest('.event-block')) return; e.preventDefault(); e.stopPropagation(); setBlankMenu({ x: e.clientX, y: e.clientY, hour }) }}>
-          <div className="absolute inset-0 opacity-0 group-hover:opacity-100 bg-accent-400/5 flex items-center justify-center text-blue-600 dark:text-blue-400 text-xs font-medium transition-all pointer-events-none">双击创建事件</div>
+          <div className="absolute inset-0 opacity-0 group-hover:opacity-100 bg-accent-400/5 flex items-center justify-center text-blue-600 dark:text-blue-400 text-xs font-medium transition-all pointer-events-none"><span className="hidden md:inline">双击创建事件</span><span className="md:hidden">长按创建事件</span></div>
         </div>
       ))}
       {blocks.map(b => (
@@ -179,8 +210,8 @@ export default function DayColumn({ date, events }: DayColumnProps) {
       {expandPopup && (
         <div className="fixed inset-0 z-[120]" onClick={() => setExpandPopup(null)}>
           <div onClick={e => e.stopPropagation()}
-            className="absolute bg-white/95 dark:bg-slate-800/95 backdrop-blur-md rounded-xl shadow-overlay border border-slate-200/60 dark:border-slate-700/60 p-4 w-72 max-h-80 overflow-y-auto"
-            style={{ top: Math.min(expandPopup.anchor.top, window.innerHeight - 360), left: Math.min(expandPopup.anchor.right + 8, window.innerWidth - 300) }}>
+            className="absolute bg-white/95 dark:bg-slate-800/95 backdrop-blur-md rounded-xl shadow-overlay border border-slate-200/60 dark:border-slate-700/60 p-4 w-[calc(100vw-2rem)] md:w-72 max-h-80 overflow-y-auto"
+            style={{ top: window.innerWidth < 768 ? Math.max(16, window.innerHeight - 420) : Math.min(expandPopup.anchor.top, window.innerHeight - 360), left: window.innerWidth < 768 ? 16 : Math.min(expandPopup.anchor.right + 8, window.innerWidth - 300) }}>
             <div className="text-xs font-medium text-slate-500 dark:text-slate-400 mb-3">该时段全部事件 ({expandPopup.eventIds.length})</div>
             {expandPopup.eventIds.map(eid => {
               const evt = useEventStore.getState().getEvent(eid)
@@ -191,7 +222,7 @@ export default function DayColumn({ date, events }: DayColumnProps) {
               const g = Array.from(gs.values()).find(gr => gr.eventIds.includes(evt.id) || gr.eventChainIds.includes(evt.chainId))
               return (
                 <div key={eid} className="p-2 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-700/50 cursor-pointer mb-1 border border-slate-100 dark:border-slate-800"
-                  onClick={() => { useUIStore.getState().setSelectedEvent(eid); setExpandPopup(null) }}>
+                  onClick={() => { useUIStore.getState().setSelectedEvent(eid); if (window.innerWidth < 768) useUIStore.getState().setIsRightPanelOpen(true); setExpandPopup(null) }}>
                   <div className="flex items-center gap-2">
                     <span className="text-sm">{t?.emoji}</span>
                     <span className="text-sm font-medium text-slate-800 dark:text-slate-200 truncate flex-1">{evt.name}</span>
@@ -213,8 +244,8 @@ export default function DayColumn({ date, events }: DayColumnProps) {
         </div>
       )}
       {blankMenu && (
-        <div ref={blankMenuRef} className="fixed bg-white/95 dark:bg-slate-800/95 backdrop-blur-md rounded-xl shadow-overlay z-[85] border border-slate-200/60 dark:border-slate-700/60 min-w-36"
-          style={{ left: Math.min(blankMenu.x, window.innerWidth - 160), top: Math.min(blankMenu.y, window.innerHeight - 100) }}>
+        <div ref={blankMenuRef} className="fixed bg-white/95 dark:bg-slate-800/95 backdrop-blur-md rounded-xl shadow-overlay z-[85] border border-slate-200/60 dark:border-slate-700/60 min-w-44"
+          style={{ left: window.innerWidth < 768 ? 16 : Math.min(blankMenu.x, window.innerWidth - 180), right: window.innerWidth < 768 ? 16 : undefined, top: window.innerWidth < 768 ? Math.min(blankMenu.y, window.innerHeight - 180) : Math.min(blankMenu.y, window.innerHeight - 120) }}>
           <button onClick={() => { handleDoubleClickSlot(blankMenu.hour); setBlankMenu(null) }} className="flex items-center gap-2 w-full px-3 py-2 text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700/50 text-xs rounded-t-lg"><Plus className="w-3.5 h-3.5 text-blue-500" /> 在此新建事件</button>
           {clipboardEvent && (
             <button onClick={() => { const start = new Date(date); start.setHours(blankMenu.hour, 0, 0, 0); const e = useEventStore.getState().pasteEvent(start); if (e) { const gid = useEventGroupStore.getState().ensureActiveGroup(); useEventGroupStore.getState().addEventToGroup(gid, e.id) }; setBlankMenu(null) }}

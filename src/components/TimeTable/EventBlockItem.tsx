@@ -9,6 +9,7 @@ import useEventStore from '../../stores/eventStore'
 import useEventGroupStore from '../../stores/eventGroupStore'
 import EventContextMenu from '../EventContextMenu'
 import PopoverEventEditor from '../PopoverEventEditor'
+import { useMediaQuery } from '../../utils/useMediaQuery'
 
 const MIN15_MS = 15 * 60 * 1000
 const PX_PER_15MIN = 12
@@ -24,8 +25,12 @@ type ResizeEdge = 'top' | 'bottom' | null
 
 export default function EventBlockItem({ event, onEdit, isHighlighted, compact, continuesBefore, continuesAfter }: EventBlockItemProps) {
   const containerRef = useRef<HTMLDivElement>(null)
+  const longPressTimerRef = useRef<number | null>(null)
+  const longPressTriggeredRef = useRef(false)
+  const touchStartRef = useRef<{ x: number; y: number } | null>(null)
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null)
   const [resizing, setResizing] = useState<ResizeEdge>(null)
+  const isMobile = useMediaQuery('(max-width: 767px)')
 
   const setSelectedEvent = useUIStore((s) => s.setSelectedEvent)
   const selectedEventId = useUIStore((s) => s.selectedEventId)
@@ -67,7 +72,8 @@ export default function EventBlockItem({ event, onEdit, isHighlighted, compact, 
     }
   }, [openPopoverEventId, event.id])
 
-  const startResize = useCallback((e: React.MouseEvent, edge: ResizeEdge) => {
+  const startResize = useCallback((e: React.PointerEvent, edge: ResizeEdge) => {
+    if (e.pointerType === 'touch' && selectedEventId !== event.id) return
     e.preventDefault(); e.stopPropagation()
     const origStart = new Date(event.startTime).getTime()
     const origEnd = new Date(event.endTime).getTime()
@@ -75,7 +81,7 @@ export default function EventBlockItem({ event, onEdit, isHighlighted, compact, 
     const origH = containerRef.current?.offsetHeight || 60
     setResizing(edge)
 
-    const move = (me: MouseEvent) => {
+    const move = (me: PointerEvent) => {
       const dy = me.clientY - sy
       const el = containerRef.current
       if (!el) return
@@ -90,8 +96,8 @@ export default function EventBlockItem({ event, onEdit, isHighlighted, compact, 
         el.style.height = `${Math.max(22, origH + dy)}px`
       }
     }
-    const up = (me: MouseEvent) => {
-      window.removeEventListener('mousemove', move); window.removeEventListener('mouseup', up)
+    const up = (me: PointerEvent) => {
+      window.removeEventListener('pointermove', move); window.removeEventListener('pointerup', up)
       const el = containerRef.current
       if (el) {
         el.style.transform = ''
@@ -112,11 +118,14 @@ export default function EventBlockItem({ event, onEdit, isHighlighted, compact, 
         if (ne > origStart + MIN15_MS) useEventStore.getState().updateEvent(event.id, { endTime: new Date(ne) })
       }
     }
-    window.addEventListener('mousemove', move); window.addEventListener('mouseup', up)
-  }, [event.id, event.startTime, event.endTime])
+    window.addEventListener('pointermove', move); window.addEventListener('pointerup', up)
+  }, [event.id, event.startTime, event.endTime, selectedEventId])
 
-  const startMove = useCallback((e: React.MouseEvent) => {
-    if ((e.target as HTMLElement).closest('button')) return
+  const startMove = useCallback((e: React.PointerEvent) => {
+    const target = e.target as HTMLElement
+    const isTouchHandle = !!target.closest('.touch-drag-handle')
+    if (target.closest('button') && !isTouchHandle) return
+    if (e.pointerType === 'touch' && !isTouchHandle) return
     e.preventDefault()
     const el = containerRef.current; if (!el) return
     const origStart = new Date(event.startTime).getTime(); const origEnd = new Date(event.endTime).getTime()
@@ -136,7 +145,7 @@ export default function EventBlockItem({ event, onEdit, isHighlighted, compact, 
       return null
     }
 
-    const move = (me: MouseEvent) => {
+    const move = (me: PointerEvent) => {
       el.style.transform = `translate(${me.clientX - sx}px, ${me.clientY - sy}px)`
       const sc = findScrollContainer(el)
       if (!sc) return
@@ -151,12 +160,12 @@ export default function EventBlockItem({ event, onEdit, isHighlighted, compact, 
       }
     }
 
-    const up = (ue: MouseEvent) => {
-      window.removeEventListener('mousemove', move); window.removeEventListener('mouseup', up)
+    const up = (ue: PointerEvent) => {
+      window.removeEventListener('pointermove', move); window.removeEventListener('pointerup', up)
       if (scrollTimer) { clearInterval(scrollTimer); scrollTimer = null }
 
       const stepsY = Math.round((ue.clientY - sy) / PX_PER_15MIN)
-      const stepsX = Math.round((ue.clientX - sx) / colW)
+      const stepsX = window.innerWidth < 768 ? 0 : Math.round((ue.clientX - sx) / colW)
 
       // 记录旧位置
       const oldRect = el.getBoundingClientRect()
@@ -204,8 +213,32 @@ export default function EventBlockItem({ event, onEdit, isHighlighted, compact, 
         })
       })
     }
-    window.addEventListener('mousemove', move); window.addEventListener('mouseup', up)
+    window.addEventListener('pointermove', move); window.addEventListener('pointerup', up)
   }, [event.id, event.startTime, event.endTime])
+
+  const clearLongPress = () => {
+    if (longPressTimerRef.current !== null) window.clearTimeout(longPressTimerRef.current)
+    longPressTimerRef.current = null
+    touchStartRef.current = null
+  }
+
+  const handleTouchStart = (e: React.PointerEvent) => {
+    if (e.pointerType !== 'touch' || (e.target as HTMLElement).closest('.touch-drag-handle, .touch-resize-handle')) return
+    touchStartRef.current = { x: e.clientX, y: e.clientY }
+    longPressTimerRef.current = window.setTimeout(() => {
+      setContextMenu({ x: e.clientX, y: e.clientY })
+      navigator.vibrate?.(20)
+      longPressTriggeredRef.current = true
+      longPressTimerRef.current = null
+    }, 550)
+  }
+
+  const handleTouchMove = (e: React.PointerEvent) => {
+    const start = touchStartRef.current
+    if (e.pointerType === 'touch' && start && Math.hypot(e.clientX - start.x, e.clientY - start.y) > 8) clearLongPress()
+  }
+
+  useEffect(() => clearLongPress, [])
 
   const handleDoubleClick = (e: React.MouseEvent) => {
     if ((e.target as HTMLElement).closest('button')) return
@@ -218,7 +251,7 @@ export default function EventBlockItem({ event, onEdit, isHighlighted, compact, 
 
   if (compact) {
     return (
-      <div onClick={(e) => { if (e.ctrlKey || e.metaKey) toggleMultiSelect(event.id); else setSelectedEvent(event.id) }}
+      <div onClick={(e) => { if (e.ctrlKey || e.metaKey) toggleMultiSelect(event.id); else { setSelectedEvent(event.id); if (isMobile) setIsEventPanelOpen(true) } }}
         className={`group relative rounded px-2 py-1 text-xs font-medium cursor-pointer truncate transition-shadow ${
           selectedEventId === event.id ? 'ring-2 ring-blue-500 dark:ring-blue-400 z-10' : ''
         } ${selectedEventIds.has(event.id) ? 'brightness-110 saturate-150' : ''}`}
@@ -231,13 +264,24 @@ export default function EventBlockItem({ event, onEdit, isHighlighted, compact, 
   return (
     <>
       <div ref={containerRef}
-        draggable
+        draggable={!isMobile}
         onDragStart={(e) => {
           setDraggedEvent(event.id)
           e.dataTransfer.effectAllowed = 'move'
           e.dataTransfer.setData('text/plain', event.id)
         }}
-        onClick={(e) => { if (e.ctrlKey || e.metaKey) toggleMultiSelect(event.id); else setSelectedEvent(event.id) }}
+        onPointerDown={handleTouchStart}
+        onPointerMove={handleTouchMove}
+        onPointerUp={clearLongPress}
+        onPointerCancel={clearLongPress}
+        onClick={(e) => {
+          if (longPressTriggeredRef.current) { longPressTriggeredRef.current = false; return }
+          if (e.ctrlKey || e.metaKey) toggleMultiSelect(event.id)
+          else {
+            setSelectedEvent(event.id)
+            if (isMobile) useUIStore.getState().setIsRightPanelOpen(true)
+          }
+        }}
         onDoubleClick={handleDoubleClick}
         onContextMenu={e => { e.preventDefault(); e.stopPropagation(); setContextMenu(prev => prev ? null : { x: e.clientX, y: e.clientY }) }}
         id={`event-${event.id}`}
@@ -257,16 +301,16 @@ export default function EventBlockItem({ event, onEdit, isHighlighted, compact, 
         }}>
 
         {/* 上边缘调整手柄 */}
-        <div onMouseDown={e => startResize(e, 'top')} className="absolute top-0 left-0 right-0 h-2 cursor-ns-resize hover:bg-white/20 rounded-t-lg z-10" />
+        <div onPointerDown={e => startResize(e, 'top')} className="touch-resize-handle absolute top-0 left-0 right-0 h-3 md:h-2 cursor-ns-resize hover:bg-white/20 rounded-t-lg z-10" />
         {/* 下边缘调整手柄 */}
-        <div onMouseDown={e => startResize(e, 'bottom')} className="absolute bottom-0 left-0 right-0 h-2 cursor-ns-resize hover:bg-white/20 rounded-b-lg z-10" />
+        <div onPointerDown={e => startResize(e, 'bottom')} className="touch-resize-handle absolute bottom-0 left-0 right-0 h-3 md:h-2 cursor-ns-resize hover:bg-white/20 rounded-b-lg z-10" />
 
         {/* 跨天延续指示器 */}
         {continuesBefore && <div className="absolute top-0 left-0 right-0 h-2 bg-gradient-to-b from-white/20 to-transparent pointer-events-none" />}
         {continuesAfter && <div className="absolute bottom-0 left-0 right-0 h-2 bg-gradient-to-b from-transparent to-white/20 pointer-events-none" />}
 
         {/* 中间拖拽区域 */}
-        <div onMouseDown={startMove} className="cursor-grab active:cursor-grabbing flex-1 flex flex-col justify-center overflow-visible" style={{ minHeight: 0 }}>
+        <div onPointerDown={startMove} className="cursor-grab active:cursor-grabbing flex-1 flex flex-col justify-center overflow-visible" style={{ minHeight: 0 }}>
           <div className="line-clamp-3">
             <div className="font-bold flex items-start gap-1">
               <span className="flex-shrink-0">{eventType?.emoji}</span>
@@ -275,6 +319,13 @@ export default function EventBlockItem({ event, onEdit, isHighlighted, compact, 
             <div className="opacity-90 whitespace-nowrap">{timeDisplay}</div>
           </div>
         </div>
+
+        {isMobile && selectedEventId === event.id && (
+          <button type="button" aria-label="拖动事件" onPointerDown={startMove}
+            className="touch-drag-handle absolute bottom-3 right-1 z-20 flex h-8 w-8 items-center justify-center rounded-lg bg-black/20 text-white backdrop-blur-sm">
+            <GripVertical className="h-4 w-4" />
+          </button>
+        )}
 
         {/* 右上角：事件组 emoji + 缩写，替代三点菜单 */}
         {showGroupEmoji && displayGroup && (

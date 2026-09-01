@@ -33,6 +33,7 @@ export default function LeftSidebar() {
 
   const addGroup = useEventGroupStore((s) => s.addGroup)
   const deleteGroup = useEventGroupStore((s) => s.deleteGroup)
+  const deleteGroups = useEventGroupStore((s) => s.deleteGroups)
   const updateGroup = useEventGroupStore((s) => s.updateGroup)
   const moveGroupUp = useEventGroupStore((s) => s.moveGroupUp)
   const moveGroupDown = useEventGroupStore((s) => s.moveGroupDown)
@@ -146,7 +147,7 @@ export default function LeftSidebar() {
   const handleDeleteSelected = async () => {
     if (selectedGroupIds.size === 0) return
     const ok = await dialogConfirm(`确定删除选中的 ${selectedGroupIds.size} 个事件组吗？`, '批量删除', 'danger')
-    if (ok) { selectedGroupIds.forEach(id => deleteGroup(id)); clearGroupSelect(); setEditMode(false); useUIStore.getState().addToast(`已批量删除 · Ctrl+Z 撤回`, '撤回', () => { useEventStore.getState().undo() }) }
+    if (ok) { deleteGroups(Array.from(selectedGroupIds)); clearGroupSelect(); setEditMode(false); useUIStore.getState().addToast(`已批量删除 · Ctrl+Z 撤回`, '撤回', () => { useEventStore.getState().undo() }) }
     sideSelection.groupIds = new Set(selectedGroupIds)
   }
   const handleGroupClick = (g: EventGroup) => {
@@ -175,9 +176,7 @@ export default function LeftSidebar() {
     if (!mergeModal || mergeModal.order.length < 2) return
     const targetId = mergeModal.order[0]
     const sources = mergeModal.order.slice(1)
-    for (const sid of sources) {
-      useEventGroupStore.getState().mergeGroups(targetId, sid)
-    }
+    mergeGroups(targetId, sources)
     useUIStore.getState().addToast(`已合并 ${mergeModal.order.length} 个事件组 · Ctrl+Z 撤回`, '撤回', () => { useEventStore.getState().undo() })
     setMergeModal(null)
     clearGroupSelect()
@@ -206,8 +205,7 @@ export default function LeftSidebar() {
         const es = useEventStore.getState()
         const gs = useEventGroupStore.getState()
 
-        gs.pushHistory()
-        es.pushHistory()
+        es.pushHistory('删除事件组', [{ type: 'group', id: g.id, name: g.name }])
 
         const chainIdsToDelete = new Set(g.eventChainIds)
         const eventIdsToDelete = new Set(g.eventIds)
@@ -276,7 +274,7 @@ export default function LeftSidebar() {
   )
 
   return (
-    <div ref={containerRef} className="w-[min(20vw,18rem)] bg-white/90 dark:bg-slate-900/90 border-r border-slate-200/60 dark:border-slate-800/60 flex flex-col overflow-hidden">
+    <div ref={containerRef} className="h-full w-full md:w-[min(20vw,18rem)] bg-white/95 dark:bg-slate-900/95 border-r border-slate-200/60 dark:border-slate-800/60 flex flex-col overflow-hidden">
       {/* 顶部栏 */}
       <div className="flex items-center justify-between px-3 py-2.5 border-b border-slate-200/60 dark:border-slate-800/60 flex-shrink-0">
         <span className="text-[11px] font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider">导航</span>

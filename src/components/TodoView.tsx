@@ -226,7 +226,7 @@ export default function TodoView() {
   return (
     <>
     <div
-      className="w-[min(22vw,20rem)] bg-white dark:bg-slate-800 border-l border-slate-200 dark:border-slate-700/60 flex flex-col overflow-hidden"
+      className="h-full w-full md:w-[min(22vw,20rem)] bg-white dark:bg-slate-800 border-l border-slate-200 dark:border-slate-700/60 flex flex-col overflow-hidden"
       onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = 'move' }}
       onDrop={(e) => {
         e.preventDefault()

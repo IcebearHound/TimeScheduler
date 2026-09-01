@@ -24,6 +24,7 @@ interface EventGroupStore {
   addGroup: (group: Omit<EventGroup, 'id' | 'createdAt' | 'updatedAt'>) => EventGroup
   updateGroup: (id: string, updates: Partial<EventGroup>) => void
   deleteGroup: (id: string) => void
+  deleteGroups: (ids: string[]) => void
   getGroup: (id: string) => EventGroup | undefined
   getAllGroups: () => EventGroup[]
   getOrderedGroups: () => EventGroup[]
@@ -38,7 +39,7 @@ interface EventGroupStore {
   addEventToGroup: (groupId: string, eventId: string) => void
   removeEventFromGroup: (groupId: string, eventId: string) => void
 
-  mergeGroups: (groupId1: string, groupId2: string) => void
+  mergeGroups: (targetId: string, sourceIds: string[]) => void
 
   toggleGroupIncludeInTodo: (groupId: string) => void
 
@@ -124,13 +125,25 @@ const useEventGroupStore = create<EventGroupStore>()(
     },
 
     deleteGroup: (id) => {
-      const group = get().groups.get(id)
-      if (!group) return
-      get().pushHistory('删除事件组', [{ type: 'group', id, name: group.name }])
+      get().deleteGroups([id])
+    },
+
+    deleteGroups: (ids) => {
+      const groupsToDelete = ids
+        .map(id => get().groups.get(id))
+        .filter(Boolean) as EventGroup[]
+      if (groupsToDelete.length === 0) return
+
+      const idSet = new Set(groupsToDelete.map(group => group.id))
+      get().pushHistory(
+        groupsToDelete.length === 1 ? '删除事件组' : '批量删除事件组',
+        groupsToDelete.map(group => ({ type: 'group' as const, id: group.id, name: group.name })),
+      )
       set((s) => {
-        const ng = new Map(s.groups); ng.delete(id)
-        const no = s.groupOrder.filter(i => i !== id)
-        let newActive = s.activeGroupId === id ? (no[0] || '') : s.activeGroupId
+        const ng = new Map(s.groups)
+        for (const id of idSet) ng.delete(id)
+        const no = s.groupOrder.filter(id => !idSet.has(id))
+        let newActive = idSet.has(s.activeGroupId) ? (no[0] || '') : s.activeGroupId
         if (ng.size === 0) {
           const dg: EventGroup = {
             id: generateId('group'), name: '默认事件组', emoji: '📁',
@@ -228,15 +241,44 @@ const useEventGroupStore = create<EventGroupStore>()(
       get().updateGroup(groupId, { eventIds: group.eventIds.filter(id => id !== eventId) })
     },
 
-    mergeGroups: (groupId1, groupId2) => {
-      const g1 = get().groups.get(groupId1)
-      const g2 = get().groups.get(groupId2)
-      if (!g1 || !g2 || groupId1 === groupId2) return
-      get().updateGroup(groupId1, {
-        eventChainIds: Array.from(new Set([...g1.eventChainIds, ...g2.eventChainIds])),
-        eventIds: Array.from(new Set([...g1.eventIds, ...g2.eventIds])),
+    mergeGroups: (targetId, sourceIds) => {
+      const target = get().groups.get(targetId)
+      if (!target) return
+      const sources = sourceIds
+        .filter(id => id !== targetId)
+        .map(id => get().groups.get(id))
+        .filter(Boolean) as EventGroup[]
+      if (sources.length === 0) return
+
+      get().pushHistory('合并事件组', [
+        { type: 'group', id: target.id, name: target.name },
+        ...sources.map(group => ({ type: 'group' as const, id: group.id, name: group.name })),
+      ])
+
+      const sourceIdSet = new Set(sources.map(group => group.id))
+      const eventChainIds = new Set(target.eventChainIds)
+      const eventIds = new Set(target.eventIds)
+      for (const source of sources) {
+        source.eventChainIds.forEach(id => eventChainIds.add(id))
+        source.eventIds.forEach(id => eventIds.add(id))
+      }
+
+      set((state) => {
+        const groups = new Map(state.groups)
+        sourceIdSet.forEach(id => groups.delete(id))
+        groups.set(targetId, {
+          ...target,
+          eventChainIds: Array.from(eventChainIds),
+          eventIds: Array.from(eventIds),
+          updatedAt: new Date(),
+        })
+        return {
+          groups,
+          groupOrder: state.groupOrder.filter(id => !sourceIdSet.has(id)),
+          activeGroupId: sourceIdSet.has(state.activeGroupId) ? targetId : state.activeGroupId,
+        }
       })
-      get().deleteGroup(groupId2)
+      get().save()
     },
 
     toggleGroupIncludeInTodo: (groupId) => {

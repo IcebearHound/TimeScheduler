@@ -8,6 +8,7 @@ import useEventStore from '../../stores/eventStore'
 import useEventGroupStore from '../../stores/eventGroupStore'
 import { getStartOfWeek } from '../../utils/dateUtils'
 import { isJumping } from '../../utils/scrollTarget'
+import { useMediaQuery } from '../../utils/useMediaQuery'
 import DayColumn from './DayColumn'
 
 const DAY_NAMES = ['周一', '周二', '周三', '周四', '周五', '周六', '周日']
@@ -25,6 +26,7 @@ function getDays(date: Date, count: number): Date[] {
 }
 
 export default function WeekView() {
+  const isMobile = useMediaQuery('(max-width: 767px)')
   const scrollRef = useRef<HTMLDivElement>(null)
   const currentDate = useUIStore((s) => s.currentDate)
   const setCurrentDate = useUIStore((s) => s.setCurrentDate)
@@ -50,7 +52,7 @@ export default function WeekView() {
     return ids
   }, [hiddenGroupIds, groupStore, eventStore, events])
 
-  const [dayCount, setDayCount] = useState(7)
+  const [dayCount, setDayCount] = useState(() => window.matchMedia('(max-width: 767px)').matches ? 1 : 7)
   const weekStart = useMemo(() => getStartOfWeek(currentDate, 1), [currentDate])
   const viewDays = useMemo(() => getDays(currentDate, dayCount), [currentDate, dayCount])
   const weekEnd = new Date(weekStart.getTime() + 7 * 24 * 60 * 60 * 1000)
@@ -60,6 +62,10 @@ export default function WeekView() {
     const calc = () => { setSlotH(Math.max(40, Math.floor((window.innerHeight - 130) / 24))) }
     calc(); window.addEventListener('resize', calc); return () => window.removeEventListener('resize', calc)
   }, [])
+
+  useEffect(() => {
+    if (isMobile && dayCount > 3) setDayCount(1)
+  }, [isMobile, dayCount])
 
   useEffect(() => {
     if (scrollRef.current && !isJumping()) scrollRef.current.scrollTop = 6 * slotH
@@ -91,11 +97,11 @@ export default function WeekView() {
   return (
     <div className="h-full flex flex-col bg-white dark:bg-slate-900 overflow-hidden">
       {/* 顶部导航栏 */}
-      <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200/60 dark:border-slate-800/60 flex-shrink-0">
-        <div className="flex items-center gap-4">
+      <div className="flex items-center justify-between px-3 py-2 md:px-6 md:py-4 border-b border-slate-200/60 dark:border-slate-800/60 flex-shrink-0">
+        <div className="flex min-w-0 items-center gap-1 md:gap-4">
           <button onClick={() => { const p = new Date(currentDate); p.setDate(p.getDate() - dayCount); setCurrentDate(p) }}
             className="p-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-colors"><ChevronLeft className="w-5 h-5 text-slate-600 dark:text-slate-300" /></button>
-          <h2 className="text-lg font-bold text-slate-900 dark:text-white min-w-40">
+          <h2 className="truncate text-sm md:text-lg font-bold text-slate-900 dark:text-white md:min-w-40">
             {viewDays[0].toLocaleDateString('zh-CN', { month: 'numeric', day: 'numeric' })} - {
               viewDays[viewDays.length - 1].toLocaleDateString('zh-CN', { month: 'numeric', day: 'numeric' })}
           </h2>
@@ -103,9 +109,9 @@ export default function WeekView() {
             className="p-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-colors"><ChevronRight className="w-5 h-5 text-slate-600 dark:text-slate-300" /></button>
 
           {/* 天数选择器 */}
-          <div className="flex items-center gap-1 bg-slate-100 dark:bg-slate-700 rounded-lg p-0.5 ml-2">
-            <Columns className="w-3.5 h-3.5 text-slate-400 ml-1" />
-            {DAY_OPTIONS.map(n => (
+          <div className="flex items-center gap-1 bg-slate-100 dark:bg-slate-700 rounded-lg p-0.5 ml-1 md:ml-2">
+            <Columns className="hidden md:block w-3.5 h-3.5 text-slate-400 ml-1" />
+            {DAY_OPTIONS.filter(n => !isMobile || n <= 3).map(n => (
               <button key={n} onClick={() => setDayCount(n)}
                 className={`px-2 py-1 rounded text-xs font-medium transition-colors ${
                   dayCount === n ? 'bg-white dark:bg-slate-700 text-accent-600 dark:text-accent-400 shadow-sm' : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200'
@@ -113,7 +119,7 @@ export default function WeekView() {
             ))}
           </div>
         </div>
-        {selectedChainId && (
+        {selectedChainId && !isMobile && (
           <div className="flex items-center gap-2">
             {chainNav.before && (
               <button onClick={() => { const p = new Date(currentDate); p.setDate(p.getDate() - dayCount); setCurrentDate(p) }}
@@ -128,13 +134,12 @@ export default function WeekView() {
             className="px-3 py-1.5 text-xs font-medium rounded-lg bg-accent-50 dark:bg-accent-900/20 text-accent-700 dark:text-accent-300 hover:bg-accent-100 dark:hover:bg-accent-900/30 shadow-sm transition-colors">
             今天
           </button>
-          <button onClick={() => {
+          <button className="hidden md:block px-3 py-1.5 text-xs font-medium rounded-lg bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 text-slate-500 dark:text-slate-400 hover:bg-accent-50 dark:hover:bg-accent-900/20 hover:text-accent-600 dark:hover:text-accent-400 hover:border-accent-200 dark:hover:border-accent-700 shadow-sm transition-colors" onClick={() => {
             setDayCount(7)
             const mon = new Date(currentDate)
             mon.setDate(mon.getDate() - ((mon.getDay() + 6) % 7))
             setCurrentDate(mon)
-          }}
-            className="px-3 py-1.5 text-xs font-medium rounded-lg bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 text-slate-500 dark:text-slate-400 hover:bg-accent-50 dark:hover:bg-accent-900/20 hover:text-accent-600 dark:hover:text-accent-400 hover:border-accent-200 dark:hover:border-accent-700 shadow-sm transition-colors">
+          }}>
             📅 标准周
           </button>
         </div>
@@ -148,7 +153,7 @@ export default function WeekView() {
           const dow = d.getDay() || 7
           const isToday = d.toDateString() === new Date().toDateString()
           return (
-            <div key={d.toISOString()} className={`bg-white dark:bg-slate-800 px-4 py-3 ${isToday ? 'ring-2 ring-accent-500 ring-inset' : ''}`}>
+            <div key={d.toISOString()} className={`bg-white dark:bg-slate-800 px-3 py-2 md:px-4 md:py-3 ${isToday ? 'ring-2 ring-accent-500 ring-inset' : ''}`}>
               <div className={`font-bold ${isToday ? 'text-accent-600 dark:text-accent-400' : 'text-slate-900 dark:text-white'}`}>{DAY_NAMES[dow - 1]}</div>
               <div className={`text-sm ${isToday ? 'text-accent-500 dark:text-accent-400 font-semibold' : 'text-slate-500 dark:text-slate-400'}`}>{d.toLocaleDateString('zh-CN', { month: 'numeric', day: 'numeric' })}</div>
             </div>

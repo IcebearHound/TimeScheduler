@@ -391,7 +391,12 @@ const useEventStore = create<EventStore>()(
     mergeEventChains: (targetId, sourceIds) => {
       const target = get().eventChains.get(targetId)
       if (!target) return
-      const sources = sourceIds.map(sid => get().eventChains.get(sid)).filter(Boolean) as EventChain[]
+      const sources = sourceIds
+        .filter(sid => sid !== targetId)
+        .map(sid => get().eventChains.get(sid))
+        .filter(Boolean) as EventChain[]
+      if (sources.length === 0) return
+
       const affected: Array<{ type: 'chain'; id: string; name: string }> = [
         { type: 'chain', id: targetId, name: target.name },
         ...sources.map(c => ({ type: 'chain' as const, id: c.id, name: c.name })),
@@ -399,57 +404,62 @@ const useEventStore = create<EventStore>()(
       get().pushHistory('合并事件链', affected)
 
       const mergedBatchRules = [...(target.batchRules || [])]
-
-      for (const sid of sourceIds) {
-        if (sid === targetId) continue
-        const src = get().eventChains.get(sid)
-        if (src) {
-          // 保留源链的批处理规则（去重）
-          for (const rule of (src.batchRules || [])) {
-            if (!mergedBatchRules.some(r => r.name === rule.name)) {
-              mergedBatchRules.push(rule)
-            }
-          }
+      for (const source of sources) {
+        for (const rule of (source.batchRules || [])) {
+          if (!mergedBatchRules.some(r => r.name === rule.name)) mergedBatchRules.push(rule)
         }
-
-        const srcEvents = get().getEventsByChain(sid)
-        srcEvents.forEach(e => {
-          const targetEvents = get().getEventsByChain(targetId)
-          const conflicts = targetEvents.some(
-            te => te.name === e.name &&
-            new Date(te.startTime).getTime() === new Date(e.startTime).getTime()
-          )
-          if (conflicts) {
-            // 冲突事件：分配新ID避免覆盖，标记为"(合并)"
-            get().deleteEvent(e.id)
-            get().addEvent({
-              name: e.name + ' (合并)',
-              description: e.description,
-              startTime: new Date(e.startTime),
-              endTime: new Date(e.endTime),
-              chainId: targetId,
-              typeId: e.typeId,
-              reminders: [...(e.reminders || [])],
-              properties: { ...e.properties },
-              isHighlight: e.isHighlight,
-              priority: e.priority,
-            })
-          } else {
-            get().updateEvent(e.id, { chainId: targetId })
-          }
-        })
-
-        set((s) => {
-          const nc = new Map(s.eventChains)
-          nc.delete(sid)
-          return { eventChains: nc }
-        })
       }
 
-      // 更新目标链的批处理规则
-      if (mergedBatchRules.length > 0) {
-        get().updateEventChain(targetId, { batchRules: mergedBatchRules })
+      const sourceIdSet = new Set(sources.map(source => source.id))
+      const now = new Date()
+      const nextEvents = new Map(get().events)
+      const nextChains = new Map(get().eventChains)
+      const targetSignatures = new Set(
+        Array.from(nextEvents.values())
+          .filter(event => event.chainId === targetId)
+          .map(event => `${event.name}\u0000${new Date(event.startTime).getTime()}`),
+      )
+      const replacedEventIds = new Map<string, string>()
+
+      for (const event of Array.from(nextEvents.values())) {
+        if (!sourceIdSet.has(event.chainId)) continue
+        const signature = `${event.name}\u0000${new Date(event.startTime).getTime()}`
+
+        if (targetSignatures.has(signature)) {
+          const newId = generateId('event')
+          nextEvents.delete(event.id)
+          nextEvents.set(newId, {
+            ...event,
+            id: newId,
+            name: `${event.name} (合并)`,
+            chainId: targetId,
+            createdAt: now,
+            updatedAt: now,
+          })
+          replacedEventIds.set(event.id, newId)
+        } else {
+          nextEvents.set(event.id, { ...event, chainId: targetId, updatedAt: now })
+          targetSignatures.add(signature)
+        }
       }
+
+      for (const source of sources) nextChains.delete(source.id)
+      nextChains.set(targetId, { ...target, batchRules: mergedBatchRules, updatedAt: now })
+      set({ events: nextEvents, eventChains: nextChains })
+
+      const groupStore = useEventGroupStore.getState()
+      const nextGroups = new Map(groupStore.groups)
+      for (const [groupId, group] of nextGroups) {
+        const containsSource = group.eventChainIds.some(id => sourceIdSet.has(id))
+        const eventIds = group.eventIds.map(id => replacedEventIds.get(id) || id)
+        const eventChainIds = group.eventChainIds.filter(id => !sourceIdSet.has(id))
+        if (containsSource && !eventChainIds.includes(targetId)) eventChainIds.push(targetId)
+        if (containsSource || eventIds.some((id, index) => id !== group.eventIds[index])) {
+          nextGroups.set(groupId, { ...group, eventChainIds, eventIds, updatedAt: now })
+        }
+      }
+      useEventGroupStore.setState({ groups: nextGroups })
+      groupStore.save()
       get().save()
     },
 

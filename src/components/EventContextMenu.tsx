@@ -217,7 +217,7 @@ export default function EventContextMenu({ event, position, anchorRef, onClose, 
 
   // 使用 portal 渲染到 body，避免被事件块遮挡
   const menuEl = (
-     <div ref={menuRef} className="fixed bg-white/95 dark:bg-slate-800/95 backdrop-blur-md rounded-xl shadow-overlay z-[9999] border border-slate-200/60 dark:border-slate-700/60 min-w-44 animate-popover-in"
+     <div ref={menuRef} className="event-context-menu fixed bg-white/95 dark:bg-slate-800/95 backdrop-blur-md rounded-xl shadow-overlay z-[9999] border border-slate-200/60 dark:border-slate-700/60 min-w-44 animate-popover-in"
       style={{ left: Math.min(position.x, window.innerWidth - 280), top: Math.min(position.y, window.innerHeight - 420) }}>
       {/* ===== 第一区: 基本操作 ===== */}
       <button onClick={handleDuplicate}
