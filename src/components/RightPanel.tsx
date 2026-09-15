@@ -2,7 +2,7 @@
  * 右侧面板 - 改动即保存，顶部色条显示可切换事件链
  */
 import React, { useState, useEffect, useCallback, useRef } from 'react'
-import { Clock, MapPin, User, BookOpen, Star, Bell, Link, PanelRightClose, ChevronDown, ChevronRight, Plus, Settings, Pencil, X } from 'lucide-react'
+import { Clock, MapPin, User, BookOpen, Star, Bell, Link, ChevronDown, ChevronRight, Plus, Settings, Pencil, X } from 'lucide-react'
 import useUIStore from '../stores/uiStore'
 import useEventStore from '../stores/eventStore'
 import useEventGroupStore from '../stores/eventGroupStore'
@@ -37,7 +37,6 @@ const CN_TO_EN: Record<string, string> = {
 export default function RightPanel() {
   const selectedEventId = useUIStore((s) => s.selectedEventId)
   const setSelectedEvent = useUIStore((s) => s.setSelectedEvent)
-  const setIsRightPanelOpen = useUIStore((s) => s.setIsRightPanelOpen)
   const setOpenPopoverEventId = useUIStore((s) => s.setOpenPopoverEventId)
   const setCurrentDate = useUIStore((s) => s.setCurrentDate)
   const setIsTypeManagerOpen = useUIStore((s) => s.setIsTypeManagerOpen)
@@ -285,7 +284,6 @@ export default function RightPanel() {
         {/* 标题栏 + 折叠 */}
         <div className="flex items-center justify-between">
           <span className="text-xs text-slate-400">事件详情</span>
-          <button aria-label="收起详情面板" onClick={() => setIsRightPanelOpen(false)} className="hidden desktop:block p-1 hover:bg-slate-100 dark:hover:bg-slate-800 rounded text-slate-400"><PanelRightClose className="w-3.5 h-3.5" /></button>
         </div>
 
         {/* 类型 + 重点 */}

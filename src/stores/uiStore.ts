@@ -35,6 +35,10 @@ interface UIStore {
   setIsLeftSidebarOpen: (open: boolean) => void
   isRightPanelOpen: boolean
   setIsRightPanelOpen: (open: boolean) => void
+  rightPanelTab: 'todo' | 'assignments' | 'details'
+  openRightPanelTab: (tab: 'todo' | 'assignments' | 'details') => void
+  rightPanelExpanded: boolean
+  setRightPanelExpanded: (expanded: boolean) => void
 
   isEventPanelOpen: boolean
   setIsEventPanelOpen: (open: boolean) => void
@@ -142,7 +146,7 @@ const useUIStore = create<UIStore>()(
     setCurrentDate: (date) => set({ currentDate: date }),
 
     selectedEventId: undefined,
-    setSelectedEvent: (id) => set({ selectedEventId: id }),
+    setSelectedEvent: (id) => set(s => ({ selectedEventId: id, rightPanelTab: id ? 'details' : s.rightPanelTab === 'details' ? 'todo' : s.rightPanelTab })),
     selectedEventIds: new Set(),
     toggleMultiSelect: (id) => set(s => {
       const ns = new Set(s.selectedEventIds)
@@ -164,7 +168,11 @@ const useUIStore = create<UIStore>()(
     isLeftSidebarOpen: true,
     setIsLeftSidebarOpen: (open) => set({ isLeftSidebarOpen: open }),
     isRightPanelOpen: true,
-    setIsRightPanelOpen: (open) => set({ isRightPanelOpen: open }),
+    setIsRightPanelOpen: (open) => set(s => ({ isRightPanelOpen: open, rightPanelExpanded: open && s.rightPanelExpanded })),
+    rightPanelTab: 'todo',
+    openRightPanelTab: (tab) => set({ rightPanelTab: tab, isRightPanelOpen: true }),
+    rightPanelExpanded: false,
+    setRightPanelExpanded: (expanded) => set({ rightPanelExpanded: expanded }),
 
     isEventPanelOpen: false,
     setIsEventPanelOpen: (open) => set({ isEventPanelOpen: open }),

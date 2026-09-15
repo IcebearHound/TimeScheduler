@@ -32,6 +32,8 @@ const swipe = async (locator, dy, dx = 0, cancel = false) => {
 }
 const check = async sheet => {
   await visible(sheet)
+  // visualViewport resize and React's layout update arrive after setViewportSize resolves.
+  await page.waitForFunction(el => { const box = el.getBoundingClientRect(); return box.height <= innerHeight * .79 && box.x >= 15 && box.right <= innerWidth - 15 }, await sheet.elementHandle(), { timeout: 3000 })
   const box = await sheet.boundingBox(), view = page.viewportSize()
   assert.ok(box.height <= view.height * .79 && box.x >= 15 && box.x + box.width <= view.width - 15, 'Panel should leave visible margins')
   const button = sheet.locator('.mobile-sheet-close'), close = await button.boundingBox()
@@ -40,7 +42,8 @@ const check = async sheet => {
 }
 const outside = async sheet => { const box = await sheet.boundingBox(); await page.touchscreen.tap(5, box.y + 25); await sheet.waitFor({ state: 'hidden' }) }
 const closeTap = async sheet => { await sheet.locator('.mobile-sheet-close').tap(); await sheet.waitFor({ state: 'hidden' }) }
-const openNew = async () => { await page.getByRole('button', { name: '新建事件', exact: true }).tap(); const sheet = page.locator('[data-mobile-sheet="新建事件"]'); await check(sheet); return sheet }
+// Opening is test setup; dismissal itself always uses touch, including after content scrolling.
+const openNew = async () => { await page.getByRole('button', { name: '新建事件', exact: true }).click(); const sheet = page.locator('[data-mobile-sheet="新建事件"]'); await check(sheet); return sheet }
 try {
   await page.addInitScript(() => { window.__touchLog = []; for (const type of ['pointerdown', 'pointerup', 'pointercancel', 'click']) document.addEventListener(type, e => { window.__touchLog.push([type, e.pointerId, e.clientX, e.clientY, e.target.closest?.('button')?.getAttribute('aria-label') || e.target.tagName]); window.__touchLog = window.__touchLog.slice(-30) }, true); localStorage.setItem('hasSeenWelcomeGuide', 'true'); localStorage.setItem('notificationPromptSeen', 'true') })
   await page.goto(url)

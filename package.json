@@ -34,6 +34,7 @@
     "deploy:auth": "npx --yes wrangler@4 deploy --config worker/wrangler.jsonc",
     "test:workspace": "npm run build && node scripts/test-workspace.mjs",
     "test:mobile-panels": "npm run build && node scripts/test-mobile-panels.mjs",
+    "test:assignment-sidebar": "npm run build && node scripts/test-assignment-sidebar.mjs",
     "test:mobile": "npm run build && node scripts/test-mobile.mjs",
     "test:cloud": "node --import tsx scripts/test-cloud.mjs"
   },

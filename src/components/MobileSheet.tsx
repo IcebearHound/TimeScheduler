@@ -8,8 +8,8 @@ const stack: number[] = []
 const viewport = () => ({ top: window.visualViewport?.offsetTop || 0, height: window.visualViewport?.height || window.innerHeight })
 
 /** Mobile modal with a fixed dismissal header and an independently scrolling body. */
-export default function MobileSheet({ title, closeLabel, onClose, children, fill = false }: {
-  title: string; closeLabel?: string; onClose: () => void; children: ReactNode; fill?: boolean
+export default function MobileSheet({ title, closeLabel, onClose, children, fill = false, expanded = false, onEscape, horizontalScroll = false }: {
+  title: string; closeLabel?: string; onClose: () => void; children: ReactNode; fill?: boolean; expanded?: boolean; onEscape?: () => void; horizontalScroll?: boolean
 }) {
   const [id] = useState(() => ++sequence)
   const [layer] = useState(() => 180 + stack.length * 2)
@@ -18,6 +18,7 @@ export default function MobileSheet({ title, closeLabel, onClose, children, fill
   const panel = useRef<HTMLDivElement>(null)
   const closeButton = useRef<HTMLButtonElement>(null)
   const close = useRef(onClose); close.current = onClose
+  const escape = useRef(onEscape); escape.current = onEscape
   const gesture = useRef<{ id: number; x: number; y: number } | null>(null)
   const beganOutside = useRef(false)
   const outsideTouch = useRef<{ x: number; y: number } | null>(null)
@@ -34,6 +35,7 @@ export default function MobileSheet({ title, closeLabel, onClose, children, fill
       if (event.key === 'Escape') {
         event.preventDefault(); event.stopImmediatePropagation()
         if (ui.dialogConfig) { ui.dialogConfig.onCancel?.(); ui.closeDialog() }
+        else if (escape.current) escape.current()
         else dismiss()
       }
       if (ui.dialogConfig) return
@@ -56,7 +58,7 @@ export default function MobileSheet({ title, closeLabel, onClose, children, fill
       if (previous?.isConnected) previous.focus({ preventScroll: true })
     }
   }, [id])
-  const height = Math.min(view.height * .78, 680)
+  const height = expanded ? view.height - 32 : Math.min(view.height * .78, 680)
   return createPortal(<div data-sheet-backdrop={title} className="mobile-sheet-backdrop" style={{ top: view.top, height: view.height, zIndex: layer }}
     onPointerDown={e => { beganOutside.current = e.target === e.currentTarget; outsideTouch.current = beganOutside.current && e.pointerType !== 'mouse' ? { x: e.clientX, y: e.clientY } : null }}
     onPointerUp={e => {
@@ -65,7 +67,7 @@ export default function MobileSheet({ title, closeLabel, onClose, children, fill
     }}
     onPointerCancel={() => { outsideTouch.current = null }}
     onClick={e => { if (e.target === e.currentTarget && beganOutside.current) dismiss() }}>
-    <div ref={panel} role="dialog" aria-modal="true" aria-label={title} data-mobile-sheet={title} className="mobile-sheet" style={{ maxHeight: height, ...(fill ? { height } : {}), transform: offset ? `translateY(${offset}px)` : undefined } as CSSProperties}>
+    <div ref={panel} role="dialog" aria-modal="true" aria-label={title} data-mobile-sheet={title} className="mobile-sheet" style={{ maxHeight: height, ...(expanded ? { maxWidth: 'none' } : {}), ...(fill ? { height } : {}), transform: offset ? `translateY(${offset}px)` : undefined } as CSSProperties}>
       <header className="mobile-sheet-header" data-sheet-drag
         onPointerDown={e => {
           if (!e.isPrimary || e.button !== 0 || (e.target as HTMLElement).closest('button')) return
@@ -93,7 +95,7 @@ export default function MobileSheet({ title, closeLabel, onClose, children, fill
             }}><X size={20} /><span className="text-xs">关闭</span></button>
         </div>
       </header>
-      <div className="mobile-sheet-body">{children}</div>
+      <div className="mobile-sheet-body" style={horizontalScroll ? { touchAction: 'pan-x pan-y' } : undefined}>{children}</div>
     </div>
   </div>, document.body)
 }

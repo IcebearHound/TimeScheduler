@@ -1,4 +1,5 @@
-import { useMemo, useState } from 'react'
+import { useMemo, useRef, useState } from 'react'
+import AssignmentTimeline from './AssignmentTimeline'
 import * as XLSX from 'xlsx'
 import useEventStore from '../stores/eventStore'
 import { Event } from '../types/event'
@@ -12,21 +13,26 @@ export default function AssignmentPanel() {
   const [form, setForm] = useState<AssignmentRow>(empty), [editing, setEditing] = useState<string | null>(null)
   const [message, setMessage] = useState(''), [paste, setPaste] = useState(''), [preview, setPreview] = useState<{ rows: AssignmentRow[]; actions: Action[]; revision: string } | null>(null)
   const [busy, setBusy] = useState(false)
+  const editor = useRef<HTMLFormElement>(null)
+  const tasks = useMemo(() => [...events.values()].filter(e => e.properties.taskKind).sort((a, b) => +a.endTime - +b.endTime), [events])
+  const revealEditor = () => requestAnimationFrame(() => editor.current?.scrollIntoView({ block: 'start', behavior: 'smooth' }))
   const courses = useMemo(() => [...chains.values()].filter(c => types.get(c.typeId)?.category === 'course' || [...events.values()].some(e => e.chainId === c.id && e.properties.taskKind)), [chains, types, events])
-  const edit = (e: Event) => { setEditing(e.id); setForm({ course: chains.get(e.chainId)?.name || '', name: e.name, deadline: localDateTime(new Date(e.endTime)), kind: e.properties.taskKind || '作业', link: e.properties.submissionUrl || '', submission: e.properties.submissionMethod || '', content: e.properties.taskContent || '', notes: e.properties.notes || '' }) }
+  const edit = (e: Event) => { setEditing(e.id); setForm({ course: chains.get(e.chainId)?.name || '', name: e.name, deadline: localDateTime(new Date(e.endTime)), kind: e.properties.taskKind || '作业', link: e.properties.submissionUrl || '', submission: e.properties.submissionMethod || '', content: e.properties.taskContent || '', notes: e.properties.notes || '' }); revealEditor() }
   const run = async (job: () => Promise<void>) => { setBusy(true); setMessage(''); try { await job() } catch (e) { setMessage(e instanceof Error ? e.message : '操作失败') } finally { setBusy(false) } }
   const prepare = async (book: XLSX.WorkBook) => {
     const rows = readAssignmentWorkbook(book), snapshot = captureArchive()
     setPreview({ rows, actions: assignmentActions(snapshot, rows), revision: await snapshotRevision(snapshot) })
   }
-  return <div className="space-y-5">
-    <p className="text-sm text-slate-500">每门课程一条线路，灯珠表示作业或实验的验收截止时间。点击灯珠修改详情。</p>
+  return <div className="assignment-panel space-y-5">
+    <div className="flex flex-wrap gap-2"><button type="button" className="workspace-button" onClick={() => { setEditing(null); setForm(empty); revealEditor() }}>＋ 添加作业 / 实验</button></div>
+    <AssignmentTimeline courses={courses} tasks={tasks} onEdit={edit} />
+    <details className="space-y-3"><summary className="cursor-pointer text-sm font-medium">全部课程任务 · {tasks.length} 项（含历史与远期）</summary>
     <div className="space-y-3" aria-label="课程任务线路">
       {!courses.length && <p className="p-6 text-center text-slate-500">暂无课程。在下方填写课程名称即可创建事件链。</p>}
       {courses.map(c => {
         const tasks = [...events.values()].filter(e => e.chainId === c.id && e.properties.taskKind).sort((a, b) => +a.endTime - +b.endTime)
         return <div key={c.id} className="rounded-xl border border-slate-200 p-3 dark:border-slate-700">
-          <div className="flex items-center justify-between"><strong style={{ color: c.color }}>{c.name}</strong><button className="workspace-button" onClick={() => { setEditing(null); setForm({ ...empty, course: c.name }) }}>＋ 添加任务</button></div>
+          <div className="flex items-center justify-between"><strong style={{ color: c.color }}>{c.name}</strong><button className="workspace-button" onClick={() => { setEditing(null); setForm({ ...empty, course: c.name }); revealEditor() }}>＋ 添加任务</button></div>
           <div className="flex gap-6 overflow-x-auto py-3">
             {!tasks.length && <span className="text-xs text-slate-400">尚无作业 / 实验</span>}
             {tasks.map(e => <button key={e.id} onClick={() => edit(e)} className="relative min-w-32 text-left text-xs" title="修改任务详情">
@@ -39,7 +45,8 @@ export default function AssignmentPanel() {
         </div>
       })}
     </div>
-    <form className="grid gap-3 sm:grid-cols-2" onSubmit={event => { event.preventDefault(); void run(async () => {
+    </details>
+    <form ref={editor} className="assignment-form" onSubmit={event => { event.preventDefault(); void run(async () => {
       const snapshot = captureArchive(), revision = await snapshotRevision(snapshot)
       if (editing) {
         const e = events.get(editing); if (!e) throw new Error('该任务已删除')
@@ -48,7 +55,7 @@ export default function AssignmentPanel() {
       } else await applyActions(assignmentActions(snapshot, [form]), revision)
       setEditing(null); setForm({ ...empty, course: form.course }); setMessage('已保存到事件链，可撤销')
     }) }}>
-      <h3 className="font-semibold sm:col-span-2">{editing ? '修改任务详情' : '快捷添加作业 / 实验'}</h3>
+      <h3 className="font-semibold assignment-form-wide">{editing ? '修改任务详情' : '快捷添加作业 / 实验'}</h3>
       <label>课程<input required disabled={!!editing} list="course-options" className="workspace-input" value={form.course} onChange={e => setForm({ ...form, course: e.target.value })} /><datalist id="course-options">{courses.map(c => <option key={c.id} value={c.name} />)}</datalist></label>
       <label>名称<input required className="workspace-input" value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} /></label>
       <label>类别<select className="workspace-input" value={form.kind} onChange={e => setForm({ ...form, kind: e.target.value })}><option>作业</option><option>实验</option><option>项目</option><option>其他</option></select></label>
@@ -57,7 +64,7 @@ export default function AssignmentPanel() {
       <label>提交链接<input type="url" className="workspace-input" value={form.link} onChange={e => setForm({ ...form, link: e.target.value })} /></label>
       <label>作业 / 实验内容<textarea aria-label="作业 / 实验内容" className="workspace-input" value={form.content} onChange={e => setForm({ ...form, content: e.target.value })} /></label>
       <label>备注<textarea aria-label="备注" className="workspace-input" value={form.notes} onChange={e => setForm({ ...form, notes: e.target.value })} /></label>
-      <div className="flex flex-wrap gap-2 sm:col-span-2"><button disabled={busy} className="workspace-button primary">保存任务</button>{editing && <>
+      <div className="flex flex-wrap gap-2 assignment-form-wide"><button disabled={busy} className="workspace-button primary">保存任务</button>{editing && <>
         <button type="button" className="workspace-button" onClick={() => { setEditing(null); setForm(empty) }}>取消编辑</button>
         <button type="button" disabled={busy} className="workspace-button" onClick={() => void run(async () => { const e = events.get(editing)!; await applyActions([{ op: 'update_event', id: editing, changes: { properties: { ...e.properties, completed: e.properties.completed === 'true' ? 'false' : 'true' } } }], await snapshotRevision(captureArchive())); setMessage('已更新完成状态') })}>切换完成状态</button>
         {form.link && (() => { try { return <a className="workspace-button" target="_blank" rel="noreferrer" href={safeSubmissionLink(form.link)}>打开提交链接</a> } catch { return null } })()}

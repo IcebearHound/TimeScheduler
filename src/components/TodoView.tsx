@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useCallback, useRef, useEffect } from 'react'
 import {
-  PanelRightClose, Pin, Star, Clock, GripVertical, ChevronDown, ChevronRight,
+  Pin, Star, Clock, GripVertical, ChevronDown, ChevronRight,
   RefreshCw, Settings, Layers, Link2, ListTodo
 } from 'lucide-react'
 import useUIStore from '../stores/uiStore'
@@ -11,7 +11,6 @@ import EventContextMenu from './EventContextMenu'
 import { scrollToEventBlock } from '../utils/scrollTarget'
 
 export default function TodoView() {
-  const setIsRightPanelOpen = useUIStore((s) => s.setIsRightPanelOpen)
   const setSelectedEvent = useUIStore((s) => s.setSelectedEvent)
   const setCurrentDate = useUIStore((s) => s.setCurrentDate)
   const setFlashEventId = useUIStore((s) => s.setFlashEventId)
@@ -298,9 +297,6 @@ export default function TodoView() {
               </div>
             )}
           </div>
-          <button aria-label="收起详情面板" onClick={() => setIsRightPanelOpen(false)} className="hidden desktop:block p-1 hover:bg-slate-50 dark:hover:bg-slate-700/50 rounded text-slate-400">
-            <PanelRightClose className="w-3.5 h-3.5" />
-          </button>
         </div>
       </div>
 
