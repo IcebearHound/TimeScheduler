@@ -6,6 +6,7 @@ import useEventStore from '../stores/eventStore'
 import useEventGroupStore from '../stores/eventGroupStore'
 import EventChainFilter from './EventChainFilter'
 import AccountMenuEntries from './AccountMenuEntries'
+import useCloudSyncStore from '../stores/cloudSyncStore'
 import SearchDialog from './SearchDialog'
 import { dialogConfirm } from '../utils/dialog'
 import { scrollToEventBlock } from '../utils/scrollTarget'
@@ -13,6 +14,8 @@ import { parseTimeQuery } from '../utils/searchParser'
 import { Event, EventChain, EventGroup, EventType } from '../types/event'
 
 export default function Header() {
+  const cloudLogin = useCloudSyncStore(s => s.login)
+  const cloudMessage = useCloudSyncStore(s => s.message)
   const viewMode = useUIStore((s) => s.viewMode)
   const setViewMode = useUIStore((s) => s.setViewMode)
   const setIsImportDialogOpen = useUIStore((s) => s.setIsImportDialogOpen)
@@ -387,7 +390,7 @@ export default function Header() {
               <div className="w-6 h-6 rounded-full bg-gradient-to-br from-accent-400 to-accent-600 flex items-center justify-center flex-shrink-0 shadow-sm">
                 <User className="w-3 h-3 text-white" />
               </div>
-              <span className="text-sm text-slate-700 dark:text-slate-200 hidden sm:inline">用户</span>
+              <span className="text-sm text-slate-700 dark:text-slate-200 hidden sm:inline max-w-24 truncate">{cloudLogin || '用户'}</span>
               <ChevronDown className={`w-3.5 h-3.5 text-slate-400 dark:text-slate-500 transition-transform duration-200 ${showUserMenu ? 'rotate-180' : ''}`} />
             </button>
 
@@ -398,8 +401,8 @@ export default function Header() {
                     <User className="w-5 h-5 text-white" />
                   </div>
                   <div className="min-w-0">
-                    <p className="text-sm font-medium text-slate-900 dark:text-slate-100 truncate">本地用户</p>
-                    <p className="text-[11px] text-slate-400 dark:text-slate-500 truncate">本地存档 · 可连接私有仓库</p>
+                    <p className="text-sm font-medium text-slate-900 dark:text-slate-100 truncate">{cloudLogin || '本地用户'}</p>
+                    <p className="text-[11px] text-slate-400 dark:text-slate-500 truncate">{cloudMessage}</p>
                   </div>
                 </div>
 

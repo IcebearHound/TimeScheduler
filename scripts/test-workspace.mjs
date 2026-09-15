@@ -93,36 +93,14 @@ try {
   const stale = await client.callTool({ name: 'apply_actions', arguments: { revision: read.revision, actions } }); assert.equal(stale.isError, true)
   await page.screenshot({ path: join(output, 'integrations-desktop.png') })
   await page.getByRole('button', { name: '关闭工作台' }).click()
-  const syncRequests = []
-  await page.route('**/oauth/start', route => {
-    const provider = route.request().postDataJSON().provider
-    return route.fulfill({ json: { url: provider === 'github' ? 'https://github.com/login/device' : 'https://gitee.com/oauth/authorize?state=synthetic', ticket: `synthetic-${provider}`, interval: 2000, ...(provider === 'github' ? { userCode: 'TEST-CODE' } : {}) } })
-  })
-  await page.route('**/oauth/poll', route => route.fulfill({ json: { pending: false } }))
-  await page.route('**/sync/push', route => { syncRequests.push(route.request().postDataJSON()); return route.fulfill({ json: { verified: true, sha256: 'synthetic-verified-hash', unchanged: false } }) })
-  for (const provider of ['github', 'gitee']) {
-    const name = provider === 'github' ? 'GitHub' : 'Gitee'
+  for (const name of ['GitHub', 'Gitee']) {
     await page.getByRole('button', { name: '用户', exact: true }).click()
-    if (provider === 'github') await page.screenshot({ path: join(output, 'user-menu-desktop.png') })
+    if (name === 'GitHub') await page.screenshot({ path: join(output, 'user-menu-desktop.png') })
     await page.getByRole('button', { name: `${name} 登录与同步`, exact: true }).click()
-    await page.getByRole('heading', { name: '用户账号与私有仓库同步' }).waitFor()
-    await page.getByLabel('平台', { exact: true }).waitFor()
-    assert.equal(await page.getByLabel('平台', { exact: true }).inputValue(), provider)
-    assert.equal(await page.getByRole('heading', { name: 'AI API 接入' }).count(), 0)
-    await page.getByText('首次使用：配置平台 OAuth 应用', { exact: true }).click()
-    await page.getByLabel('Client ID', { exact: true }).fill(`synthetic-${provider}-client`)
-    if (provider === 'gitee') await page.getByLabel('Client Secret', { exact: true }).fill('synthetic-gitee-secret')
-    await page.getByRole('button', { name: '加密保存应用配置' }).click()
-    await page.getByText('OAuth 应用配置已加密保存', { exact: true }).waitFor()
-    await page.getByRole('button', { name: '授权登录 → 自动建库并同步' }).click()
-    await page.getByRole('link', { name: `打开 ${provider} 授权页面` }).waitFor()
-    await page.getByText(/下载回读 SHA-256 核验通过：synthetic-verified-hash/).waitFor()
-    assert.equal(syncRequests.at(-1).provider, provider)
-    assert.equal(syncRequests.at(-1).snapshot.events.length, 3)
-    await page.screenshot({ path: join(output, `${provider}-account-desktop.png`) })
+    await page.getByRole('heading', { name: '登录账号，日程随身同步' }).waitFor()
+    assert.equal(await page.getByRole('dialog').getByText(/npm|配对码|Client Secret|本地加密口令/).count(), 0)
     await page.getByRole('button', { name: '关闭工作台' }).click()
   }
-  assert.equal(syncRequests.length, 2)
   await page.locator('[aria-label="上方未完整显示的事件"]').first().waitFor()
   await page.locator('[aria-label="下方未完整显示的事件"]').first().waitFor()
   await page.screenshot({ path: join(output, 'calendar-offscreen-both-edges.png') })
@@ -137,7 +115,7 @@ try {
   for (const name of ['GitHub', 'Gitee']) {
     await page.getByRole('button', { name: '用户', exact: true }).click()
     await page.getByRole('button', { name: `${name} 登录与同步`, exact: true }).click()
-    await page.getByRole('heading', { name: `${name} 登录与同步`, exact: true }).waitFor()
+    await page.getByRole('heading', { name: '登录账号，日程随身同步' }).waitFor()
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true)
     await page.screenshot({ path: join(output, `${name.toLowerCase()}-account-mobile.png`) })
     await page.getByRole('button', { name: '关闭工作台' }).click()
@@ -159,7 +137,7 @@ try {
   assert.ok(!encrypted.includes('synthetic-ai-test-key'))
   assert.ok(!encrypted.includes('synthetic-gitee-secret'))
   assert.deepEqual(errors, [])
-  console.log('PASS: desktop/mobile user-menu GitHub/Gitee entry points, mocked OAuth-to-sync flows, task creation/edit/import, AI preview/apply, edge summaries, pairing/CORS, encrypted vault, real MCP read/write/conflict, persistence')
+  console.log('PASS: desktop/mobile user-menu GitHub/Gitee entry points, task creation/edit/import, AI preview/apply, edge summaries, pairing/CORS, encrypted vault, real MCP read/write/conflict, persistence')
 } catch (error) {
   if (browser) { const page = browser.contexts()[0]?.pages()[0]; if (page) { await page.screenshot({ path: join(output, 'workspace-failure.png') }); console.error((await page.locator('body').innerText()).slice(-5000)) } }
   throw error

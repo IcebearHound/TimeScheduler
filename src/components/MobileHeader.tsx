@@ -2,8 +2,11 @@ import React, { useEffect, useRef, useState } from 'react'
 import { ChevronLeft, ChevronRight, Menu, Moon, Search, SlidersHorizontal, Sun, User } from 'lucide-react'
 import useUIStore from '../stores/uiStore'
 import AccountMenuEntries from './AccountMenuEntries'
+import useCloudSyncStore from '../stores/cloudSyncStore'
 
 export default function MobileHeader() {
+  const cloudLogin = useCloudSyncStore(s => s.login)
+  const cloudMessage = useCloudSyncStore(s => s.message)
   const [showUserMenu, setShowUserMenu] = useState(false)
   const userMenuRef = useRef<HTMLDivElement>(null)
   useEffect(() => {
@@ -53,7 +56,7 @@ export default function MobileHeader() {
         </button>
         <div ref={userMenuRef} className="relative">
           <button type="button" aria-label="用户" aria-expanded={showUserMenu} className="mobile-icon-button" onClick={() => setShowUserMenu(!showUserMenu)}><User className="h-5 w-5" /></button>
-          {showUserMenu && <div className="absolute right-0 top-full z-[100] mt-2 w-64 rounded-xl border border-slate-200 bg-white shadow-xl dark:border-slate-700 dark:bg-slate-800"><AccountMenuEntries onSelect={() => setShowUserMenu(false)} /></div>}
+          {showUserMenu && <div className="absolute right-0 top-full z-[100] mt-2 w-64 rounded-xl border border-slate-200 bg-white shadow-xl dark:border-slate-700 dark:bg-slate-800"><div className="border-b px-4 py-3 dark:border-slate-700"><p className="truncate text-sm font-medium">{cloudLogin || '本地用户'}</p><p className="mt-1 text-xs text-slate-500">{cloudMessage}</p></div><AccountMenuEntries onSelect={() => setShowUserMenu(false)} /></div>}
         </div>
       </div>
       <div className="flex h-12 items-center gap-2 border-t border-slate-100/80 px-3 dark:border-slate-800/80">

@@ -17,3 +17,6 @@ out/
 test-results/
 credentials.enc
 credentials.enc.tmp
+.dev.vars
+.dev.vars.*
+.wrangler/

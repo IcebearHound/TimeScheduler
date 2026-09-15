@@ -2,6 +2,7 @@ import { useEffect, useRef } from 'react'
 import { BookOpen, Plug, X } from 'lucide-react'
 import AssignmentPanel from './AssignmentPanel'
 import IntegrationPanel from './IntegrationPanel'
+import CloudAccountPanel from './CloudAccountPanel'
 import useWorkspaceStore from '../stores/workspaceStore'
 
 export default function WorkspaceTools() {
@@ -36,7 +37,7 @@ export default function WorkspaceTools() {
     {tab && <div className="fixed inset-0 z-[150] flex items-center justify-center bg-slate-950/50 p-2 backdrop-blur-sm sm:p-6">
       <div ref={dialog} tabIndex={-1} role="dialog" aria-modal="true" aria-labelledby="workspace-title" className="flex max-h-[94dvh] w-full max-w-5xl flex-col overflow-hidden rounded-2xl bg-white text-slate-800 shadow-2xl outline-none dark:bg-slate-900 dark:text-slate-200">
         <header className="flex items-center justify-between border-b p-4 dark:border-slate-700"><h2 id="workspace-title" className="font-bold">{tab === 'assignments' ? '课程任务工作台' : tab === 'account' ? '用户账号与私有仓库同步' : 'AI 与存档连接'}</h2><button aria-label="关闭工作台" onClick={close} className="workspace-button"><X size={18} /></button></header>
-        <div className="overflow-y-auto p-4 sm:p-6">{tab === 'assignments' ? <AssignmentPanel /> : <IntegrationPanel key={`${tab}-${provider}`} mode={tab} initialProvider={provider} />}</div>
+        <div className="overflow-y-auto p-4 sm:p-6">{tab === 'assignments' ? <AssignmentPanel /> : tab === 'account' ? <CloudAccountPanel key={provider} initialProvider={provider} /> : <IntegrationPanel />}</div>
       </div>
     </div>}
   </>

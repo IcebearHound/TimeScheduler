@@ -20,11 +20,13 @@ import TodoModal from './components/TodoModal'
 import MobileHeader from './components/MobileHeader'
 import MobileBottomNav from './components/MobileBottomNav'
 import WorkspaceTools from './components/WorkspaceTools'
+import { startAutoSync } from './integrations/autoSync'
 import { PanelLeftOpen, PanelRightOpen } from 'lucide-react'
 import { getReminderMilliseconds } from './utils/eventUtils'
 
 export default function App() {
   const [initialized, setInitialized] = useState(false)
+  useEffect(() => { if (initialized) void startAutoSync() }, [initialized])
   const isConflictDialogOpen = useUIStore((s) => s.isConflictDialogOpen)
   const setIsConflictDialogOpen = useUIStore((s) => s.setIsConflictDialogOpen)
   const conflictConflicts = useUIStore((s) => s.conflictConflicts)

@@ -30,7 +30,10 @@
     "local": "tsx server/index.ts",
     "mcp": "tsx server/index.ts --mcp",
     "check:server": "tsc -p tsconfig.server.json",
-    "test:workspace": "npm run build && node scripts/test-workspace.mjs"
+    "check:worker": "tsc -p tsconfig.worker.json",
+    "deploy:auth": "npx --yes wrangler@4 deploy --config worker/wrangler.jsonc",
+    "test:workspace": "npm run build && node scripts/test-workspace.mjs",
+    "test:cloud": "node --import tsx scripts/test-cloud.mjs"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.30.0",

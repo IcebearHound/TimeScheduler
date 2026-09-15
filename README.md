@@ -11,7 +11,7 @@
 
 **专为大学生设计的时间规划工具，管理你的课程、实验、考试、Deadline等活动。支持Todo功能、支持设置提醒、支持事件链/组并按高级规则批量创建事件等。支持课程表无缝导入（山东大学）**
 
-新增：日历上下边缘事件摘要、课程作业/实验灯珠工作台、AI API 与 MCP 存档操作、GitHub/Gitee 私有仓库授权同步。使用方法见 [本机集成指南](docs/LOCAL_INTEGRATIONS.md)。
+新增：日历上下边缘事件摘要、课程作业/实验灯珠工作台、AI API 与 MCP 存档操作、GitHub/Gitee 私有仓库自动同步。手机用户直接在右上角用户栏登录，无需安装软件或运行命令。部署者需一次性开通 [轻量授权服务](docs/WEB_ACCOUNT_SYNC.md)；课程任务和 AI/MCP 见 [功能指南](docs/LOCAL_INTEGRATIONS.md)。
 
 <p align="center">
   <a href="https://icebearhound.github.io/TimeScheduler/">
@@ -108,7 +108,11 @@
 
 ## 🚀 快速开始
 
-### 前置要求
+### 直接使用
+
+打开 [在线网站](https://icebearhound.github.io/TimeScheduler/) 即可编辑和本地保存日程。网站开通授权服务后，在右上角 **用户** 选择 GitHub 或 Gitee，登录授权即可自动同步与跨设备恢复。未开通时页面会明确提示，仍可正常编辑与导出备份。
+
+### 本地开发前置要求
 
 - **Node.js** `>= 22`
 - **npm** 或 **yarn**
@@ -213,14 +217,14 @@ TimeScheduler/
 
 ## 💾 数据持久化
 
-所有数据通过 Zustand `subscribe` 自动持久化到浏览器 **localStorage**，无需手动保存：
+日程数据通过 Zustand `subscribe` 自动持久化到浏览器 **localStorage**，无需手动保存：
 
 | 存储 Key | 内容 |
 |----------|------|
 | `eventStore` | 事件、事件链、事件类型、剪贴板 |
 | `eventGroupStore` | 事件组配置 |
 
-> 可通过本机服务将完整存档同步到 GitHub / Gitee 私有仓库，或定期导出 `.events` 文件备份。同步需显式连接与授权，详见 [本机集成指南](docs/LOCAL_INTEGRATIONS.md)。
+> 在右上角用户栏登录 GitHub / Gitee 后，修改自动同步到个人私有仓库并回读核验，离线修改联网后补传。登录令牌仅在当前浏览器 IndexedDB 中加密持久化，不进入日程存档。详见 [账号同步与部署指南](docs/WEB_ACCOUNT_SYNC.md)。也可导出 `.events` 文件备份。
 
 ---
 
@@ -299,14 +303,14 @@ TimeScheduler/
 
 | 限制 | 计划解决方案 |
 |------|-------------|
-| 不同浏览器的本地数据独立 | 通过 GitHub/Gitee 私有仓库手动同步与恢复 |
+| 不同浏览器的本地数据独立 | 授权服务开通后，登录同一个 GitHub/Gitee 账号自动同步与恢复 |
 | 超大数据量时性能下降 | 虚拟化滚动 |
 
 ---
 
 ## 🚧 路线图
 
-- [ ] 云端数据同步（账号系统）
+- [x] GitHub/Gitee 自动同步（部署者需配置 OAuth 授权服务）
 - [ ] 日历分享功能
 - [ ] 学习统计与分析仪表盘
 - [ ] 搜索功能增强（全文搜索、正则匹配）
