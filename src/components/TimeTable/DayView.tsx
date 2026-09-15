@@ -47,7 +47,7 @@ export default function DayView() {
   const [slotH, setSlotH] = useState(80)
   useEffect(() => {
     const calc = () => {
-      const h = window.innerHeight - 110; setSlotH(Math.max(60, Math.floor(h / 24)))
+      const h = window.innerHeight - 130; setSlotH(Math.max(60, Math.floor(h / 24)))
     }
     calc(); window.addEventListener('resize', calc); return () => window.removeEventListener('resize', calc)
   }, [])
@@ -73,7 +73,7 @@ export default function DayView() {
         <button onClick={() => setCurrentDate(new Date())} className="px-3 py-1.5 text-xs font-medium rounded-lg bg-accent-50 dark:bg-accent-900/20 text-accent-700 dark:text-accent-300 hover:bg-accent-100 dark:hover:bg-accent-900/30 shadow-sm transition-colors">今天</button>
       </div>
       <div className="flex-1 overflow-hidden">
-        <div ref={scrollRef} className="flex h-full overflow-y-auto">
+        <div ref={scrollRef} data-calendar-scroll className="flex h-full overflow-y-auto">
           <div className="w-12 md:w-16 bg-slate-50 dark:bg-slate-950 border-r border-slate-200 dark:border-slate-800 flex-shrink-0">
             {Array.from({ length: 24 }, (_, i) => (
               <div key={i} className="flex items-start justify-end pr-1.5 md:pr-2 pt-1 text-[10px] md:text-xs text-slate-500 dark:text-slate-400 font-medium" style={{ height: slotH, minHeight: 60 }}>

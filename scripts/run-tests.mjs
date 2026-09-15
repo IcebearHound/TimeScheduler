@@ -26,6 +26,7 @@ try {
       format: 'esm',
       target: 'node18',
       sourcemap: 'inline',
+      banner: { js: "import { createRequire as __testCreateRequire } from 'node:module'; const require = __testCreateRequire(import.meta.url);" },
     })
     return outputFile
   })

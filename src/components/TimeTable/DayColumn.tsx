@@ -6,6 +6,7 @@ import React, { useMemo, useRef, useState, useEffect } from 'react'
 import { Plus, ClipboardPaste } from 'lucide-react'
 import { Event } from '../../types/event'
 import EventBlockItem from './EventBlockItem'
+import OffscreenEvents from './OffscreenEvents'
 import useUIStore from '../../stores/uiStore'
 import useEventStore from '../../stores/eventStore'
 import useEventGroupStore from '../../stores/eventGroupStore'
@@ -176,6 +177,7 @@ export default function DayColumn({ date, events }: DayColumnProps) {
 
   return (
     <div ref={containerRef} className="bg-white dark:bg-slate-900 relative" style={{ minHeight: totalH }}>
+      <OffscreenEvents date={date} events={events} height={totalH} />
       {HOURS.map(hour => (
           <div key={hour} className="border-b border-slate-100 dark:border-slate-800 relative group hover:bg-slate-50 dark:hover:bg-slate-800/50 cursor-pointer"
           style={{ height: slotH }}

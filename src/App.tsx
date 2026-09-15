@@ -19,6 +19,7 @@ import NotificationPermissionPrompt from './components/NotificationPermissionPro
 import TodoModal from './components/TodoModal'
 import MobileHeader from './components/MobileHeader'
 import MobileBottomNav from './components/MobileBottomNav'
+import WorkspaceTools from './components/WorkspaceTools'
 import { PanelLeftOpen, PanelRightOpen } from 'lucide-react'
 import { getReminderMilliseconds } from './utils/eventUtils'
 
@@ -225,6 +226,7 @@ export default function App() {
       <KeyboardShortcuts />
       <div className="hidden md:block"><Header /></div>
       <MobileHeader />
+      <WorkspaceTools />
       <div className="app-main flex flex-1 overflow-hidden">
         {isLeftSidebarOpen && <button type="button" aria-label="关闭导航" className="mobile-panel-backdrop md:hidden" onClick={() => setIsLeftSidebarOpen(false)} />}
         {!isLeftSidebarOpen && (

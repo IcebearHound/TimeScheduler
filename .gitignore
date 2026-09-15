@@ -15,3 +15,5 @@ coverage/
 .cache/
 out/
 test-results/
+credentials.enc
+credentials.enc.tmp

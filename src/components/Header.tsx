@@ -5,6 +5,7 @@ import useUIStore from '../stores/uiStore'
 import useEventStore from '../stores/eventStore'
 import useEventGroupStore from '../stores/eventGroupStore'
 import EventChainFilter from './EventChainFilter'
+import AccountMenuEntries from './AccountMenuEntries'
 import SearchDialog from './SearchDialog'
 import { dialogConfirm } from '../utils/dialog'
 import { scrollToEventBlock } from '../utils/scrollTarget'
@@ -377,7 +378,7 @@ export default function Header() {
           </button>
 
           <div className="relative" ref={userMenuWrapperRef}>
-            <button onClick={() => setShowUserMenu(!showUserMenu)}
+            <button aria-label="用户" aria-expanded={showUserMenu} onClick={() => setShowUserMenu(!showUserMenu)}
               className={`flex items-center gap-2 px-2.5 py-1.5 rounded-lg border transition-all duration-200 ${
                 showUserMenu
                   ? 'bg-accent-50 dark:bg-accent-900/20 border-accent-200 dark:border-accent-700'
@@ -398,12 +399,14 @@ export default function Header() {
                   </div>
                   <div className="min-w-0">
                     <p className="text-sm font-medium text-slate-900 dark:text-slate-100 truncate">本地用户</p>
-                    <p className="text-[11px] text-slate-400 dark:text-slate-500 truncate">离线模式</p>
+                    <p className="text-[11px] text-slate-400 dark:text-slate-500 truncate">本地存档 · 可连接私有仓库</p>
                   </div>
                 </div>
 
                 <div className="border-t border-slate-100 dark:border-slate-800" />
 
+                <AccountMenuEntries onSelect={() => setShowUserMenu(false)} />
+                <div className="border-t border-slate-100 dark:border-slate-800" />
                 <div className="px-4 pt-3 pb-1">
                   <p className="text-[10px] font-semibold uppercase tracking-widest text-slate-400 dark:text-slate-500 mb-2">管理</p>
                   <div className="space-y-0.5">

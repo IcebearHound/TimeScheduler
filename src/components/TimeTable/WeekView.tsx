@@ -59,7 +59,7 @@ export default function WeekView() {
 
   const [slotH, setSlotH] = useState(80)
   useEffect(() => {
-    const calc = () => { setSlotH(Math.max(40, Math.floor((window.innerHeight - 130) / 24))) }
+    const calc = () => { setSlotH(Math.max(60, Math.floor((window.innerHeight - 130) / 24))) }
     calc(); window.addEventListener('resize', calc); return () => window.removeEventListener('resize', calc)
   }, [])
 
@@ -146,9 +146,9 @@ export default function WeekView() {
       </div>
 
       {/* 统一滚动区域：标题 sticky + 每日列 */}
-      <div ref={scrollRef} className="flex-1 overflow-auto">
+      <div ref={scrollRef} data-calendar-scroll className="flex-1 overflow-auto">
         {/* 星期头 — sticky 置顶 */}
-        <div className={`grid gap-px bg-slate-200 dark:bg-slate-800 sticky top-0 z-[15] shadow-sm`} style={{ gridTemplateColumns: `repeat(${dayCount}, 1fr)` }}>
+        <div data-calendar-header className={`grid gap-px bg-slate-200 dark:bg-slate-800 sticky top-0 z-30 shadow-sm`} style={{ gridTemplateColumns: `repeat(${dayCount}, 1fr)` }}>
         {viewDays.map((d, i) => {
           const dow = d.getDay() || 7
           const isToday = d.toDateString() === new Date().toDateString()

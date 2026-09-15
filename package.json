@@ -12,25 +12,39 @@
   "bugs": {
     "url": "https://github.com/IcebearHound/TimeScheduler/issues"
   },
-  "keywords": ["time-planner", "university", "calendar", "react", "schedule"],
+  "keywords": [
+    "time-planner",
+    "university",
+    "calendar",
+    "react",
+    "schedule"
+  ],
   "type": "module",
+  "engines": { "node": ">=22" },
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",
     "preview": "vite preview",
     "type-check": "tsc --noEmit",
-    "test": "node scripts/run-tests.mjs"
+    "test": "node scripts/run-tests.mjs",
+    "local": "tsx server/index.ts",
+    "mcp": "tsx server/index.ts --mcp",
+    "check:server": "tsc -p tsconfig.server.json",
+    "test:workspace": "npm run build && node scripts/test-workspace.mjs"
   },
   "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.30.0",
     "clsx": "^2.0.0",
     "date-fns": "^2.30.0",
     "lucide-react": "^0.294.0",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
     "xlsx": "^0.18.5",
+    "zod": "^4.6.5",
     "zustand": "^4.4.0"
   },
   "devDependencies": {
+    "@types/node": "^26.5.1",
     "@types/react": "^18.2.0",
     "@types/react-dom": "^18.2.0",
     "@vitejs/plugin-react": "^4.0.0",
@@ -38,6 +52,7 @@
     "playwright": "^1.61.0",
     "postcss": "^8.4.24",
     "tailwindcss": "^3.3.0",
+    "tsx": "^4.23.13",
     "typescript": "^5.0.2",
     "vite": "^4.4.0"
   }

@@ -11,6 +11,8 @@
 
 **专为大学生设计的时间规划工具，管理你的课程、实验、考试、Deadline等活动。支持Todo功能、支持设置提醒、支持事件链/组并按高级规则批量创建事件等。支持课程表无缝导入（山东大学）**
 
+新增：日历上下边缘事件摘要、课程作业/实验灯珠工作台、AI API 与 MCP 存档操作、GitHub/Gitee 私有仓库授权同步。使用方法见 [本机集成指南](docs/LOCAL_INTEGRATIONS.md)。
+
 <p align="center">
   <a href="https://icebearhound.github.io/TimeScheduler/">
     <img src="https://raw.githubusercontent.com/IcebearHound/TimeScheduler/main/public/visit-btn.svg" alt="访问 WebApp →">
@@ -108,7 +110,7 @@
 
 ### 前置要求
 
-- **Node.js** `>= 16`
+- **Node.js** `>= 22`
 - **npm** 或 **yarn**
 
 ### 安装
@@ -218,7 +220,7 @@ TimeScheduler/
 | `eventStore` | 事件、事件链、事件类型、剪贴板 |
 | `eventGroupStore` | 事件组配置 |
 
-> ⚠️ 目前不支持跨浏览器同步，清除浏览器数据会丢失所有信息。请定期导出 `.events` 文件备份。
+> 可通过本机服务将完整存档同步到 GitHub / Gitee 私有仓库，或定期导出 `.events` 文件备份。同步需显式连接与授权，详见 [本机集成指南](docs/LOCAL_INTEGRATIONS.md)。
 
 ---
 
@@ -297,7 +299,7 @@ TimeScheduler/
 
 | 限制 | 计划解决方案 |
 |------|-------------|
-| 浏览器切换时数据不同步 | 云端数据同步 |
+| 不同浏览器的本地数据独立 | 通过 GitHub/Gitee 私有仓库手动同步与恢复 |
 | 超大数据量时性能下降 | 虚拟化滚动 |
 
 ---

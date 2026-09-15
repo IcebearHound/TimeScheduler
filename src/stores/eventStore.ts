@@ -11,6 +11,7 @@ import useEventGroupStore from './eventGroupStore'
 import { debugLog } from '../utils/debugStore'
 
 interface HistoryEntry {
+  semesterStartDate: Date
   events: [string, Event][]
   eventChains: [string, EventChain][]
   eventTypes: [string, EventType][]
@@ -106,6 +107,7 @@ interface EventStore {
 
 function snapshot(state: EventStore, action: string): HistoryEntry {
   return {
+    semesterStartDate: state.semesterStartDate,
     events: Array.from(state.events.entries()),
     eventChains: Array.from(state.eventChains.entries()),
     eventTypes: Array.from(state.eventTypes.entries()),
@@ -117,6 +119,7 @@ function snapshot(state: EventStore, action: string): HistoryEntry {
 function restore(entry: HistoryEntry): Partial<EventStore> {
   applyGroupState(entry)
   return {
+    semesterStartDate: entry.semesterStartDate,
     events: new Map(entry.events),
     eventChains: new Map(entry.eventChains),
     eventTypes: new Map(entry.eventTypes),
