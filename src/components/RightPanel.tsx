@@ -55,6 +55,7 @@ export default function RightPanel() {
   const allTypes = useEventStore((s) => Array.from(s.eventTypes.values()))
   const getEventType = useEventStore((s) => s.getEventType)
 
+  const [loadedEventId, setLoadedEventId] = useState<string>()
   const [editName, setEditName] = useState('')
   const [editProps, setEditProps] = useState<Record<string, string>>({})
   const [editTypeId, setEditTypeId] = useState('')
@@ -91,6 +92,7 @@ export default function RightPanel() {
 
   useEffect(() => {
     if (event) {
+      setLoadedEventId(event.id)
       setEditName(event.name)
       // 将中英文混存的属性统一转为英文键
       const raw = (event.properties as Record<string, string>) || {}
@@ -146,6 +148,7 @@ export default function RightPanel() {
 
   // 自动保存
   const save = useCallback(() => {
+    if (loadedEventId !== selectedEventId) return
     const current = useEventStore.getState().getEvent(selectedEventId!)
     if (!current || !editName.trim()) return
     const sameTime = current.startTime.getTime() === editStartTime.getTime() && current.endTime.getTime() === editEndTime.getTime()
@@ -159,12 +162,16 @@ export default function RightPanel() {
       reminders: editReminders,
       startTime: editStartTime, endTime: editEndTime,
     })
-  }, [editName, editProps, editTypeId, editReminders, editStartTime, editEndTime, selectedEventId])
+  }, [editName, editProps, editTypeId, editReminders, editStartTime, editEndTime, selectedEventId, loadedEventId])
 
   useEffect(() => {
     const t = setTimeout(save, 400)
     return () => clearTimeout(t)
   }, [save])
+
+  const saveOnClose = useRef(save)
+  saveOnClose.current = save
+  useEffect(() => () => saveOnClose.current(), [])
 
   if (!event) {
     return <TodoView />
@@ -278,7 +285,7 @@ export default function RightPanel() {
         {/* 标题栏 + 折叠 */}
         <div className="flex items-center justify-between">
           <span className="text-xs text-slate-400">事件详情</span>
-          <button aria-label="收起详情面板" onClick={() => setIsRightPanelOpen(false)} className="p-1 hover:bg-slate-100 dark:hover:bg-slate-800 rounded text-slate-400"><PanelRightClose className="w-3.5 h-3.5" /></button>
+          <button aria-label="收起详情面板" onClick={() => setIsRightPanelOpen(false)} className="hidden desktop:block p-1 hover:bg-slate-100 dark:hover:bg-slate-800 rounded text-slate-400"><PanelRightClose className="w-3.5 h-3.5" /></button>
         </div>
 
         {/* 类型 + 重点 */}

@@ -1,3 +1,4 @@
+import ModalShell from './ModalShell'
 import React, { useEffect, useCallback } from 'react'
 import { X } from 'lucide-react'
 import useUIStore from '../stores/uiStore'
@@ -30,7 +31,7 @@ export default function EventModal() {
   if (!isOpen) return null
 
   return (
-    <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 animate-modal-backdrop" onClick={handleClose}>
+    <ModalShell title={event ? '编辑事件' : '新建事件'} closeLabel="关闭事件编辑" onClose={handleClose} className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 animate-modal-backdrop">
       <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-modal dark:shadow-modal-dark border border-slate-200/60 dark:border-slate-700/60 max-w-2xl w-full max-h-[90vh] overflow-y-auto animate-modal-panel" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between p-6 border-b border-slate-200/60 dark:border-slate-700/60 sticky top-0 bg-white/80 dark:bg-slate-900/80 backdrop-blur-md z-10">
           <h2 className="text-2xl font-bold text-slate-900 dark:text-white">
@@ -44,6 +45,6 @@ export default function EventModal() {
           <EventForm eventId={selectedEventId} onClose={handleClose} />
         </div>
       </div>
-    </div>
+    </ModalShell>
   )
 }

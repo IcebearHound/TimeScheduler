@@ -1,3 +1,4 @@
+import ModalShell from './ModalShell'
 /**
  * 事件类型管理模态框
  */
@@ -137,7 +138,7 @@ export default function TypeManagerModal({ onClose, editTypeId }: TypeManagerMod
   const btnBase = 'px-3 py-1.5 rounded-lg text-sm font-medium transition-colors'
 
   return (
-    <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 animate-modal-backdrop" onClick={onClose}>
+    <ModalShell title={mode === 'list' ? '事件类型' : mode === 'create' ? '新建类型' : '编辑类型'} closeLabel="关闭事件类型" onClose={onClose} className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 animate-modal-backdrop">
       <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-modal dark:shadow-modal-dark border border-slate-200/60 dark:border-slate-700/60 max-w-md w-full max-h-[85vh] flex flex-col animate-modal-panel" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between p-5 border-b border-slate-200/60 dark:border-slate-700/60 flex-shrink-0">
           <h2 className="text-lg font-bold text-slate-900 dark:text-white">
@@ -314,6 +315,6 @@ export default function TypeManagerModal({ onClose, editTypeId }: TypeManagerMod
         )}
         </div>
       </div>
-    </div>
+    </ModalShell>
   )
 }

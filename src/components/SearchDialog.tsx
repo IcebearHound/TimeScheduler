@@ -1,3 +1,4 @@
+import ModalShell from './ModalShell'
 /**
  * 搜索对话框 - 支持按名称、属性、时间查找，支持事件链/组/类型
  */
@@ -132,7 +133,7 @@ export default function SearchDialog({ onClose }: SearchDialogProps) {
   const hasResults = results.chains.length > 0 || results.groups.length > 0 || results.types.length > 0 || results.events.length > 0
 
   return (
-    <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-start justify-center pt-[20vh] z-50 animate-modal-backdrop" onClick={onClose}>
+    <ModalShell title="搜索" onClose={onClose} keepHeader className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-start justify-center pt-[20vh] z-50 animate-modal-backdrop">
       <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-modal dark:shadow-modal-dark border border-slate-200/60 dark:border-slate-700/60 max-w-lg w-full mx-4 animate-modal-panel" onClick={e => e.stopPropagation()}>
         <div className="flex items-center gap-3 p-4 border-b border-slate-200/60 dark:border-slate-700/60">
           <SearchIcon className="w-5 h-5 text-slate-400" />
@@ -144,7 +145,7 @@ export default function SearchDialog({ onClose }: SearchDialogProps) {
             className="flex-1 bg-transparent text-slate-900 dark:text-white focus:outline-none text-lg"
             autoFocus
           />
-          <button onClick={onClose} className="text-slate-500 hover:text-slate-700 dark:hover:text-slate-300">
+          <button onClick={onClose} className="hidden desktop:block text-slate-500 hover:text-slate-700 dark:hover:text-slate-300">
             <X className="w-5 h-5" />
           </button>
         </div>
@@ -248,6 +249,6 @@ export default function SearchDialog({ onClose }: SearchDialogProps) {
           </div>
         </div>
       </div>
-    </div>
+    </ModalShell>
   )
 }

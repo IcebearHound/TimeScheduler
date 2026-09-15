@@ -1,3 +1,4 @@
+import ModalShell from './ModalShell'
 import React, { useState, useMemo, useCallback, useRef, useEffect } from 'react'
 import { X, Pin, Star, Clock, GripVertical, ChevronDown, ChevronRight, RefreshCw, Settings, Layers, Link2 } from 'lucide-react'
 import useUIStore from '../stores/uiStore'
@@ -225,7 +226,7 @@ export default function TodoModal({ onClose }: TodoModalProps) {
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm animate-modal-backdrop" onClick={onClose}>
+    <ModalShell title="待办事项" closeLabel="关闭待办" onClose={onClose} className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm animate-modal-backdrop" keepHeader>
       <div
         className="relative bg-white dark:bg-slate-900 rounded-2xl shadow-modal dark:shadow-modal-dark border border-slate-200/60 dark:border-slate-700/60 overflow-hidden flex flex-col animate-modal-panel"
         style={{ width: '90vw', height: '90vh', maxWidth: '800px' }}
@@ -234,7 +235,7 @@ export default function TodoModal({ onClose }: TodoModalProps) {
         {/* Header */}
         <div className="flex items-center justify-between px-5 py-4 border-b border-slate-200/60 dark:border-slate-700/60 flex-shrink-0">
           <div className="flex items-center gap-2">
-            <h2 className="text-lg font-bold text-slate-900 dark:text-white">待办事项</h2>
+            <h2 className="hidden desktop:block text-lg font-bold text-slate-900 dark:text-white">待办事项</h2>
             <span className="text-xs text-slate-400">{pinnedEvents.length + highlightEvents.length + upcomingEvents.length} 项</span>
           </div>
           <div className="flex items-center gap-1">
@@ -288,7 +289,7 @@ export default function TodoModal({ onClose }: TodoModalProps) {
                 </div>
               )}
             </div>
-            <button onClick={onClose} className="p-2 hover:bg-slate-50 dark:hover:bg-slate-700/50 rounded text-slate-400">
+            <button onClick={onClose} className="hidden desktop:block p-2 hover:bg-slate-50 dark:hover:bg-slate-700/50 rounded text-slate-400">
               <X className="w-4 h-4" />
             </button>
           </div>
@@ -441,7 +442,7 @@ export default function TodoModal({ onClose }: TodoModalProps) {
             setCtxMenu(null)
           }} />
       )}
-    </div>
+    </ModalShell>
   )
 }
 

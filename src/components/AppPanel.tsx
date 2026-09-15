@@ -1,10 +1,14 @@
+import useLayoutStore from '../stores/layoutStore'
+import MobileSheet from './MobileSheet'
 import useUIStore from '../stores/uiStore'
 import { ReactNode, useEffect, useRef } from 'react'
 import { X } from 'lucide-react'
 
 export default function AppPanel({ title, onClose, children }: { title: string; onClose: () => void; children: ReactNode }) {
+  const isMobile = useLayoutStore(s => s.isMobile)
   const ref = useRef<HTMLDivElement>(null)
   useEffect(() => {
+    if (isMobile) return
     const previous = document.activeElement as HTMLElement
     ref.current?.focus()
     const key = (event: KeyboardEvent) => {
@@ -19,7 +23,8 @@ export default function AppPanel({ title, onClose, children }: { title: string; 
     }
     window.addEventListener('keydown', key)
     return () => { window.removeEventListener('keydown', key); if (previous?.isConnected) previous.focus() }
-  }, [])
+  }, [isMobile])
+  if (isMobile) return <MobileSheet title={title} onClose={onClose}><div className="p-4">{children}</div></MobileSheet>
   return <div className="fixed inset-0 z-[60] flex items-end justify-center bg-slate-950/40 p-3 backdrop-blur-sm desktop:items-center" onClick={onClose}>
     <div ref={ref} data-app-panel role="dialog" aria-label={title} aria-modal="true" tabIndex={-1} className="flex max-h-[88dvh] w-full max-w-xl flex-col overflow-hidden rounded-2xl bg-white shadow-xl outline-none dark:bg-slate-900" onClick={e => e.stopPropagation()}>
       <header className="flex shrink-0 items-center justify-between border-b p-4 dark:border-slate-700"><h2 className="font-bold">{title}</h2><button aria-label={`关闭${title}`} className="mobile-icon-button" onClick={onClose}><X size={20} /></button></header>

@@ -1,3 +1,4 @@
+import MobileSheet from './components/MobileSheet'
 import useLayoutStore from './stores/layoutStore'
 import SettingsPanel from './components/SettingsPanel'
 import MobileToolsPanel from './components/MobileToolsPanel'
@@ -257,12 +258,13 @@ export default function App() {
           <div className="h-full w-full">{leftRender && <LeftSidebar />}</div>
         </div>
         <div className="calendar-container min-w-0 flex-1 overflow-hidden"><TimeTable /></div>
-        {isRightPanelOpen && <button type="button" aria-label="关闭详情" className="mobile-panel-backdrop desktop:hidden" onClick={() => setIsRightPanelOpen(false)} />}
-        <div ref={rightRef}
+        {!isMobile && isRightPanelOpen && <button type="button" aria-label="关闭详情" className="mobile-panel-backdrop desktop:hidden" onClick={() => setIsRightPanelOpen(false)} />}
+        {!isMobile && <div ref={rightRef}
           onTransitionEnd={handleRightTransitionEnd}
           className={`app-right-panel ${isRightPanelOpen ? 'is-open' : 'is-closed'}`}>
           <div className="h-full w-full">{rightRender && <RightPanel />}</div>
-        </div>
+        </div>}
+        {isMobile && isRightPanelOpen && <MobileSheet title="事件详情与待办" closeLabel="收起详情面板" onClose={() => setIsRightPanelOpen(false)} fill><div className="mobile-detail-content"><RightPanel /></div></MobileSheet>}
         {!isRightPanelOpen && (
           <button onClick={() => setIsRightPanelOpen(true)}
             className="hidden desktop:block absolute right-0 top-1/2 -translate-y-1/2 z-20 p-2 bg-white/80 dark:bg-slate-800/80 backdrop-blur-sm border border-slate-200/80 dark:border-slate-700/80 rounded-l-xl shadow-elevated hover:bg-white dark:hover:bg-slate-800 hover:shadow-overlay transition-all duration-200">

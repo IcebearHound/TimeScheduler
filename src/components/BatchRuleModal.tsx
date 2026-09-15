@@ -1,3 +1,4 @@
+import ModalShell from './ModalShell'
 import React, { useState, useEffect } from 'react'
 import { X } from 'lucide-react'
 import { BatchRule, BatchRuleMode, WeekPattern } from '../types/event'
@@ -123,7 +124,7 @@ export default function BatchRuleModal({ mode, rule, onSave, onClose }: BatchRul
   }, [onClose])
 
   return (
-    <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-[60] animate-modal-backdrop" onClick={onClose}>
+    <ModalShell title={mode === 'create' ? '新建批量规则' : '编辑批量规则'} onClose={onClose} className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-[60] animate-modal-backdrop">
       <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-modal dark:shadow-modal-dark max-w-lg w-full max-h-[90vh] overflow-y-auto animate-modal-panel border border-slate-200/60 dark:border-slate-700/60" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between p-6 border-b border-slate-200 dark:border-slate-800">
           <h2 className="text-xl font-bold text-slate-900 dark:text-white">
@@ -271,6 +272,6 @@ export default function BatchRuleModal({ mode, rule, onSave, onClose }: BatchRul
           </div>
         </div>
       </div>
-    </div>
+    </ModalShell>
   )
 }

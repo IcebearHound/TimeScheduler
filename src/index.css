@@ -466,7 +466,7 @@ html[data-layout="mobile"] .animate-modal-backdrop:has(> .animate-modal-panel) {
 html[data-layout="mobile"] .animate-modal-backdrop > .animate-modal-panel {
     width: 100% !important;
     max-width: none !important;
-    max-height: min(88dvh, 52rem) !important;
+    max-height: min(78dvh, 42.5rem) !important;
     margin: 0 !important;
     border-radius: 1.5rem !important;
     overflow-y: auto;
@@ -543,3 +543,45 @@ html[data-layout="mobile"] .app-main > .calendar-container { min-width: 0; }
 
 html[data-layout="mobile"] .sidebar-root button:disabled { opacity: .3; }
 html[data-layout="mobile"] .sidebar-root svg { min-width: 16px; min-height: 16px; }
+
+/* The mobile dismissal header never participates in content scrolling. */
+.mobile-sheet-backdrop {
+  position: fixed;
+  inset-inline: 0;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  box-sizing: border-box;
+  padding: 16px 16px max(16px, env(safe-area-inset-bottom));
+  background: rgb(15 23 42 / .42);
+}
+.mobile-sheet {
+  @apply flex w-full min-w-0 flex-col overflow-hidden rounded-2xl bg-white text-slate-900 shadow-2xl dark:bg-slate-900 dark:text-slate-100;
+  max-width: 640px;
+  overscroll-behavior: contain;
+}
+.mobile-sheet-header {
+  @apply shrink-0 border-b border-slate-200 px-4 pb-2 dark:border-slate-700;
+  touch-action: none;
+  user-select: none;
+}
+.mobile-sheet-grip { width: 36px; height: 4px; margin: 9px auto 5px; border-radius: 4px; background: #94a3b8; }
+.mobile-sheet-close { @apply flex shrink-0 items-center justify-center gap-1 rounded-xl bg-slate-100 px-2 text-slate-700 dark:bg-slate-800 dark:text-slate-200; min-height: 44px; min-width: 64px; touch-action: manipulation; }
+.mobile-sheet-close:focus-visible { outline: 2px solid #3b82f6; outline-offset: 2px; }
+.mobile-sheet-body { flex: 1; min-height: 0; min-width: 0; overflow-y: auto; overflow-x: hidden; overscroll-behavior-y: contain; touch-action: pan-y; }
+.mobile-sheet-body input, .mobile-sheet-body select, .mobile-sheet-body textarea, .mobile-sheet-body .grid > * { min-width: 0; max-width: 100%; }
+.mobile-sheet-legacy > .animate-modal-panel {
+  width: 100% !important;
+  height: auto !important;
+  max-width: none !important;
+  max-height: none !important;
+  margin: 0 !important;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+  animation: none;
+  overflow: visible;
+}
+.mobile-sheet-legacy:not(.keep-header) > .animate-modal-panel > :first-child { display: none; }
+.mobile-sheet-legacy > .animate-modal-panel > form, .mobile-sheet-legacy > .animate-modal-panel > .p-6 { padding: 16px; }
+.mobile-detail-content { height: 100%; min-height: 0; }

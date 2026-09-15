@@ -1,3 +1,4 @@
+import ModalShell from './ModalShell'
 import React, { useState, useRef, useEffect } from 'react'
 import { X, Upload, ExternalLink, AlertTriangle, CheckCircle, Info } from 'lucide-react'
 import useUIStore from '../stores/uiStore'
@@ -149,7 +150,7 @@ export default function CourseImportModal() {
   if (!isOpen) return null
 
   return (
-    <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 animate-modal-backdrop" onClick={handleClose}>
+    <ModalShell title="导入课程表" closeLabel="关闭导入课表" onClose={handleClose} className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 animate-modal-backdrop">
       <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-modal dark:shadow-modal-dark border border-slate-200/60 dark:border-slate-700/60 max-w-xl w-full mx-4 animate-modal-panel" onClick={(e) => e.stopPropagation()}>
         {/* Header */}
         <div className="flex items-center justify-between p-5 border-b border-slate-200/60 dark:border-slate-700/60">
@@ -291,6 +292,6 @@ export default function CourseImportModal() {
           </button>
         </div>
       </div>
-    </div>
+    </ModalShell>
   )
 }

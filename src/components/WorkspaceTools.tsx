@@ -1,3 +1,5 @@
+import useLayoutStore from '../stores/layoutStore'
+import MobileSheet from './MobileSheet'
 import { useEffect, useRef } from 'react'
 import { BookOpen, Plug, X } from 'lucide-react'
 import AssignmentPanel from './AssignmentPanel'
@@ -6,13 +8,14 @@ import CloudAccountPanel from './CloudAccountPanel'
 import useWorkspaceStore from '../stores/workspaceStore'
 
 export default function WorkspaceTools() {
+  const isMobile = useLayoutStore(s => s.isMobile)
   const tab = useWorkspaceStore(s => s.panel)
   const provider = useWorkspaceStore(s => s.provider)
   const open = useWorkspaceStore(s => s.open)
   const close = useWorkspaceStore(s => s.close)
   const dialog = useRef<HTMLDivElement>(null)
   useEffect(() => {
-    if (!tab) return
+    if (!tab || isMobile) return
     const previous = document.activeElement as HTMLElement
     dialog.current?.focus()
     const handle = (e: KeyboardEvent) => {
@@ -28,7 +31,8 @@ export default function WorkspaceTools() {
     }
     window.addEventListener('keydown', handle, true)
     return () => { window.removeEventListener('keydown', handle, true); previous?.focus() }
-  }, [!!tab])
+  }, [!!tab, isMobile])
+  if (tab && isMobile) return <MobileSheet title={tab === 'assignments' ? '课程任务工作台' : tab === 'account' ? '用户账号与私有仓库同步' : 'AI 与存档连接'} closeLabel="关闭工作台" onClose={close}><div className="p-4">{tab === 'assignments' ? <AssignmentPanel /> : tab === 'account' ? <CloudAccountPanel key={provider} initialProvider={provider} /> : <IntegrationPanel />}</div></MobileSheet>
   return <>
     <nav aria-label="扩展工具" className="hidden desktop:flex shrink-0 gap-2 border-b border-slate-200 bg-white px-3 py-1.5 dark:border-slate-800 dark:bg-slate-900">
       <button className="workspace-button inline-flex items-center gap-1" onClick={() => open('assignments')}><BookOpen size={14} />课程作业 / 实验</button>

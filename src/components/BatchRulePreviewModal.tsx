@@ -1,3 +1,4 @@
+import ModalShell from './ModalShell'
 import React, { useMemo, useEffect } from 'react'
 import { X, Play } from 'lucide-react'
 import { BatchRule, Event } from '../types/event'
@@ -55,7 +56,7 @@ export default function BatchRulePreviewModal({ chainId, rule, onExecute, onClos
   const dayLabel = rule.daysOfWeek.map((d) => ['日', '一', '二', '三', '四', '五', '六'][d]).join('、')
 
   return (
-    <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-[70] animate-modal-backdrop" onClick={onClose}>
+    <ModalShell title="规则预览" onClose={onClose} className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-[70] animate-modal-backdrop">
       <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-modal dark:shadow-modal-dark max-w-xl w-full max-h-[85vh] flex flex-col animate-modal-panel border border-slate-200/60 dark:border-slate-700/60" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between p-6 border-b border-slate-200 dark:border-slate-800 shrink-0">
           <div>
@@ -151,6 +152,6 @@ export default function BatchRulePreviewModal({ chainId, rule, onExecute, onClos
           </button>
         </div>
       </div>
-    </div>
+    </ModalShell>
   )
 }

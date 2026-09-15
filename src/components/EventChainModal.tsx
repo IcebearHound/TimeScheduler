@@ -1,3 +1,4 @@
+import ModalShell from './ModalShell'
 /**
  * 事件链管理模态框
  */
@@ -147,7 +148,7 @@ export default function EventChainModal({ mode, chainId, onClose, onCreated }: E
   }
 
   return (
-    <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 animate-modal-backdrop" onClick={onClose}>
+    <ModalShell title={mode === 'create' ? '创建事件链' : '编辑事件链'} closeLabel="关闭事件链" onClose={onClose} className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 animate-modal-backdrop">
       <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-modal dark:shadow-modal-dark border border-slate-200/60 dark:border-slate-700/60 max-w-md w-full animate-modal-panel" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between p-6 border-b border-slate-200/60 dark:border-slate-700/60">
           <h2 className="text-xl font-bold text-slate-900 dark:text-white">
@@ -307,6 +308,6 @@ export default function EventChainModal({ mode, chainId, onClose, onCreated }: E
           onClose={() => setPreviewRule(null)}
         />
       )}
-    </div>
+    </ModalShell>
   )
 }

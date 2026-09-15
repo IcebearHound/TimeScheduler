@@ -298,7 +298,7 @@ export default function TodoView() {
               </div>
             )}
           </div>
-          <button aria-label="收起详情面板" onClick={() => setIsRightPanelOpen(false)} className="p-1 hover:bg-slate-50 dark:hover:bg-slate-700/50 rounded text-slate-400">
+          <button aria-label="收起详情面板" onClick={() => setIsRightPanelOpen(false)} className="hidden desktop:block p-1 hover:bg-slate-50 dark:hover:bg-slate-700/50 rounded text-slate-400">
             <PanelRightClose className="w-3.5 h-3.5" />
           </button>
         </div>
