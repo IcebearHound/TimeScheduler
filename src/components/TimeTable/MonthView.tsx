@@ -8,10 +8,10 @@ import useEventStore from '../../stores/eventStore'
 import useEventGroupStore from '../../stores/eventGroupStore'
 import { getMonthDays } from '../../utils/dateUtils'
 import EventBlockItem from './EventBlockItem'
-import { useMediaQuery } from '../../utils/useMediaQuery'
+import useLayoutStore from '../../stores/layoutStore'
 
 export default function MonthView() {
-  const isMobile = useMediaQuery('(max-width: 767px)')
+  const isMobile = useLayoutStore(s => s.isMobile)
   const currentDate = useUIStore((s) => s.currentDate)
   const setCurrentDate = useUIStore((s) => s.setCurrentDate)
   const setViewMode = useUIStore((s) => s.setViewMode)
@@ -62,7 +62,7 @@ export default function MonthView() {
 
   return (
     <div className="h-full flex flex-col bg-white dark:bg-slate-900 overflow-hidden">
-      <div className="hidden md:flex items-center justify-between px-6 py-4 border-b border-slate-200/60 dark:border-slate-800/60">
+      <div className="hidden desktop:flex items-center justify-between px-6 py-4 border-b border-slate-200/60 dark:border-slate-800/60">
         <div className="flex items-center gap-4">
           <button onClick={nav.p} className="p-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-colors"><ChevronLeft className="w-5 h-5 text-slate-600 dark:text-slate-300" /></button>
           <h2 className="text-lg font-bold text-slate-900 dark:text-white">{currentDate.toLocaleDateString('zh-CN', { year: 'numeric', month: 'long' })}</h2>
@@ -100,7 +100,7 @@ export default function MonthView() {
             const isT = day.getFullYear() === new Date().getFullYear() && day.getMonth() === new Date().getMonth() && day.getDate() === new Date().getDate()
             return (
               <div key={i} onClick={() => { if (isMobile) { setCurrentDate(day); setViewMode('day') } else setSelectedDay(day) }} onDoubleClick={() => { setCurrentDate(day); setViewMode('week') }}
-                className={`min-h-[4.75rem] md:min-h-24 p-1 md:p-1.5 bg-white dark:bg-slate-800 cursor-pointer ${isCM ? '' : 'bg-slate-50 dark:bg-slate-900'} ${isT ? 'bg-accent-50/50 dark:bg-accent-900/10' : ''} ${selectedDay && selectedDay.toDateString() === day.toDateString() ? 'ring-2 ring-accent-400 ring-inset' : ''}`}>
+                className={`min-h-[4.75rem] desktop:min-h-24 p-1 desktop:p-1.5 bg-white dark:bg-slate-800 cursor-pointer ${isCM ? '' : 'bg-slate-50 dark:bg-slate-900'} ${isT ? 'bg-accent-50/50 dark:bg-accent-900/10' : ''} ${selectedDay && selectedDay.toDateString() === day.toDateString() ? 'ring-2 ring-accent-400 ring-inset' : ''}`}>
                 <div className={`text-sm font-bold mb-1 flex items-center gap-1 ${isCM ? 'text-slate-900 dark:text-white' : 'text-slate-400 dark:text-slate-600'}`}>
                   {day.getDate()}
                   {isT && <span className="w-1.5 h-1.5 rounded-full bg-accent-500 inline-block" title="今天" />}

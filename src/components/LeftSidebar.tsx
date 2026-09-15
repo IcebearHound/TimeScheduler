@@ -1,10 +1,11 @@
+import useLayoutStore from '../stores/layoutStore'
 /**
  * 左侧边栏 — 可折叠分区 + 拖动调整分区大小
  */
 import React, { useState, useRef, useCallback, useEffect } from 'react'
 import { createPortal } from 'react-dom'
 import {
-  Plus, Download, Upload, Trash2, Edit2, Layers, Filter, Tag, Copy,
+  MoreHorizontal, Plus, Download, Upload, Trash2, Edit2, Layers, Filter, Tag, Copy,
   FolderOpen, ChevronUp, ChevronDown, Link, CheckSquare, Square, PanelLeftClose, ChevronRight, MousePointer2, Eye, EyeOff
 } from 'lucide-react'
 import useUIStore from '../stores/uiStore'
@@ -25,6 +26,11 @@ const EMOJIS = ['📁', '📚', '📝', '🔬', '💻', '🎯', '🏃', '🎨', 
 type SectionKey = 'groups' | 'chains' | 'types'
 
 export default function LeftSidebar() {
+  const isMobile = useLayoutStore(s => s.isMobile)
+  const showGroupEmoji = useUIStore(s => s.showGroupEmoji)
+  const [mobileSection, setMobileSection] = useState<SectionKey>('groups')
+  const [mobileGroupActions, setMobileGroupActions] = useState<string | null>(null)
+  const mobileStyle = (section: SectionKey): React.CSSProperties => ({ flex: 1, minHeight: 0, display: mobileSection === section ? 'flex' : 'none' })
   const eventStore = useEventStore.getState()
   const groups = useEventGroupStore((s) => s.groupOrder.map(id => s.groups.get(id)).filter(Boolean) as EventGroup[])
   const activeGroupId = useEventGroupStore((s) => s.activeGroupId)
@@ -93,7 +99,7 @@ export default function LeftSidebar() {
   // 折叠状态
   const [collapsed, setCollapsed] = useState<Set<SectionKey>>(new Set())
   const toggleCollapse = (key: SectionKey) => setCollapsed(prev => { const n = new Set(prev); if (n.has(key)) n.delete(key); else n.add(key); return n })
-  const isCollapsed = (key: SectionKey) => collapsed.has(key)
+  const isCollapsed = (key: SectionKey) => !isMobile && collapsed.has(key)
 
   // 分区高度 (像素，-1 表示初始未分配)
   const containerRef = useRef<HTMLDivElement>(null)
@@ -264,26 +270,27 @@ export default function LeftSidebar() {
 
   // Section render helper
   const renderSectionHeader = (key: SectionKey, icon: React.ReactNode, title: string, actions?: React.ReactNode) => (
-    <div className="flex items-center justify-between px-3 py-2 cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors" onClick={() => toggleCollapse(key)}>
+    <div className="flex items-center justify-between px-3 py-2 cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors" onClick={() => { if (!isMobile) toggleCollapse(key) }}>
       <h2 className="text-[11px] font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider flex items-center gap-1.5">
-        <ChevronRight className={`w-3 h-3 transition-transform duration-200 ${isCollapsed(key) ? '' : 'rotate-90'}`} />
-        {icon} {title}
+        {!isMobile && <ChevronRight className={`w-3 h-3 transition-transform duration-200 ${isCollapsed(key) ? '' : 'rotate-90'}`} />}
+        {isMobile ? `${key === 'groups' ? groups.length : key === 'chains' ? allChains.length : eventStore.eventTypes.size} 项` : <>{icon} {title}</>}
       </h2>
       <div onClick={e => e.stopPropagation()}>{actions}</div>
     </div>
   )
 
   return (
-    <div ref={containerRef} className="h-full w-full md:w-[min(20vw,18rem)] bg-white/95 dark:bg-slate-900/95 border-r border-slate-200/60 dark:border-slate-800/60 flex flex-col overflow-hidden">
+    <div ref={containerRef} className="sidebar-root h-full w-full bg-white/95 dark:bg-slate-900/95 border-r border-slate-200/60 dark:border-slate-800/60 flex flex-col overflow-hidden">
       {/* 顶部栏 */}
       <div className="flex items-center justify-between px-3 py-2.5 border-b border-slate-200/60 dark:border-slate-800/60 flex-shrink-0">
         <span className="text-[11px] font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider">导航</span>
-        <button onClick={() => setIsLeftSidebarOpen(false)} className="p-1.5 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 transition-all"><PanelLeftClose className="w-3.5 h-3.5" /></button>
+        <button aria-label="收起分组面板" onClick={() => setIsLeftSidebarOpen(false)} className="p-1.5 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 transition-all"><PanelLeftClose className="w-3.5 h-3.5" /></button>
       </div>
 
+      {isMobile && <div role="tablist" aria-label="分组内容" className="grid shrink-0 grid-cols-3 gap-1 border-b p-2 dark:border-slate-800">{([['groups', '事件组'], ['chains', '事件链'], ['types', '事件类型']] as [SectionKey, string][]).map(([key, label]) => <button key={key} role="tab" aria-selected={mobileSection === key} onClick={() => setMobileSection(key)} className={`rounded-lg text-sm ${mobileSection === key ? 'bg-accent-50 font-semibold text-accent-700 dark:bg-accent-900/30 dark:text-accent-300' : 'text-slate-500'}`}>{label}</button>)}</div>}
       {/* ===== 事件组分区 ===== */}
       <div className="flex flex-col border-b border-slate-100 dark:border-slate-800"
-        style={isCollapsed('groups') ? { flex: '0 0 auto', minHeight: 0 } : heights.groups > 0 ? { height: heights.groups, flexShrink: 0 } : { flex: 1, minHeight: 80 }}>
+        data-sidebar-section="groups" style={isMobile ? mobileStyle('groups') : isCollapsed('groups') ? { flex: '0 0 auto', minHeight: 0 } : heights.groups > 0 ? { height: heights.groups, flexShrink: 0 } : { flex: 1, minHeight: 80 }}>
         {renderSectionHeader('groups', <Layers className="w-3.5 h-3.5" />, '事件组', (
           <div className="flex items-center gap-1">
             <button onClick={(e) => {
@@ -295,12 +302,12 @@ export default function LeftSidebar() {
               title={hiddenGroupIds.size >= groups.length ? '显示全部事件组' : '隐藏全部事件组'}>
               {hiddenGroupIds.size >= groups.length ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
             </button>
-            <button onClick={(e) => { e.stopPropagation(); setEditMode(!editMode); clearGroupSelect() }}
+            <button aria-label="批量管理事件组" onClick={(e) => { e.stopPropagation(); setEditMode(!editMode); clearGroupSelect() }}
               className={`p-1 rounded transition-all duration-200 ${editMode ? 'bg-accent-100 dark:bg-accent-900/20 text-accent-600' : 'hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400'}`}>
               {editMode ? <CheckSquare className="w-3.5 h-3.5" /> : <Square className="w-3.5 h-3.5" />}
             </button>
-            <button onClick={(e) => { e.stopPropagation(); setShowNewGroupInput(true) }} className="p-1 hover:bg-slate-100 dark:hover:bg-slate-700 rounded"><Plus className="w-3.5 h-3.5 text-slate-500" /></button>
-            <button onClick={(e) => { e.stopPropagation(); handleImportGroup() }} className="p-1 hover:bg-slate-100 dark:hover:bg-slate-700 rounded"><Download className="w-3.5 h-3.5 text-slate-500" /></button>
+            <button aria-label="新建事件组" onClick={(e) => { e.stopPropagation(); setShowNewGroupInput(true) }} className="p-1 hover:bg-slate-100 dark:hover:bg-slate-700 rounded"><Plus className="w-3.5 h-3.5 text-slate-500" /></button>
+            <button aria-label="导入事件组" onClick={(e) => { e.stopPropagation(); handleImportGroup() }} className="p-1 hover:bg-slate-100 dark:hover:bg-slate-700 rounded"><Download className="w-3.5 h-3.5 text-slate-500" /></button>
           </div>
         ))}
         {!isCollapsed('groups') && (
@@ -400,13 +407,13 @@ export default function LeftSidebar() {
                       : selectedGroupIds.has(g.id) ? 'bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800'
                       : 'border-transparent hover:bg-slate-50 dark:hover:bg-slate-800/50 hover:border-slate-100 dark:hover:border-slate-800'
                     } ${isHidden ? 'opacity-40' : ''}`}>
-                    <div className="flex items-center gap-1.5">
+                    <div className="group-main-row flex items-center gap-1.5">
                       {editMode ? (
                         <div className={`w-4 h-4 rounded border-2 flex items-center justify-center flex-shrink-0 ${selectedGroupIds.has(g.id) ? 'border-red-500 bg-red-500' : 'border-slate-300'}`}>
                           {selectedGroupIds.has(g.id) && <CheckSquare className="w-3 h-3 text-white" />}
                         </div>
                       ) : (
-                        <div className="flex flex-col">
+                        <div className="hidden desktop:flex flex-col">
                           <button onClick={e => { e.stopPropagation(); moveGroupUp(g.id) }} className="text-slate-300 hover:text-slate-500 disabled:opacity-20" disabled={idx === 0}><ChevronUp className="w-3 h-3" /></button>
                           <button onClick={e => { e.stopPropagation(); moveGroupDown(g.id) }} className="text-slate-300 hover:text-slate-500 disabled:opacity-20" disabled={idx === groups.length - 1}><ChevronDown className="w-3 h-3" /></button>
                         </div>
@@ -415,29 +422,39 @@ export default function LeftSidebar() {
                         {editingGroupId === g.id ? (
                           <input type="text" value={editingName} onChange={e => setEditingName(e.target.value)} onBlur={() => handleRenameSave(g.id)} onKeyDown={e => { if (e.key === 'Enter') handleRenameSave(g.id) }} onClick={e => e.stopPropagation()} className="w-full px-1 py-0.5 text-xs border border-blue-300 rounded bg-white dark:bg-slate-800 focus:outline-none" autoFocus />
                         ) : (
-                          <p className="text-sm font-medium text-slate-800 dark:text-slate-200 truncate">
-                            <button onClick={e => { e.stopPropagation(); setEditingEmojiGroupId(g.id); setShowEmojiPicker(true); setEmojiPos({ x: e.clientX, y: e.clientY }) }}
-                              className="inline hover:scale-110 transition-transform mr-1.5">{g.emoji}</button>{g.name}
+                          <p className="group-name text-sm font-medium text-slate-800 dark:text-slate-200 truncate">
+                            <button aria-label={`更改 ${g.name} 图标`} onClick={e => { e.stopPropagation(); setEditingEmojiGroupId(g.id); setShowEmojiPicker(true); setEmojiPos({ x: e.clientX, y: e.clientY }) }}
+                              className={`${showGroupEmoji ? 'hidden desktop:inline' : 'hidden'} hover:scale-110 transition-transform mr-1.5`}>{g.emoji}</button>{isMobile && showGroupEmoji && <span className="mr-1">{g.emoji}</span>}{g.name}
                             {isActive && <span className="ml-1.5 text-[9px] font-medium text-accent-600 dark:text-accent-400 bg-accent-100 dark:bg-accent-900/30 px-1.5 py-0.5 rounded-md">活动</span>}
                           </p>
                         )}
                         <p className="text-xs text-slate-400">{g.eventChainIds.length} 链 · {g.eventIds.length} 事件</p>
                       </div>
                       {!editMode && (
-                        <div className="flex gap-0.5 transition-opacity items-center">
-                          <button onClick={e => { e.stopPropagation(); toggleGroupVisibility(g.id) }}
+                        <div className="group-actions flex gap-0.5 transition-opacity items-center">
+
+                          <button aria-label={`${isHidden ? '显示' : '隐藏'} ${g.name}`} onClick={e => { e.stopPropagation(); toggleGroupVisibility(g.id) }}
                             className={`p-1 rounded transition-all ${isHidden ? 'opacity-100 text-slate-400 hover:text-amber-500' : 'opacity-0 group-hover:opacity-100 text-slate-300 hover:text-slate-500'} hover:bg-slate-200 dark:hover:bg-slate-700 rounded transition-colors`}
                             title={isHidden ? '显示此事件组' : '隐藏此事件组'}>
                             {isHidden ? <EyeOff className="w-3 h-3" /> : <Eye className="w-3 h-3" />}
                           </button>
-                          <div className="flex gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
-                            <button onClick={e => { e.stopPropagation(); handleExportGroup(g.id) }} className="p-1 hover:bg-slate-200 rounded"><Upload className="w-3 h-3 text-slate-500" /></button>
-                            <button onClick={e => { e.stopPropagation(); handleRenameStart(g.id, g.name) }} className="p-1 hover:bg-slate-200 rounded"><Edit2 className="w-3 h-3 text-slate-500" /></button>
-                            <button onClick={e => { e.stopPropagation(); handleDeleteGroup(g.id) }} className="p-1 hover:bg-red-100 rounded"><Trash2 className="w-3 h-3 text-red-400" /></button>
+                          {isMobile && <button aria-label={`更多操作 ${g.name}`} aria-expanded={mobileGroupActions === g.id} onClick={e => { e.stopPropagation(); setMobileGroupActions(mobileGroupActions === g.id ? null : g.id) }}><MoreHorizontal size={18} /></button>}
+                          <div className="hidden desktop:flex gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                            <button aria-label={`导出 ${g.name}`} onClick={e => { e.stopPropagation(); handleExportGroup(g.id) }} className="p-1 hover:bg-slate-200 rounded"><Upload className="w-3 h-3 text-slate-500" /></button>
+                            <button aria-label={`重命名 ${g.name}`} onClick={e => { e.stopPropagation(); handleRenameStart(g.id, g.name) }} className="p-1 hover:bg-slate-200 rounded"><Edit2 className="w-3 h-3 text-slate-500" /></button>
+                            <button aria-label={`删除 ${g.name}`} onClick={e => { e.stopPropagation(); handleDeleteGroup(g.id) }} className="p-1 hover:bg-red-100 rounded"><Trash2 className="w-3 h-3 text-red-400" /></button>
                           </div>
                         </div>
                       )}
                     </div>
+                    {isMobile && mobileGroupActions === g.id && <div className="mt-2 grid grid-cols-3 gap-1 border-t pt-2 text-xs dark:border-slate-700" onClick={e => e.stopPropagation()}>
+                      <button aria-label={`上移 ${g.name}`} disabled={idx === 0} onClick={() => moveGroupUp(g.id)}>上移</button>
+                      <button aria-label={`下移 ${g.name}`} disabled={idx === groups.length - 1} onClick={() => moveGroupDown(g.id)}>下移</button>
+                      <button aria-label={`导出 ${g.name}`} onClick={() => handleExportGroup(g.id)}>导出</button>
+                      <button aria-label={`重命名 ${g.name}`} onClick={() => handleRenameStart(g.id, g.name)}>重命名</button>
+                      <button aria-label={`更改 ${g.name} 图标`} onClick={e => { setEditingEmojiGroupId(g.id); setShowEmojiPicker(true); setEmojiPos({ x: e.clientX, y: e.clientY }) }}>图标</button>
+                      <button aria-label={`删除 ${g.name}`} className="text-red-600" onClick={() => handleDeleteGroup(g.id)}>删除</button>
+                    </div>}
                   </div>
                 )
               })}
@@ -450,8 +467,8 @@ export default function LeftSidebar() {
       {/* 浮动 emoji 面板 */}
       {showEmojiPicker && createPortal(
         <div className="fixed inset-0 z-[140]" onClick={() => { setShowEmojiPicker(false); setEditingEmojiGroupId(null) }}>
-          <div className="absolute p-2 bg-white dark:bg-slate-900 border border-slate-200/60 dark:border-slate-700/60 rounded-xl shadow-overlay"
-            style={{ left: Math.min(emojiPos.x, window.innerWidth - 340), top: Math.min(emojiPos.y, window.innerHeight - 260) }}>
+          <div className="absolute max-w-[calc(100vw-16px)] p-2 bg-white dark:bg-slate-900 border border-slate-200/60 dark:border-slate-700/60 rounded-xl shadow-overlay"
+            style={{ left: Math.max(8, Math.min(emojiPos.x, window.innerWidth - 340)), top: Math.min(emojiPos.y, window.innerHeight - 260) }}>
             <div className="grid grid-cols-8 gap-1 w-80">
               {EMOJIS.map(e => (
                 <button key={e} onClick={() => {
@@ -471,18 +488,18 @@ export default function LeftSidebar() {
       )}
 
       {/* 拖动分隔条 */}
-      <div onMouseDown={e => startResize(e, 'groups-chains')} className="h-[3px] cursor-row-resize hover:bg-accent-300/50 dark:hover:bg-accent-600/30 flex-shrink-0 transition-colors" />
+      <div onMouseDown={e => startResize(e, 'groups-chains')} className="sidebar-resizer h-[3px] cursor-row-resize hover:bg-accent-300/50 dark:hover:bg-accent-600/30 flex-shrink-0 transition-colors" />
 
       {/* ===== 事件链分区 ===== */}
       <div className="flex flex-col border-b border-slate-100 dark:border-slate-800"
-        style={isCollapsed('chains') ? { flex: '0 0 auto', minHeight: 0 } : heights.chains > 0 ? { height: heights.chains, flexShrink: 0 } : { flex: 1, minHeight: 60 }}>
+        data-sidebar-section="chains" style={isMobile ? mobileStyle('chains') : isCollapsed('chains') ? { flex: '0 0 auto', minHeight: 0 } : heights.chains > 0 ? { height: heights.chains, flexShrink: 0 } : { flex: 1, minHeight: 60 }}>
         {renderSectionHeader('chains', <Link className="w-3.5 h-3.5" />, '事件链', (
           <div className="flex items-center gap-1">
-            <button onClick={(e) => { e.stopPropagation(); setChainEditMode(!chainEditMode); clearChainSelect() }}
+            <button aria-label="批量管理事件链" onClick={(e) => { e.stopPropagation(); setChainEditMode(!chainEditMode); clearChainSelect() }}
               className={`p-1 rounded transition-all duration-200 ${chainEditMode ? 'bg-accent-100 dark:bg-accent-900/20 text-accent-600' : 'hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400'}`}>
               {chainEditMode ? <CheckSquare className="w-3.5 h-3.5" /> : <Square className="w-3.5 h-3.5" />}
             </button>
-            <button onClick={(e) => { e.stopPropagation(); handleCreateChain() }} className="p-1 hover:bg-slate-100 dark:hover:bg-slate-700 rounded"><Plus className="w-3.5 h-3.5 text-slate-500" /></button>
+            <button aria-label="新建事件链" onClick={(e) => { e.stopPropagation(); handleCreateChain() }} className="p-1 hover:bg-slate-100 dark:hover:bg-slate-700 rounded"><Plus className="w-3.5 h-3.5 text-slate-500" /></button>
           </div>
         ))}
         {!isCollapsed('chains') && (
@@ -560,14 +577,15 @@ export default function LeftSidebar() {
                     <div className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: chain.color }} />
                   )}
                   <div className="flex-1 min-w-0">
-                    <span className="text-xs text-slate-700 dark:text-slate-300 truncate block">{chain.name}</span>
+                    <span className="group-name text-xs text-slate-700 dark:text-slate-300 truncate block">{chain.name}</span>
                     {cg && <span className="text-[10px] text-slate-400">{cg.emoji} {cg.name}</span>}
                   </div>
                   <span className="text-[10px] text-slate-400">{c}</span>
                   {!chainEditMode && (
                     <div className="flex gap-0.5 opacity-0 group-hover:opacity-100">
-                      <button onClick={() => handleEditChain(chain.id)} className="p-0.5 hover:bg-slate-200 rounded"><Edit2 className="w-3 h-3 text-slate-400" /></button>
-                      <button onClick={() => handleDeleteChain(chain.id)} className="p-0.5 hover:bg-red-100 rounded"><Trash2 className="w-3 h-3 text-red-400" /></button>
+                      {isMobile && <button aria-label={`定位事件链 ${chain.name}`} onClick={() => { const first = eventStore.getEventsByChain(chain.id)[0]; if (first) { setCurrentDate(new Date(first.startTime)); setSelectedEvent(first.id); setIsLeftSidebarOpen(false); scrollToEventBlock(first.id) } }}><MousePointer2 size={16} /></button>}
+                      <button aria-label={`编辑事件链 ${chain.name}`} onClick={() => handleEditChain(chain.id)} className="p-0.5 hover:bg-slate-200 rounded"><Edit2 className="w-3 h-3 text-slate-400" /></button>
+                      <button aria-label={`删除事件链 ${chain.name}`} onClick={() => handleDeleteChain(chain.id)} className="p-0.5 hover:bg-red-100 rounded"><Trash2 className="w-3 h-3 text-red-400" /></button>
                     </div>
                   )}
                 </div>
@@ -580,17 +598,17 @@ export default function LeftSidebar() {
       </div>
 
       {/* 拖动分隔条 */}
-      <div onMouseDown={e => startResize(e, 'chains-types')} className="h-[3px] cursor-row-resize hover:bg-accent-300/50 dark:hover:bg-accent-600/30 flex-shrink-0 transition-colors" />
+      <div onMouseDown={e => startResize(e, 'chains-types')} className="sidebar-resizer h-[3px] cursor-row-resize hover:bg-accent-300/50 dark:hover:bg-accent-600/30 flex-shrink-0 transition-colors" />
 
       {/* ===== 事件类型分区 ===== */}
-      <div className="flex flex-col flex-1" style={{ minHeight: isCollapsed('types') ? 0 : 60 }}>
+      <div className="flex flex-col flex-1" data-sidebar-section="types" style={isMobile ? mobileStyle('types') : { minHeight: isCollapsed('types') ? 0 : 60 }}>
         {renderSectionHeader('types', <Tag className="w-3.5 h-3.5" />, '事件类型', (
           <div className="flex items-center gap-1">
-            <button onClick={(e) => { e.stopPropagation(); setTypesEditMode(!typesEditMode); setSelectedTypes(new Set()); sideSelection.typeIds = new Set() }}
+            <button aria-label="批量管理事件类型" onClick={(e) => { e.stopPropagation(); setTypesEditMode(!typesEditMode); setSelectedTypes(new Set()); sideSelection.typeIds = new Set() }}
               className={`p-1 rounded transition-colors ${typesEditMode ? 'bg-accent-100 dark:bg-accent-900/20 text-accent-600' : 'hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400'}`}>
               {typesEditMode ? <CheckSquare className="w-3.5 h-3.5" /> : <Square className="w-3.5 h-3.5" />}
             </button>
-            <button onClick={(e) => { e.stopPropagation(); setIsTypeManagerOpen(true) }} className="p-1 hover:bg-slate-100 dark:hover:bg-slate-700 rounded"><Plus className="w-3.5 h-3.5 text-slate-500" /></button>
+            <button aria-label="新建事件类型" onClick={(e) => { e.stopPropagation(); setIsTypeManagerOpen(true) }} className="p-1 hover:bg-slate-100 dark:hover:bg-slate-700 rounded"><Plus className="w-3.5 h-3.5 text-slate-500" /></button>
           </div>
         ))}
         {!isCollapsed('types') && (

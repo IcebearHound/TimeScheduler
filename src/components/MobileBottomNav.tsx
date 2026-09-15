@@ -1,34 +1,15 @@
-import React from 'react'
-import { CalendarDays, FolderKanban, ListTodo, Plus, Search } from 'lucide-react'
+import { FolderKanban, ListTodo, Plus, BookOpen, Grid2X2 } from 'lucide-react'
 import useUIStore from '../stores/uiStore'
+import useWorkspaceStore from '../stores/workspaceStore'
 
 export default function MobileBottomNav() {
-  const setViewMode = useUIStore((state) => state.setViewMode)
-
-  const showCalendar = () => {
-    const ui = useUIStore.getState()
-    ui.setIsLeftSidebarOpen(false)
-    ui.setIsRightPanelOpen(false)
-    setViewMode('day')
-  }
-
-  return (
-    <nav className="mobile-bottom-nav md:hidden" aria-label="主导航">
-      <button type="button" onClick={showCalendar} className="mobile-nav-item">
-        <CalendarDays className="h-5 w-5" /><span>日程</span>
-      </button>
-      <button type="button" onClick={() => { useUIStore.getState().setIsRightPanelOpen(false); useUIStore.getState().setIsLeftSidebarOpen(true) }} className="mobile-nav-item">
-        <FolderKanban className="h-5 w-5" /><span>分组</span>
-      </button>
-      <button type="button" aria-label="新建事件" onClick={() => useUIStore.getState().setIsEventPanelOpen(true)} className="mobile-create-button">
-        <Plus className="h-6 w-6" />
-      </button>
-      <button type="button" onClick={() => useUIStore.getState().setIsTodoModalOpen(true)} className="mobile-nav-item">
-        <ListTodo className="h-5 w-5" /><span>待办</span>
-      </button>
-      <button type="button" onClick={() => useUIStore.getState().setIsSearchOpen(true)} className="mobile-nav-item">
-        <Search className="h-5 w-5" /><span>搜索</span>
-      </button>
-    </nav>
-  )
+  const ui = useUIStore()
+  const resetPanels = () => { ui.setIsLeftSidebarOpen(false); ui.setIsRightPanelOpen(false) }
+  return <nav className="mobile-bottom-nav" aria-label="主导航">
+    <button aria-pressed={ui.isLeftSidebarOpen} onClick={() => { ui.setIsRightPanelOpen(false); ui.setIsLeftSidebarOpen(!ui.isLeftSidebarOpen) }} className="mobile-nav-item"><FolderKanban size={20} /><span>分组</span></button>
+    <button onClick={() => { resetPanels(); ui.setIsTodoModalOpen(true) }} className="mobile-nav-item"><ListTodo size={20} /><span>待办</span></button>
+    <button aria-label="新建事件" onClick={() => { resetPanels(); ui.setSelectedEvent(undefined); ui.clearMultiSelect(); ui.setIsEventPanelOpen(true) }} className="mobile-create-button"><Plus size={24} /></button>
+    <button aria-label="课程作业 / 实验" onClick={() => { resetPanels(); useWorkspaceStore.getState().open('assignments') }} className="mobile-nav-item"><BookOpen size={20} /><span>课程</span></button>
+    <button onClick={() => { resetPanels(); ui.setIsMobileToolsOpen(true) }} className="mobile-nav-item"><Grid2X2 size={20} /><span>工具</span></button>
+  </nav>
 }

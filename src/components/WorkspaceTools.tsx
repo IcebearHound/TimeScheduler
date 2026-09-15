@@ -30,7 +30,7 @@ export default function WorkspaceTools() {
     return () => { window.removeEventListener('keydown', handle, true); previous?.focus() }
   }, [!!tab])
   return <>
-    <nav aria-label="扩展工具" className="flex shrink-0 gap-2 border-b border-slate-200 bg-white px-3 py-1.5 dark:border-slate-800 dark:bg-slate-900">
+    <nav aria-label="扩展工具" className="hidden desktop:flex shrink-0 gap-2 border-b border-slate-200 bg-white px-3 py-1.5 dark:border-slate-800 dark:bg-slate-900">
       <button className="workspace-button inline-flex items-center gap-1" onClick={() => open('assignments')}><BookOpen size={14} />课程作业 / 实验</button>
       <button className="workspace-button inline-flex items-center gap-1" onClick={() => open('ai')}><Plug size={14} />AI / MCP</button>
     </nav>

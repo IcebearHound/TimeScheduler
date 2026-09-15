@@ -1,14 +1,11 @@
 import React, { useState, useMemo, useRef, useEffect } from 'react'
-import { createPortal } from 'react-dom'
-import { Calendar, Plus, Download, Settings, Search, Undo2, Redo2, User, Filter, Sun, Moon, Monitor, BookOpen, Trash2, ChevronDown, X, Link, ListTodo, Edit2, FolderOpen, Tag } from 'lucide-react'
+import { Calendar, Plus, Download, Settings, Search, Undo2, Redo2, User, Filter, ChevronDown, X, Link, ListTodo, Edit2, FolderOpen, Tag } from 'lucide-react'
 import useUIStore from '../stores/uiStore'
 import useEventStore from '../stores/eventStore'
 import useEventGroupStore from '../stores/eventGroupStore'
 import EventChainFilter from './EventChainFilter'
 import AccountMenuEntries from './AccountMenuEntries'
 import useCloudSyncStore from '../stores/cloudSyncStore'
-import SearchDialog from './SearchDialog'
-import { dialogConfirm } from '../utils/dialog'
 import { scrollToEventBlock } from '../utils/scrollTarget'
 import { parseTimeQuery } from '../utils/searchParser'
 import { Event, EventChain, EventGroup, EventType } from '../types/event'
@@ -43,19 +40,9 @@ export default function Header() {
     useUIStore.getState().addToast(`已重做: ${es.lastUndoAction || '操作'}`, '撤销', () => { eventUndo() }, es.lastAffected)
   }
 
-  const showGroupEmoji = useUIStore((s) => s.showGroupEmoji)
-  const setShowGroupEmoji = useUIStore((s) => s.setShowGroupEmoji)
-  const isSearchOpen = useUIStore((s) => s.isSearchOpen)
-  const setIsSearchOpen = useUIStore((s) => s.setIsSearchOpen)
   const setIsTodoModalOpen = useUIStore((s) => s.setIsTodoModalOpen)
-  const themeMode = useUIStore((s) => s.themeMode)
-  const setThemeMode = useUIStore((s) => s.setThemeMode)
-  const setIsWelcomeGuideOpen = useUIStore((s) => s.setIsWelcomeGuideOpen)
-  const showDebugPanel = useUIStore((s) => s.showDebugPanel)
-  const setShowDebugPanel = useUIStore((s) => s.setShowDebugPanel)
   const [showUserMenu, setShowUserMenu] = useState(false)
   const [showFilter, setShowFilter] = useState(false)
-  const [themeExpanded, setThemeExpanded] = useState(false)
   const userMenuWrapperRef = useRef<HTMLDivElement>(null)
 
   // 内联搜索
@@ -409,139 +396,12 @@ export default function Header() {
                 <div className="border-t border-slate-100 dark:border-slate-800" />
 
                 <AccountMenuEntries onSelect={() => setShowUserMenu(false)} />
-                <div className="border-t border-slate-100 dark:border-slate-800" />
-                <div className="px-4 pt-3 pb-1">
-                  <p className="text-[10px] font-semibold uppercase tracking-widest text-slate-400 dark:text-slate-500 mb-2">管理</p>
-                  <div className="space-y-0.5">
-                    <button onClick={() => { setIsTypeManagerOpen(true); setShowUserMenu(false) }}
-                      className="w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors">
-                      <Settings className="w-4 h-4 text-slate-400 flex-shrink-0" /> 事件类型
-                    </button>
-                    <button onClick={() => { setIsWelcomeGuideOpen(true); setShowUserMenu(false) }}
-                      className="w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors">
-                      <BookOpen className="w-4 h-4 text-slate-400 flex-shrink-0" /> 功能导览
-                    </button>
-                  </div>
-                </div>
-
-                <div className="border-t border-slate-100 dark:border-slate-800 mx-4 my-1" />
-
-                {/* 显示 */}
-                <div className="px-4 py-1">
-                  <p className="text-[10px] font-semibold uppercase tracking-widest text-slate-400 dark:text-slate-500 mb-2">显示</p>
-                  <div className="space-y-0.5">
-                    <div onClick={e => e.stopPropagation()}>
-                      <div className="flex items-center justify-between px-3 py-2 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-700/50 cursor-pointer transition-colors"
-                        onClick={() => setThemeExpanded(!themeExpanded)}>
-                        <div className="flex items-center gap-3">
-                          {themeMode === 'light' ? <Sun className="w-4 h-4 text-amber-500 flex-shrink-0" />
-                           : themeMode === 'dark' ? <Moon className="w-4 h-4 text-indigo-400 flex-shrink-0" />
-                           : <Monitor className="w-4 h-4 text-slate-400 flex-shrink-0" />}
-                          <div className="text-left">
-                            <p className="text-sm text-slate-700 dark:text-slate-200">主题模式</p>
-                            <p className="text-[10px] text-slate-400 dark:text-slate-500">
-                              {themeMode === 'light' ? '当前：浅色模式' : themeMode === 'dark' ? '当前：深色模式' : '当前：跟随系统'}
-                            </p>
-                          </div>
-                        </div>
-                        <ChevronDown className={`w-4 h-4 text-slate-400 transition-transform duration-200 ${themeExpanded ? 'rotate-180' : ''}`} />
-                      </div>
-                      {themeExpanded && (
-                        <div className="ml-9 mr-3 mt-1 mb-1 flex gap-1 bg-slate-100 dark:bg-slate-800 rounded-lg p-0.5" onClick={e => e.stopPropagation()}>
-                          {([
-                            { key: 'light' as const, icon: Sun },
-                            { key: 'dark' as const, icon: Moon },
-                            { key: 'system' as const, icon: Monitor },
-                          ]).map(({ key, icon: Icon }) => (
-                            <button key={key} onClick={() => setThemeMode(key)}
-                              className={`flex-1 flex items-center justify-center py-1.5 rounded-md text-xs font-medium transition-all duration-200 ${
-                                themeMode === key
-                                  ? 'bg-white dark:bg-slate-700 text-accent-600 dark:text-accent-400 shadow-sm'
-                                  : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200'
-                              }`}>
-                              <Icon className="w-4 h-4" />
-                            </button>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                    <div className="flex items-center justify-between px-3 py-2 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-700/50 cursor-pointer transition-colors"
-                      onClick={() => setShowGroupEmoji(!showGroupEmoji)}>
-                      <div className="flex items-center gap-3">
-                        <span className="w-4 h-4 flex items-center justify-center text-sm flex-shrink-0">🎨</span>
-                        <div className="text-left">
-                          <p className="text-sm text-slate-700 dark:text-slate-200">事件组图标</p>
-                          <p className="text-[10px] text-slate-400 dark:text-slate-500">侧栏显示事件组表情符号</p>
-                        </div>
-                      </div>
-                      <div className={`w-8 h-5 rounded-full p-0.5 transition-colors duration-200 ${showGroupEmoji ? 'bg-accent-600' : 'bg-slate-200 dark:bg-slate-600'}`}>
-                        <div className={`w-4 h-4 bg-white rounded-full shadow-sm transition-transform duration-200 ${showGroupEmoji ? 'translate-x-3' : ''}`} />
-                      </div>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="border-t border-slate-100 dark:border-slate-800 mx-4 my-1" />
-
-                <div className="px-4 py-1">
-                  <p className="text-[10px] font-semibold uppercase tracking-widest text-slate-400 dark:text-slate-500 mb-2">数据</p>
-                  <div className="space-y-0.5">
-                    <button onClick={() => {
-                      const es = useEventStore.getState(); const gs = useEventGroupStore.getState()
-                      const data = { events: Array.from(es.events.entries()), eventChains: Array.from(es.eventChains.entries()), eventTypes: Array.from(es.eventTypes.entries()), groups: Array.from(gs.groups.entries()) }
-                      const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' }); const url = URL.createObjectURL(blob)
-                      const a = document.createElement('a'); a.href = url; a.download = '全部数据备份.json'; a.click(); URL.revokeObjectURL(url); setShowUserMenu(false)
-                    }} className="w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors">
-                      <Download className="w-4 h-4 text-slate-400 flex-shrink-0" /> 导出全部数据
-                    </button>
-                    <button onClick={async () => {
-                      const ok = await dialogConfirm('确定清除所有数据？此操作不可撤销。', '清除数据', 'danger')
-                      if (ok) {
-                        useEventStore.getState().clear()
-                        useEventStore.getState().loadDefaultData()
-                        localStorage.removeItem('eventGroupStore')
-                        useEventGroupStore.setState({ groups: new Map(), groupOrder: [], activeGroupId: '' })
-                        useEventGroupStore.getState().load()
-                      }
-                      setShowUserMenu(false)
-                    }} className="w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/10 transition-colors">
-                      <Trash2 className="w-4 h-4 text-red-400 flex-shrink-0" /> 清除所有数据
-                    </button>
-                  </div>
-                </div>
-
-                <div className="border-t border-slate-100 dark:border-slate-800 mx-4 my-1" />
-
-                <div className="px-4 py-1">
-                  <p className="text-[10px] font-semibold uppercase tracking-widest text-slate-400 dark:text-slate-500 mb-2">关于</p>
-                  <div className="space-y-0.5">
-                    <div className="flex items-center justify-between px-3 py-2 rounded-lg">
-                      <span className="text-sm text-slate-700 dark:text-slate-200">版本</span>
-                      <span className="text-xs text-slate-400">v1.0beta</span>
-                    </div>
-                    <div className="flex items-center justify-between px-3 py-2 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-700/50 cursor-pointer transition-colors"
-                      onClick={() => setShowDebugPanel(!showDebugPanel)}>
-                      <span className="text-sm text-slate-700 dark:text-slate-200">调试面板</span>
-                      <div className={`w-8 h-5 rounded-full p-0.5 transition-colors duration-200 ${showDebugPanel ? 'bg-accent-600' : 'bg-slate-200 dark:bg-slate-600'}`}>
-                        <div className={`w-4 h-4 bg-white rounded-full shadow-sm transition-transform duration-200 ${showDebugPanel ? 'translate-x-3' : ''}`} />
-                      </div>
-                    </div>
-                    <div className="px-3 py-1">
-                      <p className="text-[11px] text-slate-400 dark:text-slate-500">IcebearHound@gamil.com</p>
-                      <p className="text-[11px] text-slate-400 dark:text-slate-500">QQ: 3092825040</p>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="px-4 py-3 border-t border-slate-100 dark:border-slate-800">
-                  <p className="text-[10px] text-slate-400 dark:text-slate-500 text-center">快捷键 Ctrl+K 搜索 · Ctrl+Z/Y 撤销重做</p>
-                </div>
+                <div className="border-t p-2 dark:border-slate-700"><button className="flex min-h-11 w-full items-center gap-3 rounded-lg px-3 text-sm hover:bg-slate-100 dark:hover:bg-slate-700" onClick={() => { setShowUserMenu(false); useUIStore.getState().setIsSettingsOpen(true) }}><Settings size={18} />设置</button></div>
               </div>
             )}
           </div>
         </div>
       </div>
-      {isSearchOpen && createPortal(<SearchDialog onClose={() => setIsSearchOpen(false)} />, document.body)}
     </header>
   )
 }

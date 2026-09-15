@@ -30,9 +30,9 @@ button,
   @apply overflow-hidden transition-all duration-300 ease-[cubic-bezier(0.16,1,0.3,1)];
 }
 
-.app-left-panel.is-open { width: min(20vw, 18rem); opacity: 1; }
+.app-left-panel.is-open { width: clamp(15rem, 20vw, 18rem); opacity: 1; }
 .app-left-panel.is-closed { width: 0; opacity: 0; }
-.app-right-panel.is-open { width: min(22vw, 20rem); opacity: 1; }
+.app-right-panel.is-open { width: clamp(16rem, 22vw, 20rem); opacity: 1; }
 .app-right-panel.is-closed { width: 0; opacity: 0; }
 
 .mobile-header {
@@ -379,50 +379,50 @@ select.input-field {
 .animate-toast-slide { animation: toastSlideInLegacy 3s infinite; }
 .animate-key-glow { animation: keyPressGlow 4s infinite; }
 
-@media (max-width: 767px) {
-  html {
+
+html[data-layout="mobile"] {
     font-size: 16px;
   }
 
-  html,
-  body,
-  #root {
+html[data-layout="mobile"],
+html[data-layout="mobile"] body,
+html[data-layout="mobile"] #root {
     height: 100%;
     overflow: hidden;
     overscroll-behavior: none;
   }
 
-  .app-shell {
+html[data-layout="mobile"] .app-shell {
     height: 100dvh;
   }
 
-  .app-main {
-    padding-bottom: calc(4.25rem + env(safe-area-inset-bottom));
+html[data-layout="mobile"] .app-main {
+    padding-bottom: 0;
   }
 
-  .app-left-panel {
+html[data-layout="mobile"] .app-left-panel {
     position: fixed;
     z-index: 40;
     top: calc(6.5rem + env(safe-area-inset-top));
     bottom: calc(4.25rem + env(safe-area-inset-bottom));
     left: 0;
-    width: min(88vw, 22rem) !important;
+    width: min(calc(100vw - 1rem), 26rem) !important;
     border-radius: 0 1.5rem 1.5rem 0;
     box-shadow: 0 24px 50px rgb(15 23 42 / 0.24);
   }
 
-  .app-left-panel.is-open {
+html[data-layout="mobile"] .app-left-panel.is-open {
     transform: translateX(0);
     opacity: 1;
   }
 
-  .app-left-panel.is-closed {
+html[data-layout="mobile"] .app-left-panel.is-closed {
     transform: translateX(-105%);
     opacity: 0;
     pointer-events: none;
   }
 
-  .app-right-panel {
+html[data-layout="mobile"] .app-right-panel {
     position: fixed;
     z-index: 45;
     left: 0.5rem;
@@ -434,36 +434,36 @@ select.input-field {
     box-shadow: 0 24px 60px rgb(15 23 42 / 0.3);
   }
 
-  .app-right-panel.is-open {
+html[data-layout="mobile"] .app-right-panel.is-open {
     transform: translateY(0);
     opacity: 1;
   }
 
-  .app-right-panel.is-closed {
+html[data-layout="mobile"] .app-right-panel.is-closed {
     transform: translateY(110%);
     opacity: 0;
     pointer-events: none;
   }
 
-  .app-left-panel > div > div,
-  .app-right-panel > div > div {
+html[data-layout="mobile"] .app-left-panel > div > div,
+html[data-layout="mobile"] .app-right-panel > div > div {
     border-radius: inherit;
   }
 
-  input:not([type='checkbox']):not([type='radio']),
-  select,
-  textarea {
+html[data-layout="mobile"] input:not([type='checkbox']):not([type='radio']),
+html[data-layout="mobile"] select,
+html[data-layout="mobile"] textarea {
     min-height: 44px;
     font-size: 16px !important;
   }
 
-  .animate-modal-backdrop:has(> .animate-modal-panel) {
+html[data-layout="mobile"] .animate-modal-backdrop:has(> .animate-modal-panel) {
     align-items: flex-end !important;
     padding: 0.75rem !important;
     padding-bottom: calc(0.75rem + env(safe-area-inset-bottom)) !important;
   }
 
-  .animate-modal-backdrop > .animate-modal-panel {
+html[data-layout="mobile"] .animate-modal-backdrop > .animate-modal-panel {
     width: 100% !important;
     max-width: none !important;
     max-height: min(88dvh, 52rem) !important;
@@ -472,29 +472,29 @@ select.input-field {
     overflow-y: auto;
   }
 
-  .app-left-panel button,
-  .app-right-panel button,
-  .animate-modal-panel button,
-  .event-context-menu button {
+html[data-layout="mobile"] .app-left-panel button,
+html[data-layout="mobile"] .app-right-panel button,
+html[data-layout="mobile"] .animate-modal-panel button,
+html[data-layout="mobile"] .event-context-menu button {
     min-height: 40px;
   }
 
-  .fixed.bottom-4.right-4 {
+html[data-layout="mobile"] .fixed.bottom-4.right-4 {
     left: 0.75rem;
     right: 0.75rem;
     bottom: calc(4.75rem + env(safe-area-inset-bottom));
   }
 
-  .fixed.bottom-4.right-4 > div {
+html[data-layout="mobile"] .fixed.bottom-4.right-4 > div {
     width: 100%;
     max-width: none;
   }
 
-  .event-block {
+html[data-layout="mobile"] .event-block {
     touch-action: pan-y;
   }
 
-  .event-context-menu {
+html[data-layout="mobile"] .event-context-menu {
     left: 0.75rem !important;
     right: 0.75rem !important;
     top: auto !important;
@@ -505,11 +505,11 @@ select.input-field {
     box-shadow: 0 24px 60px rgb(15 23 42 / 0.32);
   }
 
-  .touch-drag-handle,
-  .touch-resize-handle {
+html[data-layout="mobile"] .touch-drag-handle,
+html[data-layout="mobile"] .touch-resize-handle {
     touch-action: none;
   }
-}
+
 /* Shared controls for course tasks and local integrations. */
 .workspace-input { display: block; width: 100%; min-width: 0; margin-top: .25rem; padding: .5rem .65rem; border: 1px solid #cbd5e1; border-radius: .5rem; background: white; color: #0f172a; font-size: .875rem; }
 .workspace-input:focus { outline: 2px solid #818cf8; outline-offset: 1px; }
@@ -520,3 +520,26 @@ select.input-field {
 .dark .workspace-input { background: #0f172a; color: #e2e8f0; border-color: #475569; }
 .dark .workspace-button { border-color: #475569; }
 .dark .workspace-button:hover { background: #334155; }
+
+html[data-layout="desktop"] .app-shell { min-width: 1100px; }
+html[data-layout="desktop"] body { overflow-x: auto; }
+.app-main, .app-left-panel, .app-right-panel { min-height: 0; }
+.sidebar-root { min-height: 0; }
+.sidebar-root .flex-1 { min-height: 0; }
+html[data-layout="mobile"] .sidebar-root button { min-height: 44px; min-width: 32px; }
+html[data-layout="mobile"] .sidebar-root .group-actions { flex: 0 0 auto; justify-content: flex-end; }
+html[data-layout="mobile"] .sidebar-root .group-main-row { align-items: flex-start; }
+html[data-layout="mobile"] .sidebar-root .group-main-row > .min-w-0 { flex: 1; }
+html[data-layout="mobile"] .sidebar-root .group-name { white-space: normal; overflow: visible; overflow-wrap: anywhere; }
+html[data-layout="mobile"] .sidebar-root .opacity-0 { opacity: 1; }
+html[data-layout="mobile"] .sidebar-root input { min-width: 0; }
+html[data-layout="mobile"] .sidebar-resizer { display: none; }
+.mobile-tool { @apply flex min-h-24 flex-col items-center justify-center gap-2 rounded-xl border border-slate-200 p-3 text-sm font-medium active:bg-slate-100 disabled:opacity-40 dark:border-slate-700 dark:active:bg-slate-800; }
+.mobile-nav-item[aria-pressed="true"] { @apply bg-accent-50 text-accent-700 dark:bg-accent-900/20 dark:text-accent-300; }
+html[data-layout="mobile"] .mobile-bottom-nav { position: relative; flex-shrink: 0; }
+html[data-layout="mobile"] .app-left-panel, html[data-layout="mobile"] .mobile-panel-backdrop { top: calc(6.5rem + env(safe-area-inset-top)); }
+html[data-layout="mobile"] [data-app-panel] { margin-bottom: env(safe-area-inset-bottom); }
+html[data-layout="mobile"] .app-main > .calendar-container { min-width: 0; }
+
+html[data-layout="mobile"] .sidebar-root button:disabled { opacity: .3; }
+html[data-layout="mobile"] .sidebar-root svg { min-width: 16px; min-height: 16px; }

@@ -39,5 +39,8 @@ export default {
       },
     },
   },
-  plugins: [],
+  plugins: [({ addVariant }) => {
+    addVariant('desktop', 'html[data-layout="desktop"] &')
+    addVariant('mobile', 'html[data-layout="mobile"] &')
+  }],
 }

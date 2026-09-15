@@ -1,3 +1,7 @@
+import useLayoutStore from './stores/layoutStore'
+import SettingsPanel from './components/SettingsPanel'
+import MobileToolsPanel from './components/MobileToolsPanel'
+import SearchDialog from './components/SearchDialog'
 import React, { useEffect, useState, useRef, useCallback } from 'react'
 import useEventStore from './stores/eventStore'
 import useEventGroupStore from './stores/eventGroupStore'
@@ -25,6 +29,10 @@ import { PanelLeftOpen, PanelRightOpen } from 'lucide-react'
 import { getReminderMilliseconds } from './utils/eventUtils'
 
 export default function App() {
+  const isMobile = useLayoutStore(s => s.isMobile)
+  const isSettingsOpen = useUIStore(s => s.isSettingsOpen)
+  const isMobileToolsOpen = useUIStore(s => s.isMobileToolsOpen)
+  const isSearchOpen = useUIStore(s => s.isSearchOpen)
   const [initialized, setInitialized] = useState(false)
   useEffect(() => { if (initialized) void startAutoSync() }, [initialized])
   const isConflictDialogOpen = useUIStore((s) => s.isConflictDialogOpen)
@@ -48,8 +56,6 @@ export default function App() {
   const setIsTodoModalOpen = useUIStore((s) => s.setIsTodoModalOpen)
   const showDebugPanel = useUIStore((s) => s.showDebugPanel)
   const groupSize = useEventGroupStore((s) => s.groups.size)
-  const activeId = useEventGroupStore((s) => s.activeGroupId)
-  const sideKey = `${groupSize}-${activeId || 'none'}`
 
   // 边栏展开/折叠动画状态（延迟卸载以完成关闭动画）
   const [leftRender, setLeftRender] = useState(isLeftSidebarOpen)
@@ -90,13 +96,19 @@ export default function App() {
   useEffect(() => {
     useEventStore.getState().load()
     useEventGroupStore.getState().load()
-    if (window.matchMedia('(max-width: 767px)').matches) {
+    if (useLayoutStore.getState().isMobile) {
       useUIStore.getState().setIsLeftSidebarOpen(false)
       useUIStore.getState().setIsRightPanelOpen(false)
       useUIStore.getState().setViewMode('day')
+      useUIStore.getState().setCalendarDayCount(3)
     }
     setInitialized(true)
   }, [])
+
+  useEffect(() => {
+    useUIStore.getState().setIsLeftSidebarOpen(!isMobile)
+    useUIStore.getState().setIsRightPanelOpen(!isMobile)
+  }, [isMobile])
 
   // 首次启动自动弹出功能导览
   useEffect(() => {
@@ -125,6 +137,9 @@ export default function App() {
     const handler = (e: KeyboardEvent) => {
       if (e.key !== 'Escape') return
       const s = useUIStore.getState()
+      if (s.dialogConfig) { s.closeDialog(); return }
+      if (s.isSettingsOpen) { s.setIsSettingsOpen(false); return }
+      if (s.isMobileToolsOpen) { s.setIsMobileToolsOpen(false); return }
       if (s.isSearchOpen) { s.setIsSearchOpen(false); return }
       if (s.isTypeManagerOpen) { s.setIsTypeManagerOpen(false); s.setTypeToEditId(null); return }
       if (s.isEventPanelOpen) { s.setIsEventPanelOpen(false); return }
@@ -226,24 +241,23 @@ export default function App() {
   return (
     <div className="app-shell flex flex-col h-screen bg-gradient-to-br from-slate-50 via-white to-slate-100 dark:from-slate-950 dark:via-slate-900 dark:to-slate-800">
       <KeyboardShortcuts />
-      <div className="hidden md:block"><Header /></div>
-      <MobileHeader />
+      {isMobile ? <MobileHeader /> : <Header />}
       <WorkspaceTools />
       <div className="app-main flex flex-1 overflow-hidden">
-        {isLeftSidebarOpen && <button type="button" aria-label="关闭导航" className="mobile-panel-backdrop md:hidden" onClick={() => setIsLeftSidebarOpen(false)} />}
+        {isLeftSidebarOpen && <button type="button" aria-label="关闭导航" className="mobile-panel-backdrop desktop:hidden" onClick={() => setIsLeftSidebarOpen(false)} />}
         {!isLeftSidebarOpen && (
           <button onClick={() => setIsLeftSidebarOpen(true)}
-            className="hidden md:block absolute left-0 top-1/2 -translate-y-1/2 z-20 p-2 bg-white/80 dark:bg-slate-800/80 backdrop-blur-sm border border-slate-200/80 dark:border-slate-700/80 rounded-r-xl shadow-elevated hover:bg-white dark:hover:bg-slate-800 hover:shadow-overlay transition-all duration-200">
+            className="hidden desktop:block absolute left-0 top-1/2 -translate-y-1/2 z-20 p-2 bg-white/80 dark:bg-slate-800/80 backdrop-blur-sm border border-slate-200/80 dark:border-slate-700/80 rounded-r-xl shadow-elevated hover:bg-white dark:hover:bg-slate-800 hover:shadow-overlay transition-all duration-200">
             <PanelLeftOpen className="w-4 h-4 text-slate-400 dark:text-slate-500" />
           </button>
         )}
         <div ref={leftRef}
           onTransitionEnd={handleLeftTransitionEnd}
           className={`app-left-panel ${isLeftSidebarOpen ? 'is-open' : 'is-closed'}`}>
-          <div className="h-full w-full">{leftRender && <LeftSidebar key={sideKey} />}</div>
+          <div className="h-full w-full">{leftRender && <LeftSidebar />}</div>
         </div>
-        <div className="flex-1 overflow-hidden"><TimeTable /></div>
-        {isRightPanelOpen && <button type="button" aria-label="关闭详情" className="mobile-panel-backdrop md:hidden" onClick={() => setIsRightPanelOpen(false)} />}
+        <div className="calendar-container min-w-0 flex-1 overflow-hidden"><TimeTable /></div>
+        {isRightPanelOpen && <button type="button" aria-label="关闭详情" className="mobile-panel-backdrop desktop:hidden" onClick={() => setIsRightPanelOpen(false)} />}
         <div ref={rightRef}
           onTransitionEnd={handleRightTransitionEnd}
           className={`app-right-panel ${isRightPanelOpen ? 'is-open' : 'is-closed'}`}>
@@ -251,12 +265,15 @@ export default function App() {
         </div>
         {!isRightPanelOpen && (
           <button onClick={() => setIsRightPanelOpen(true)}
-            className="hidden md:block absolute right-0 top-1/2 -translate-y-1/2 z-20 p-2 bg-white/80 dark:bg-slate-800/80 backdrop-blur-sm border border-slate-200/80 dark:border-slate-700/80 rounded-l-xl shadow-elevated hover:bg-white dark:hover:bg-slate-800 hover:shadow-overlay transition-all duration-200">
+            className="hidden desktop:block absolute right-0 top-1/2 -translate-y-1/2 z-20 p-2 bg-white/80 dark:bg-slate-800/80 backdrop-blur-sm border border-slate-200/80 dark:border-slate-700/80 rounded-l-xl shadow-elevated hover:bg-white dark:hover:bg-slate-800 hover:shadow-overlay transition-all duration-200">
             <PanelRightOpen className="w-4 h-4 text-slate-400 dark:text-slate-500" />
           </button>
         )}
       </div>
-      <MobileBottomNav />
+      {isMobile && <MobileBottomNav />}
+      {isSettingsOpen && <SettingsPanel />}
+      {isMobileToolsOpen && <MobileToolsPanel />}
+      {isSearchOpen && <SearchDialog onClose={() => useUIStore.getState().setIsSearchOpen(false)} />}
       <EventModal />
       <CourseImportModal />
       {isConflictDialogOpen && conflictConflicts.length > 0 && (

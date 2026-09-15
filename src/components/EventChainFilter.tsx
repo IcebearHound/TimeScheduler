@@ -32,7 +32,7 @@ export default function EventChainFilter({ onContextMenu, editMode, selectedType
         </div>
       )
     }
-    return <input type="checkbox" checked={!filterTypeIds.has(typeId)} onChange={e => toggleFilter(typeId, e.target.checked)} className="w-4 h-4 rounded" />
+    return <input aria-label={`显示 ${eventTypes.get(typeId)?.name || '事件类型'}`} type="checkbox" checked={!filterTypeIds.has(typeId)} onChange={e => toggleFilter(typeId, e.target.checked)} className="w-4 h-4 rounded" />
   }
 
   const handleClick = (typeId: string) => {
@@ -44,7 +44,7 @@ export default function EventChainFilter({ onContextMenu, editMode, selectedType
   return (
     <div className="space-y-0.5">
       {allTypes.map(type => (
-        <div key={type.id} className={`flex items-center gap-2 py-1.5 px-2 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors ${editMode ? 'cursor-pointer' : ''}`}
+        <div key={type.id} className={`flex items-center gap-2 min-h-11 py-1.5 px-2 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors ${editMode ? 'cursor-pointer' : ''}`}
           onClick={() => handleClick(type.id)}
           onContextMenu={e => { e.preventDefault(); onContextMenu?.(e, type.id, type.name) }}>
           {renderCheckbox(type.id)}

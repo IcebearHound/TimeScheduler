@@ -36,7 +36,7 @@ export default function EventModal() {
           <h2 className="text-2xl font-bold text-slate-900 dark:text-white">
             {event ? '编辑事件' : '新建事件'}
           </h2>
-          <button onClick={handleClose} className="p-2 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors">
+          <button aria-label="关闭事件编辑" onClick={handleClose} className="p-2 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors">
             <X className="w-6 h-6" />
           </button>
         </div>

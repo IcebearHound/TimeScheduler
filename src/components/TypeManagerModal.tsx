@@ -40,7 +40,8 @@ const EMOJI_OPTIONS = [
 
 export default function TypeManagerModal({ onClose, editTypeId }: TypeManagerModalProps) {
   const eventStore = useEventStore.getState()
-  const allTypes = eventStore.getAllEventTypes()
+  const types = useEventStore(s => s.eventTypes)
+  const allTypes = Array.from(types.values())
   const deleteEventType = useEventStore((s) => s.deleteEventType)
   const addEventType = useEventStore((s) => s.addEventType)
   const updateEventType = useEventStore((s) => s.updateEventType)
@@ -195,10 +196,11 @@ export default function TypeManagerModal({ onClose, editTypeId }: TypeManagerMod
                         }
                       </div>
                     </div>
-                    <button onClick={(e) => { e.stopPropagation(); startEdit(t) }}
-                      className="p-1.5 rounded opacity-0 group-hover:opacity-100 hover:bg-slate-200 dark:hover:bg-slate-600 transition-all text-slate-500">
+                    <button aria-label={`编辑类型 ${t.name}`} onClick={(e) => { e.stopPropagation(); startEdit(t) }}
+                      className="p-1.5 rounded opacity-0 mobile:opacity-100 group-hover:opacity-100 hover:bg-slate-200 dark:hover:bg-slate-600 transition-all text-slate-500">
                       <Edit2 className="w-3.5 h-3.5" />
                     </button>
+                    <button aria-label={`删除类型 ${t.name}`} className="p-1.5 text-red-500 desktop:hidden" onClick={() => handleDelete(t)}><Trash2 size={16} /></button>
                   </div>
                 ))}
               </div>

@@ -9,7 +9,7 @@ import useEventStore from '../../stores/eventStore'
 import useEventGroupStore from '../../stores/eventGroupStore'
 import EventContextMenu from '../EventContextMenu'
 import PopoverEventEditor from '../PopoverEventEditor'
-import { useMediaQuery } from '../../utils/useMediaQuery'
+import useLayoutStore from '../../stores/layoutStore'
 
 const MIN15_MS = 15 * 60 * 1000
 const PX_PER_15MIN = 12
@@ -30,7 +30,7 @@ export default function EventBlockItem({ event, onEdit, isHighlighted, compact, 
   const touchStartRef = useRef<{ x: number; y: number } | null>(null)
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null)
   const [resizing, setResizing] = useState<ResizeEdge>(null)
-  const isMobile = useMediaQuery('(max-width: 767px)')
+  const isMobile = useLayoutStore(s => s.isMobile)
 
   const setSelectedEvent = useUIStore((s) => s.setSelectedEvent)
   const selectedEventId = useUIStore((s) => s.selectedEventId)
@@ -165,7 +165,7 @@ export default function EventBlockItem({ event, onEdit, isHighlighted, compact, 
       if (scrollTimer) { clearInterval(scrollTimer); scrollTimer = null }
 
       const stepsY = Math.round((ue.clientY - sy) / PX_PER_15MIN)
-      const stepsX = window.innerWidth < 768 ? 0 : Math.round((ue.clientX - sx) / colW)
+      const stepsX = isMobile ? 0 : Math.round((ue.clientX - sx) / colW)
 
       // 记录旧位置
       const oldRect = el.getBoundingClientRect()
@@ -301,9 +301,9 @@ export default function EventBlockItem({ event, onEdit, isHighlighted, compact, 
         }}>
 
         {/* 上边缘调整手柄 */}
-        <div onPointerDown={e => startResize(e, 'top')} className="touch-resize-handle absolute top-0 left-0 right-0 h-3 md:h-2 cursor-ns-resize hover:bg-white/20 rounded-t-lg z-10" />
+        <div onPointerDown={e => startResize(e, 'top')} className="touch-resize-handle absolute top-0 left-0 right-0 h-3 desktop:h-2 cursor-ns-resize hover:bg-white/20 rounded-t-lg z-10" />
         {/* 下边缘调整手柄 */}
-        <div onPointerDown={e => startResize(e, 'bottom')} className="touch-resize-handle absolute bottom-0 left-0 right-0 h-3 md:h-2 cursor-ns-resize hover:bg-white/20 rounded-b-lg z-10" />
+        <div onPointerDown={e => startResize(e, 'bottom')} className="touch-resize-handle absolute bottom-0 left-0 right-0 h-3 desktop:h-2 cursor-ns-resize hover:bg-white/20 rounded-b-lg z-10" />
 
         {/* 跨天延续指示器 */}
         {continuesBefore && <div className="absolute top-0 left-0 right-0 h-2 bg-gradient-to-b from-white/20 to-transparent pointer-events-none" />}

@@ -173,7 +173,7 @@ export default function RightPanel() {
   const barColor = chain?.color || event.color || '#3B82F6'
 
   return (
-    <div className="h-full w-full md:w-[min(22vw,20rem)] bg-white/95 dark:bg-slate-900/95 border-l border-slate-200/60 dark:border-slate-800/60 overflow-y-auto flex flex-col">
+    <div className="h-full w-full bg-white/95 dark:bg-slate-900/95 border-l border-slate-200/60 dark:border-slate-800/60 overflow-y-auto flex flex-col">
       {/* 顶部地铁线路图 — 事件链各事件横向排列 */}
       {chain && (() => {
         const ce = eventStore.getEventsByChain(chain.id)
@@ -278,7 +278,7 @@ export default function RightPanel() {
         {/* 标题栏 + 折叠 */}
         <div className="flex items-center justify-between">
           <span className="text-xs text-slate-400">事件详情</span>
-          <button onClick={() => setIsRightPanelOpen(false)} className="p-1 hover:bg-slate-100 dark:hover:bg-slate-800 rounded text-slate-400"><PanelRightClose className="w-3.5 h-3.5" /></button>
+          <button aria-label="收起详情面板" onClick={() => setIsRightPanelOpen(false)} className="p-1 hover:bg-slate-100 dark:hover:bg-slate-800 rounded text-slate-400"><PanelRightClose className="w-3.5 h-3.5" /></button>
         </div>
 
         {/* 类型 + 重点 */}

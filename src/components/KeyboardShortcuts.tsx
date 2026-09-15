@@ -10,6 +10,8 @@ import { sideSelection } from '../stores/sideSelection'
 export default function KeyboardShortcuts() {
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      const ui = useUIStore.getState()
+      if (ui.isSettingsOpen || ui.isMobileToolsOpen || ui.dialogConfig) return
       const ctrl = e.ctrlKey || e.metaKey
       const store = useEventStore.getState()
 

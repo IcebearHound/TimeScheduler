@@ -1,3 +1,4 @@
+import useLayoutStore from '../../stores/layoutStore'
 /**
  * 日列 — 重叠事件布局：前3个正常，4+折叠为+号方块
  * 支持跨天事件：事件在每一天的 [dayStart, dayEnd) 区间内可见
@@ -149,7 +150,7 @@ export default function DayColumn({ date, events }: DayColumnProps) {
     const e = useEventStore.getState().addEvent({ name: '新事件', description: '', startTime: st, endTime: ed, chainId: '', typeId: 'type-course', reminders: [], properties: {}, isHighlight: false, priority: 0 })
     const gid = useEventGroupStore.getState().ensureActiveGroup(); useEventGroupStore.getState().addEventToGroup(gid, e.id)
     useUIStore.getState().setSelectedEvent(e.id)
-    if (window.matchMedia('(max-width: 767px)').matches) useUIStore.getState().setIsRightPanelOpen(true)
+    if (useLayoutStore.getState().isMobile) useUIStore.getState().setIsRightPanelOpen(true)
   }
 
   const clearSlotLongPress = () => {
@@ -192,7 +193,7 @@ export default function DayColumn({ date, events }: DayColumnProps) {
           }}
           onDoubleClick={e => { if ((e.target as HTMLElement).closest('.event-block') || (e.target as HTMLElement).closest('button')) return; handleDoubleClickSlot(hour) }}
           onContextMenu={e => { if ((e.target as HTMLElement).closest('.event-block')) return; e.preventDefault(); e.stopPropagation(); setBlankMenu({ x: e.clientX, y: e.clientY, hour }) }}>
-          <div className="absolute inset-0 opacity-0 group-hover:opacity-100 bg-accent-400/5 flex items-center justify-center text-blue-600 dark:text-blue-400 text-xs font-medium transition-all pointer-events-none"><span className="hidden md:inline">双击创建事件</span><span className="md:hidden">长按创建事件</span></div>
+          <div className="absolute inset-0 opacity-0 group-hover:opacity-100 bg-accent-400/5 flex items-center justify-center text-blue-600 dark:text-blue-400 text-xs font-medium transition-all pointer-events-none"><span className="hidden desktop:inline">双击创建事件</span><span className="desktop:hidden">长按创建事件</span></div>
         </div>
       ))}
       {blocks.map(b => (
@@ -212,8 +213,8 @@ export default function DayColumn({ date, events }: DayColumnProps) {
       {expandPopup && (
         <div className="fixed inset-0 z-[120]" onClick={() => setExpandPopup(null)}>
           <div onClick={e => e.stopPropagation()}
-            className="absolute bg-white/95 dark:bg-slate-800/95 backdrop-blur-md rounded-xl shadow-overlay border border-slate-200/60 dark:border-slate-700/60 p-4 w-[calc(100vw-2rem)] md:w-72 max-h-80 overflow-y-auto"
-            style={{ top: window.innerWidth < 768 ? Math.max(16, window.innerHeight - 420) : Math.min(expandPopup.anchor.top, window.innerHeight - 360), left: window.innerWidth < 768 ? 16 : Math.min(expandPopup.anchor.right + 8, window.innerWidth - 300) }}>
+            className="absolute bg-white/95 dark:bg-slate-800/95 backdrop-blur-md rounded-xl shadow-overlay border border-slate-200/60 dark:border-slate-700/60 p-4 w-[calc(100vw-2rem)] desktop:w-72 max-h-80 overflow-y-auto"
+            style={{ top: useLayoutStore.getState().isMobile ? Math.max(16, window.innerHeight - 420) : Math.min(expandPopup.anchor.top, window.innerHeight - 360), left: useLayoutStore.getState().isMobile ? 16 : Math.min(expandPopup.anchor.right + 8, window.innerWidth - 300) }}>
             <div className="text-xs font-medium text-slate-500 dark:text-slate-400 mb-3">该时段全部事件 ({expandPopup.eventIds.length})</div>
             {expandPopup.eventIds.map(eid => {
               const evt = useEventStore.getState().getEvent(eid)
@@ -224,7 +225,7 @@ export default function DayColumn({ date, events }: DayColumnProps) {
               const g = Array.from(gs.values()).find(gr => gr.eventIds.includes(evt.id) || gr.eventChainIds.includes(evt.chainId))
               return (
                 <div key={eid} className="p-2 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-700/50 cursor-pointer mb-1 border border-slate-100 dark:border-slate-800"
-                  onClick={() => { useUIStore.getState().setSelectedEvent(eid); if (window.innerWidth < 768) useUIStore.getState().setIsRightPanelOpen(true); setExpandPopup(null) }}>
+                  onClick={() => { useUIStore.getState().setSelectedEvent(eid); if (useLayoutStore.getState().isMobile) useUIStore.getState().setIsRightPanelOpen(true); setExpandPopup(null) }}>
                   <div className="flex items-center gap-2">
                     <span className="text-sm">{t?.emoji}</span>
                     <span className="text-sm font-medium text-slate-800 dark:text-slate-200 truncate flex-1">{evt.name}</span>
@@ -247,7 +248,7 @@ export default function DayColumn({ date, events }: DayColumnProps) {
       )}
       {blankMenu && (
         <div ref={blankMenuRef} className="fixed bg-white/95 dark:bg-slate-800/95 backdrop-blur-md rounded-xl shadow-overlay z-[85] border border-slate-200/60 dark:border-slate-700/60 min-w-44"
-          style={{ left: window.innerWidth < 768 ? 16 : Math.min(blankMenu.x, window.innerWidth - 180), right: window.innerWidth < 768 ? 16 : undefined, top: window.innerWidth < 768 ? Math.min(blankMenu.y, window.innerHeight - 180) : Math.min(blankMenu.y, window.innerHeight - 120) }}>
+          style={{ left: useLayoutStore.getState().isMobile ? 16 : Math.min(blankMenu.x, window.innerWidth - 180), right: useLayoutStore.getState().isMobile ? 16 : undefined, top: useLayoutStore.getState().isMobile ? Math.min(blankMenu.y, window.innerHeight - 180) : Math.min(blankMenu.y, window.innerHeight - 120) }}>
           <button onClick={() => { handleDoubleClickSlot(blankMenu.hour); setBlankMenu(null) }} className="flex items-center gap-2 w-full px-3 py-2 text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700/50 text-xs rounded-t-lg"><Plus className="w-3.5 h-3.5 text-blue-500" /> 在此新建事件</button>
           {clipboardEvent && (
             <button onClick={() => { const start = new Date(date); start.setHours(blankMenu.hour, 0, 0, 0); const e = useEventStore.getState().pasteEvent(start); if (e) { const gid = useEventGroupStore.getState().ensureActiveGroup(); useEventGroupStore.getState().addEventToGroup(gid, e.id) }; setBlankMenu(null) }}

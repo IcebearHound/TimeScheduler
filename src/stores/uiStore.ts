@@ -8,6 +8,12 @@ import { EventConflict } from '../types/event'
 import { DialogConfig } from '../components/DialogModal'
 
 interface UIStore {
+  isSettingsOpen: boolean
+  setIsSettingsOpen: (open: boolean) => void
+  isMobileToolsOpen: boolean
+  setIsMobileToolsOpen: (open: boolean) => void
+  calendarDayCount: number
+  setCalendarDayCount: (count: number) => void
   viewMode: ViewMode
   setViewMode: (mode: ViewMode) => void
   currentDate: Date
@@ -124,6 +130,12 @@ const initialTheme = getSavedTheme()
 
 const useUIStore = create<UIStore>()(
   subscribeWithSelector((set) => ({
+    isSettingsOpen: false,
+    setIsSettingsOpen: (open) => set({ isSettingsOpen: open }),
+    isMobileToolsOpen: false,
+    setIsMobileToolsOpen: (open) => set({ isMobileToolsOpen: open }),
+    calendarDayCount: 7,
+    setCalendarDayCount: (count) => set({ calendarDayCount: count }),
     viewMode: 'week',
     setViewMode: (mode) => set({ viewMode: mode }),
     currentDate: new Date(),
