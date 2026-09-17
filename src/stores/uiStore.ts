@@ -8,6 +8,8 @@ import { EventConflict } from '../types/event'
 import { DialogConfig } from '../components/DialogModal'
 
 interface UIStore {
+  settingsSection: 'general' | 'ai'
+  setSettingsSection: (section: 'general' | 'ai') => void
   isSettingsOpen: boolean
   setIsSettingsOpen: (open: boolean) => void
   isMobileToolsOpen: boolean
@@ -35,8 +37,8 @@ interface UIStore {
   setIsLeftSidebarOpen: (open: boolean) => void
   isRightPanelOpen: boolean
   setIsRightPanelOpen: (open: boolean) => void
-  rightPanelTab: 'todo' | 'assignments' | 'details'
-  openRightPanelTab: (tab: 'todo' | 'assignments' | 'details') => void
+  rightPanelTab: 'todo' | 'assignments' | 'details' | 'ai'
+  openRightPanelTab: (tab: 'todo' | 'assignments' | 'details' | 'ai') => void
   rightPanelExpanded: boolean
   setRightPanelExpanded: (expanded: boolean) => void
 
@@ -134,6 +136,8 @@ const initialTheme = getSavedTheme()
 
 const useUIStore = create<UIStore>()(
   subscribeWithSelector((set) => ({
+    settingsSection: 'general',
+    setSettingsSection: section => set({ settingsSection: section }),
     isSettingsOpen: false,
     setIsSettingsOpen: (open) => set({ isSettingsOpen: open }),
     isMobileToolsOpen: false,
@@ -165,7 +169,7 @@ const useUIStore = create<UIStore>()(
     selectedChainId: undefined,
     setSelectedChain: (id) => set({ selectedChainId: id }),
 
-    isLeftSidebarOpen: true,
+    isLeftSidebarOpen: false,
     setIsLeftSidebarOpen: (open) => set({ isLeftSidebarOpen: open }),
     isRightPanelOpen: true,
     setIsRightPanelOpen: (open) => set(s => ({ isRightPanelOpen: open, rightPanelExpanded: open && s.rightPanelExpanded })),

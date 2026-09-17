@@ -211,7 +211,7 @@ export default function DayColumn({ date, events }: DayColumnProps) {
         </button>
       ))}
       {expandPopup && (
-        <div className="fixed inset-0 z-[120]" onClick={() => setExpandPopup(null)}>
+        <div data-dismiss-layer className="fixed inset-0 z-[120]" onClick={() => setExpandPopup(null)}>
           <div onClick={e => e.stopPropagation()}
             className="absolute bg-white/95 dark:bg-slate-800/95 backdrop-blur-md rounded-xl shadow-overlay border border-slate-200/60 dark:border-slate-700/60 p-4 w-[calc(100vw-2rem)] desktop:w-72 max-h-80 overflow-y-auto"
             style={{ top: useLayoutStore.getState().isMobile ? Math.max(16, window.innerHeight - 420) : Math.min(expandPopup.anchor.top, window.innerHeight - 360), left: useLayoutStore.getState().isMobile ? 16 : Math.min(expandPopup.anchor.right + 8, window.innerWidth - 300) }}>

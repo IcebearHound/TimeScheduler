@@ -22,18 +22,19 @@ const variantStyles = {
 }
 
 export default function DialogModal({ config, onClose }: { config: DialogConfig; onClose: () => void }) {
+  const cancel = () => { config.onCancel?.(); onClose() }
   const s = variantStyles[config.variant || 'info']
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose()
+      if (e.key === 'Escape') cancel()
     }
     document.addEventListener('keydown', handler)
     return () => document.removeEventListener('keydown', handler)
   }, [onClose])
 
   return (
-    <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-[500] animate-modal-backdrop" onClick={onClose}>
+    <div data-dismiss-layer className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-[500] animate-modal-backdrop" onClick={cancel}>
       <div onClick={e => e.stopPropagation()}
         className={`${s.bg} ${s.border} rounded-2xl shadow-2xl max-w-[min(28rem,90vw)] w-full mx-4 border animate-modal-panel`}>
         <div className="p-6 text-center">

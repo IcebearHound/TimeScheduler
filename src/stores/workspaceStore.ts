@@ -14,7 +14,8 @@ const useWorkspaceStore = create<{
   panel: null,
   provider: 'github',
   open: (panel, provider = 'github') => {
-    if (panel === 'assignments') { set({ panel: null }); useUIStore.getState().openRightPanelTab('assignments') }
+    if (panel === 'ai') { set({ panel: null }); useUIStore.getState().openRightPanelTab('ai') }
+    else if (panel === 'assignments') { set({ panel: null }); useUIStore.getState().openRightPanelTab('todo') }
     else set({ panel, provider })
   },
   close: () => set({ panel: null }),

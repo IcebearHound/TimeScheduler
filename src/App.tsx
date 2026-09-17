@@ -1,3 +1,5 @@
+import PanelNavigation from './components/PanelNavigation'
+import SidebarResizeHandle, { useSidebarWidth } from './components/SidebarResizeHandle'
 import MobileSheet from './components/MobileSheet'
 import useLayoutStore from './stores/layoutStore'
 import SettingsPanel from './components/SettingsPanel'
@@ -30,6 +32,7 @@ import { PanelLeftOpen, PanelRightOpen } from 'lucide-react'
 import { getReminderMilliseconds } from './utils/eventUtils'
 
 export default function App() {
+  const leftWidth = useSidebarWidth('left', 280), rightWidth = useSidebarWidth('right', 360)
   const isMobile = useLayoutStore(s => s.isMobile)
   const isSettingsOpen = useUIStore(s => s.isSettingsOpen)
   const isMobileToolsOpen = useUIStore(s => s.isMobileToolsOpen)
@@ -109,7 +112,7 @@ export default function App() {
   }, [])
 
   useEffect(() => {
-    useUIStore.getState().setIsLeftSidebarOpen(!isMobile)
+    useUIStore.getState().setIsLeftSidebarOpen(false)
     useUIStore.getState().setIsRightPanelOpen(!isMobile)
   }, [isMobile])
 
@@ -243,11 +246,12 @@ export default function App() {
 
   return (
     <div className="app-shell flex flex-col h-screen bg-gradient-to-br from-slate-50 via-white to-slate-100 dark:from-slate-950 dark:via-slate-900 dark:to-slate-800">
+      <PanelNavigation />
       <KeyboardShortcuts />
       {isMobile ? <MobileHeader /> : <Header />}
       <WorkspaceTools />
       <div className="app-main flex flex-1 overflow-hidden">
-        {isLeftSidebarOpen && <button type="button" aria-label="关闭导航" className="mobile-panel-backdrop desktop:hidden" onClick={() => setIsLeftSidebarOpen(false)} />}
+        {isLeftSidebarOpen && <button type="button" aria-label="关闭导航" data-dismiss-layer className="mobile-panel-backdrop desktop:hidden" onClick={() => setIsLeftSidebarOpen(false)} />}
         {!isLeftSidebarOpen && (
           <button onClick={() => setIsLeftSidebarOpen(true)}
             className="hidden desktop:block absolute left-0 top-1/2 -translate-y-1/2 z-20 p-2 bg-white/80 dark:bg-slate-800/80 backdrop-blur-sm border border-slate-200/80 dark:border-slate-700/80 rounded-r-xl shadow-elevated hover:bg-white dark:hover:bg-slate-800 hover:shadow-overlay transition-all duration-200">
@@ -256,17 +260,22 @@ export default function App() {
         )}
         <div ref={leftRef}
           onTransitionEnd={handleLeftTransitionEnd}
+          style={{ '--sidebar-width': `${leftWidth.width}px` } as React.CSSProperties}
           className={`app-left-panel ${isLeftSidebarOpen ? 'is-open' : 'is-closed'}`}>
           <div className="h-full w-full">{leftRender && <LeftSidebar />}</div>
+          {!isMobile && isLeftSidebarOpen && <SidebarResizeHandle side="left" width={leftWidth.width} onResize={leftWidth.resize} />}
         </div>
         <div className="calendar-container min-w-0 flex-1 overflow-hidden"><TimeTable /></div>
         {!isMobile && isRightPanelOpen && <button type="button" aria-label="关闭详情" className="mobile-panel-backdrop desktop:hidden" onClick={() => setIsRightPanelOpen(false)} />}
+        {!isMobile && isRightPanelOpen && rightPanelExpanded && <button data-dismiss-layer aria-label="退出全屏空白区域" className="fixed inset-0 z-40 bg-slate-950/40" onClick={() => useUIStore.getState().setRightPanelExpanded(false)} />}
         {!isMobile && <div ref={rightRef}
           onTransitionEnd={handleRightTransitionEnd}
+          style={{ '--sidebar-width': `${rightWidth.width}px` } as React.CSSProperties}
           className={`app-right-panel ${isRightPanelOpen ? 'is-open' : 'is-closed'} ${rightPanelExpanded ? 'is-expanded' : ''}`}>
           <div className="h-full w-full">{rightRender && <RightSidebar />}</div>
+          {!rightPanelExpanded && isRightPanelOpen && <SidebarResizeHandle side="right" width={rightWidth.width} onResize={rightWidth.resize} />}
         </div>}
-        {isMobile && isRightPanelOpen && <MobileSheet title={rightPanelTab === 'assignments' ? '作业 / 实验' : '事件详情与待办'} closeLabel="收起详情面板" onClose={() => setIsRightPanelOpen(false)} expanded={rightPanelExpanded} horizontalScroll={rightPanelTab === 'assignments'} onEscape={rightPanelExpanded ? () => useUIStore.getState().setRightPanelExpanded(false) : undefined} fill><div className="mobile-detail-content"><RightSidebar /></div></MobileSheet>}
+        {isMobile && isRightPanelOpen && <MobileSheet title={rightPanelTab === 'ai' ? '日程 Agent' : '事件详情与待办'} closeLabel="收起详情面板" onClose={() => setIsRightPanelOpen(false)} expanded={rightPanelExpanded} horizontalScroll={rightPanelTab === 'todo' || rightPanelTab === 'assignments'} onEscape={rightPanelExpanded ? () => useUIStore.getState().setRightPanelExpanded(false) : undefined} fill><div className="mobile-detail-content"><RightSidebar /></div></MobileSheet>}
         {!isRightPanelOpen && (
           <button onClick={() => setIsRightPanelOpen(true)}
             className="hidden desktop:block absolute right-0 top-1/2 -translate-y-1/2 z-20 p-2 bg-white/80 dark:bg-slate-800/80 backdrop-blur-sm border border-slate-200/80 dark:border-slate-700/80 rounded-l-xl shadow-elevated hover:bg-white dark:hover:bg-slate-800 hover:shadow-overlay transition-all duration-200">

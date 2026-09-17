@@ -466,7 +466,7 @@ export default function LeftSidebar() {
 
       {/* 浮动 emoji 面板 */}
       {showEmojiPicker && createPortal(
-        <div className="fixed inset-0 z-[140]" onClick={() => { setShowEmojiPicker(false); setEditingEmojiGroupId(null) }}>
+        <div data-dismiss-layer className="fixed inset-0 z-[140]" onClick={() => { setShowEmojiPicker(false); setEditingEmojiGroupId(null) }}>
           <div className="absolute max-w-[calc(100vw-16px)] p-2 bg-white dark:bg-slate-900 border border-slate-200/60 dark:border-slate-700/60 rounded-xl shadow-overlay"
             style={{ left: Math.max(8, Math.min(emojiPos.x, window.innerWidth - 340)), top: Math.min(emojiPos.y, window.innerHeight - 260) }}>
             <div className="grid grid-cols-8 gap-1 w-80">
@@ -648,7 +648,7 @@ export default function LeftSidebar() {
 
       {/* 弹窗 — 通过 Portal 渲染到 body 避免 backdrop-blur 堆叠上下文影响 */}
       {deleteConfirm && createPortal(
-        <div className="fixed inset-0 z-[110] flex items-center justify-center" onClick={() => setDeleteConfirm(null)}>
+        <div data-dismiss-layer className="fixed inset-0 z-[110] flex items-center justify-center" onClick={() => setDeleteConfirm(null)}>
           <div onClick={e => e.stopPropagation()} className="bg-white dark:bg-slate-900 rounded-2xl shadow-modal dark:shadow-modal-dark border border-slate-200/60 dark:border-slate-700/60 p-5 max-w-sm mx-4">
             <p className="text-sm text-slate-700 dark:text-slate-300 mb-1">确定删除{deleteConfirm.type === 'group' ? '事件组' : '事件链'}？</p>
             <p className="text-xs font-medium text-slate-900 dark:text-white mb-4">「{deleteConfirm.name}」</p>
@@ -672,7 +672,7 @@ export default function LeftSidebar() {
 
       {/* 合并事件组弹窗 */}
       {mergeModal && createPortal(
-        <div className="fixed inset-0 z-[120] flex items-center justify-center" onClick={() => setMergeModal(null)}>
+        <div data-dismiss-layer className="fixed inset-0 z-[120] flex items-center justify-center" onClick={() => setMergeModal(null)}>
           <div onClick={e => e.stopPropagation()} className="bg-white dark:bg-slate-800 rounded-2xl shadow-modal dark:shadow-modal-dark border border-slate-200/60 dark:border-slate-700/60 p-6 max-w-md w-full mx-4">
             <h3 className="text-lg font-bold text-slate-900 dark:text-white mb-1">合并事件组</h3>
             <p className="text-xs text-slate-500 dark:text-slate-400 mb-4">拖动调整优先级，第一项为目标组（保留），其余合并入其中</p>
@@ -706,7 +706,7 @@ export default function LeftSidebar() {
       )}
       {/* 事件组信息弹窗 */}
       {groupInfoPopup && createPortal(
-        <div className="fixed inset-0 z-[120]" onClick={() => setGroupInfoPopup(null)}>
+        <div data-dismiss-layer className="fixed inset-0 z-[120]" onClick={() => setGroupInfoPopup(null)}>
           <div onClick={e => e.stopPropagation()}
             className="absolute bg-white/95 dark:bg-slate-800/95 backdrop-blur-md rounded-xl shadow-overlay border border-slate-200/60 dark:border-slate-700/60 p-4 w-56"
             style={{ top: Math.min(groupInfoPopup.anchor.bottom + 4, window.innerHeight - 200), left: Math.min(groupInfoPopup.anchor.left, window.innerWidth - 240) }}>
@@ -722,7 +722,7 @@ export default function LeftSidebar() {
       )}
       {/* 右键菜单 */}
       {ctxMenu && createPortal(
-        <div className="fixed inset-0 z-[130]" onClick={() => setCtxMenu(null)}>
+        <div data-dismiss-layer className="fixed inset-0 z-[130]" onClick={() => setCtxMenu(null)}>
           <div className="absolute bg-white/95 dark:bg-slate-800/95 backdrop-blur-md rounded-xl shadow-overlay border border-slate-200/60 dark:border-slate-700/60 min-w-36"
             style={{ left: Math.min(ctxMenu.x, window.innerWidth - 160), top: Math.min(ctxMenu.y, window.innerHeight - 160) }}>
             {ctxMenu.type === 'group' && (<>

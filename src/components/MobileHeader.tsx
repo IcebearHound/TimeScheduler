@@ -1,3 +1,4 @@
+import useDismissiblePanel from '../utils/useDismissiblePanel'
 import { useEffect, useRef, useState } from 'react'
 import { ChevronLeft, ChevronRight, Search, User, Settings, CalendarDays } from 'lucide-react'
 import useUIStore from '../stores/uiStore'
@@ -8,6 +9,7 @@ export default function MobileHeader() {
   const cloudLogin = useCloudSyncStore(s => s.login), cloudMessage = useCloudSyncStore(s => s.message)
   const [showUserMenu, setShowUserMenu] = useState(false)
   const userMenuRef = useRef<HTMLDivElement>(null)
+  useDismissiblePanel(userMenuRef, showUserMenu, () => setShowUserMenu(false))
   const ui = useUIStore()
   useEffect(() => {
     if (!showUserMenu) return

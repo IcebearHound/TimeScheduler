@@ -1,4 +1,5 @@
-import React from 'react'
+import React, { useRef, useEffect } from 'react'
+import useDismissiblePanel from '../../utils/useDismissiblePanel'
 import { Clock } from 'lucide-react'
 
 interface Props {
@@ -25,6 +26,9 @@ function toLocalDT(d: Date) {
 }
 
 export default function TimeEditPopover({ startTime, endTime, onStartChange, onEndChange, onClose }: Props) {
+  const panel = useRef<HTMLDivElement>(null)
+  useDismissiblePanel(panel, true, onClose)
+  useEffect(() => { const outside = (e: PointerEvent) => { if (!panel.current?.contains(e.target as Node)) onClose() }; document.addEventListener('pointerdown', outside); return () => document.removeEventListener('pointerdown', outside) }, [onClose])
   const handleStart = (val: string) => {
     const d = new Date(val)
     if (isNaN(d.getTime())) return
@@ -46,7 +50,7 @@ export default function TimeEditPopover({ startTime, endTime, onStartChange, onE
   const durMin = Math.round((endTime.getTime() - startTime.getTime()) / 60000)
 
   return (
-    <div className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg p-3 space-y-2 shadow-lg">
+    <div ref={panel} className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg p-3 space-y-2 shadow-lg">
       <div className="flex items-center justify-between">
         <span className="flex items-center gap-1.5 text-xs text-slate-500"><Clock className="w-3.5 h-3.5" /> 编辑时间</span>
       </div>

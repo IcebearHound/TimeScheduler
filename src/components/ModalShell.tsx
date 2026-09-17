@@ -7,5 +7,5 @@ export default function ModalShell({ title, closeLabel, onClose, className, chil
 }) {
   const isMobile = useLayoutStore(s => s.isMobile)
   if (isMobile) return <MobileSheet title={title} closeLabel={closeLabel} onClose={onClose}><div className={`mobile-sheet-legacy ${keepHeader ? 'keep-header' : ''}`}>{children}</div></MobileSheet>
-  return <div className={className} onClick={e => { if (e.target === e.currentTarget) onClose() }}>{children}</div>
+  return <div data-dismiss-layer className={className} onClick={e => { if (e.target === e.currentTarget) onClose() }}>{children}</div>
 }

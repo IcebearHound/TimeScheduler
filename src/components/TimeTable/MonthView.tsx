@@ -2,7 +2,7 @@
  * 月视图 - 含事件链高亮
  */
 import React, { useMemo, useState } from 'react'
-import { ChevronLeft, ChevronRight, ArrowUp, ArrowDown } from 'lucide-react'
+import { ChevronLeft, ChevronRight } from 'lucide-react'
 import useUIStore from '../../stores/uiStore'
 import useEventStore from '../../stores/eventStore'
 import useEventGroupStore from '../../stores/eventGroupStore'
@@ -68,12 +68,6 @@ export default function MonthView() {
           <h2 className="text-lg font-bold text-slate-900 dark:text-white">{currentDate.toLocaleDateString('zh-CN', { year: 'numeric', month: 'long' })}</h2>
           <button onClick={nav.n} className="p-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-colors"><ChevronRight className="w-5 h-5 text-slate-600 dark:text-slate-300" /></button>
         </div>
-        {selectedChainId && (
-          <div className="flex gap-2">
-            <button onClick={nav.p} className="flex items-center gap-1 px-2 py-1 text-xs bg-slate-100 dark:bg-slate-700 rounded text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-600"><ArrowUp className="w-3 h-3" /> 前月</button>
-            <button onClick={nav.n} className="flex items-center gap-1 px-2 py-1 text-xs bg-slate-100 dark:bg-slate-700 rounded text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-600">后月 <ArrowDown className="w-3 h-3" /></button>
-          </div>
-        )}
         <div className="flex items-center gap-1.5">
           <button onClick={() => setCurrentDate(new Date())} className="px-3 py-1.5 text-xs font-medium rounded-lg bg-accent-50 dark:bg-accent-900/20 text-accent-700 dark:text-accent-300 hover:bg-accent-100 dark:hover:bg-accent-900/30 shadow-sm transition-colors">今天</button>
           <button onClick={() => {

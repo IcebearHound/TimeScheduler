@@ -1,3 +1,4 @@
+import useDismissiblePanel from '../utils/useDismissiblePanel'
 import React, { useState, useEffect, useRef, useCallback } from 'react'
 import { createPortal } from 'react-dom'
 import { X, Clock, MapPin, User, BookOpen, Star, Bell, Settings, ChevronDown, ChevronRight } from 'lucide-react'
@@ -173,6 +174,7 @@ export default function PopoverEventEditor({ eventId, anchorRect, anchorRef, onC
   }, [startTime])
 
   const handleClose = () => { save(); onClose() }
+  useDismissiblePanel(ref, !!event && !!(anchorRect || anchorRef), handleClose)
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {

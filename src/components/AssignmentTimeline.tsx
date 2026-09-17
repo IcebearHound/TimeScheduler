@@ -56,7 +56,7 @@ export default function AssignmentTimeline({ courses, tasks, onEdit }: { courses
             const daily = byCell.get(`${assignmentDay(date)}/${course.id}`) || []
             return <td key={assignmentDay(date)} data-task-date={assignmentDay(date)} className={`p-1 align-top ${index === 0 ? 'bg-indigo-50/50 dark:bg-indigo-950/30' : ''}`}>{daily.length ? daily.map(e => taskButton(e)) : <span className="flex min-h-11 items-center gap-2 p-2 text-slate-400"><Lamp status="无任务" /><span>无任务</span></span>}</td>
           })}
-        </tr>)}{!courses.length && <tr><td colSpan={count + 1} className="p-3 text-slate-400"><Lamp status="无任务" /> 暂无课程任务，在下方添加课程即可亮灯。</td></tr>}</tbody>
+        </tr>)}{!courses.length && <tr><td colSpan={count + 1} className="p-3 text-slate-400"><Lamp status="无任务" /> 暂无课程任务，点击“添加作业 / 实验”开始。</td></tr>}</tbody>
       </table>
     </div>
   </section>

@@ -8,6 +8,13 @@ export function navigateToEvent(eventId: string) {
   const es = useEventStore.getState()
   const event = es.getEvent(eventId)
   if (!event) return
+  // Reveal filtered events before scrolling so search and Agent results remain reachable.
+  if (ui.filterTypeIds.has(event.typeId)) ui.removeTypeFilter(event.typeId)
+  const hidden = new Set(ui.hiddenGroupIds)
+  for (const group of useEventGroupStore.getState().groups.values()) {
+    if (group.eventIds.includes(eventId) || group.eventChainIds.includes(event.chainId)) hidden.delete(group.id)
+  }
+  ui.setHiddenGroupIds(hidden)
   scrollToEventBlock(eventId)
   ui.setFlashEventId(eventId)
   ui.setCurrentDate(new Date(event.startTime))

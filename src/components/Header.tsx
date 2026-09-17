@@ -1,5 +1,6 @@
+import useDismissiblePanel from '../utils/useDismissiblePanel'
 import React, { useState, useMemo, useRef, useEffect } from 'react'
-import { Calendar, Plus, Download, Settings, Search, Undo2, Redo2, User, Filter, ChevronDown, X, Link, ListTodo, Edit2, FolderOpen, Tag } from 'lucide-react'
+import { Calendar, Plus, Download, Settings, Search, Undo2, Redo2, User, Filter, ChevronDown, X, Link, ListTodo, Sparkles, Edit2, FolderOpen, Tag } from 'lucide-react'
 import useUIStore from '../stores/uiStore'
 import useEventStore from '../stores/eventStore'
 import useEventGroupStore from '../stores/eventGroupStore'
@@ -50,6 +51,8 @@ export default function Header() {
   const [showInlineResults, setShowInlineResults] = useState(false)
   const inlineInputRef = useRef<HTMLInputElement>(null)
   const inlineContainerRef = useRef<HTMLDivElement>(null)
+  useDismissiblePanel(userMenuWrapperRef, showUserMenu, () => setShowUserMenu(false))
+  useDismissiblePanel(inlineContainerRef, showInlineResults || showFilter, () => { setShowInlineResults(false); setShowFilter(false) })
 
   const eventStore = useEventStore.getState()
   const allEvents = useEventStore((s) => Array.from(s.events.values()))
@@ -356,6 +359,7 @@ export default function Header() {
             <ListTodo className="w-4 h-4" /> Todo
           </button>
 
+          <button aria-label="AI / MCP" onClick={() => useUIStore.getState().openRightPanelTab('ai')} className="workspace-button inline-flex items-center gap-1.5"><Sparkles size={16} />Agent</button>
           <div className="w-px h-5 bg-slate-200 dark:bg-slate-700/50 mx-1" />
 
           <button onClick={handleUndo} disabled={!canUndo}

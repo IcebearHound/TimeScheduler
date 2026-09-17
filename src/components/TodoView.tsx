@@ -1,3 +1,4 @@
+import useDismissiblePanel from '../utils/useDismissiblePanel'
 import React, { useState, useMemo, useCallback, useRef, useEffect } from 'react'
 import {
   Pin, Star, Clock, GripVertical, ChevronDown, ChevronRight,
@@ -10,7 +11,7 @@ import { Event } from '../types/event'
 import EventContextMenu from './EventContextMenu'
 import { scrollToEventBlock } from '../utils/scrollTarget'
 
-export default function TodoView() {
+export default function TodoView({ embedded = false }: { embedded?: boolean }) {
   const setSelectedEvent = useUIStore((s) => s.setSelectedEvent)
   const setCurrentDate = useUIStore((s) => s.setCurrentDate)
   const setFlashEventId = useUIStore((s) => s.setFlashEventId)
@@ -31,6 +32,7 @@ export default function TodoView() {
 
   const [showSettings, setShowSettings] = useState(false)
   const settingsWrapperRef = useRef<HTMLDivElement>(null)
+  useDismissiblePanel(settingsWrapperRef, showSettings, () => setShowSettings(false))
   const [collapsedSections, setCollapsedSections] = useState<Set<string>>(new Set())
   const [dragId, setDragId] = useState<string | null>(null)
   const dragIdRef = useRef<string | null>(null)
@@ -225,7 +227,7 @@ export default function TodoView() {
   return (
     <>
     <div
-      className="h-full w-full bg-white dark:bg-slate-800 border-l border-slate-200 dark:border-slate-700/60 flex flex-col overflow-hidden"
+      className={`${embedded ? 'min-h-64' : 'h-full'} w-full bg-white dark:bg-slate-800 flex flex-col overflow-hidden`}
       onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = 'move' }}
       onDrop={(e) => {
         e.preventDefault()
@@ -300,7 +302,7 @@ export default function TodoView() {
         </div>
       </div>
 
-      <div className="flex-1 overflow-y-auto">
+      <div className={embedded ? '' : 'flex-1 overflow-y-auto'}>
         {/* 置顶区 */}
         <div className="border-b border-slate-100 dark:border-slate-800"
           onDragOver={(e) => { e.preventDefault(); e.stopPropagation() }}

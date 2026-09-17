@@ -1,3 +1,4 @@
+import useDismissiblePanel from '../utils/useDismissiblePanel'
 /**
  * 事件右键菜单 — 重新设计布局
  * 第一区: 新建 / 复制 / 剪切 / 粘贴
@@ -55,6 +56,7 @@ type SubMenu = 'type' | 'chain' | 'duration' | 'properties' | 'reminder' | null
 
 export default function EventContextMenu({ event, position, anchorRef, onClose, onEdit }: EventContextMenuProps) {
   const menuRef = useRef<HTMLDivElement>(null)
+  useDismissiblePanel(menuRef, true, onClose)
   const onCloseRef = useRef(onClose)
   onCloseRef.current = onClose
   const deleteEvent = useEventStore((s) => s.deleteEvent)

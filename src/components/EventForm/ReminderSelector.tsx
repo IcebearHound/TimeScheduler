@@ -1,7 +1,8 @@
+import useDismissiblePanel from '../../utils/useDismissiblePanel'
 /**
  * 提醒选择器 - 可编辑快速添加、自定义时间、置顶预设
  */
-import React, { useState, useMemo, useCallback } from 'react'
+import React, { useState, useMemo, useCallback, useRef, useEffect } from 'react'
 import { ChevronDown, Bell, X, Pin, PinOff } from 'lucide-react'
 import { ReminderTime, Reminder } from '../../types/event'
 import { generateId } from '../../utils/idGenerator'
@@ -32,6 +33,9 @@ const TIME_LABELS: Record<string, string> = {
 
 export default function ReminderSelector({ reminders, onChange, isHighlight }: ReminderSelectorProps) {
   const [isOpen, setIsOpen] = useState(false)
+  const panel = useRef<HTMLDivElement>(null)
+  useDismissiblePanel(panel, isOpen, () => setIsOpen(false))
+  useEffect(() => { if (!isOpen) return; const outside = (e: PointerEvent) => { if (!panel.current?.contains(e.target as Node)) setIsOpen(false) }; document.addEventListener('pointerdown', outside); return () => document.removeEventListener('pointerdown', outside) }, [isOpen])
   const [customMin, setCustomMin] = useState('')
   const [customLabel, setCustomLabel] = useState('')
   const [pinnedSet, setPinnedSet] = useState<Set<string>>(new Set(DEFAULT_OPTIONS.filter(o => o.pinned).map(o => o.value)))
@@ -80,7 +84,7 @@ export default function ReminderSelector({ reminders, onChange, isHighlight }: R
   const unpinnedOpts = DEFAULT_OPTIONS.filter(o => !pinnedSet.has(o.value))
 
   return (
-    <div className="space-y-2">
+    <div ref={panel} className="space-y-2">
       <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">提醒时间</label>
 
       <button type="button" onClick={() => setIsOpen(!isOpen)}

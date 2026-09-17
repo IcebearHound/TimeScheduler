@@ -266,7 +266,7 @@ export default function WelcomeGuide({ onClose }: WelcomeGuideProps) {
   if (selectedIndex !== null) {
     const card = CARDS[selectedIndex]
     return (
-      <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4 animate-modal-backdrop" onClick={closeDetail}>
+      <div data-dismiss-layer className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4 animate-modal-backdrop" onClick={closeDetail}>
         <div
           className="bg-white dark:bg-slate-900 rounded-2xl shadow-modal dark:shadow-modal-dark border border-slate-200/60 dark:border-slate-700/60 max-w-lg w-full overflow-hidden flex flex-col animate-modal-panel"
           onClick={e => e.stopPropagation()}
@@ -316,7 +316,7 @@ export default function WelcomeGuide({ onClose }: WelcomeGuideProps) {
 
   // Card grid view
   return (
-    <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4 animate-modal-backdrop" onClick={handleClose}>
+    <div data-dismiss-layer className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4 animate-modal-backdrop" onClick={handleClose}>
       <div
         className="bg-white dark:bg-slate-900 rounded-2xl shadow-modal dark:shadow-modal-dark border border-slate-200/60 dark:border-slate-700/60 max-w-3xl w-full max-h-[90vh] overflow-hidden flex flex-col animate-modal-panel"
         onClick={e => e.stopPropagation()}

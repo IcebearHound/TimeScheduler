@@ -2,7 +2,7 @@
  * 灵活视图 — 支持调整天数（1/3/5/7），标题栏固定置顶
  */
 import React, { useMemo, useEffect, useRef, useState } from 'react'
-import { ChevronLeft, ChevronRight, ArrowUp, ArrowDown, Columns } from 'lucide-react'
+import { ChevronLeft, ChevronRight, Columns } from 'lucide-react'
 import useUIStore from '../../stores/uiStore'
 import useEventStore from '../../stores/eventStore'
 import useEventGroupStore from '../../stores/eventGroupStore'
@@ -75,17 +75,6 @@ export default function WeekView() {
     return eventStore.getEvent(selectedEventId)?.chainId || null
   }, [selectedEventId, eventStore])
 
-  const chainNav = useMemo(() => {
-    if (!selectedChainId) return { before: false, after: false }
-    const ce = eventStore.getEventsByChain(selectedChainId)
-    let b = false, a = false
-    for (const e of ce) {
-      if (new Date(e.startTime) < weekStart) b = true
-      if (new Date(e.startTime) >= weekEnd) a = true
-    }
-    return { before: b, after: a }
-  }, [selectedChainId, eventStore, weekStart])
-
   const filteredEvents = useMemo(() => {
     const end = new Date(viewDays[viewDays.length - 1].getTime() + 86400000)
     return Array.from(events.values()).filter(e =>
@@ -118,16 +107,6 @@ export default function WeekView() {
             ))}
           </div>
         </div>
-        {selectedChainId && !isMobile && (
-          <div className="flex items-center gap-2">
-            {chainNav.before && (
-              <button onClick={() => { const p = new Date(currentDate); p.setDate(p.getDate() - dayCount); setCurrentDate(p) }}
-                className="flex items-center gap-1 px-2 py-1 text-xs bg-slate-100 dark:bg-slate-700 rounded text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-600"><ArrowUp className="w-3 h-3" /> 前</button>)}
-            {chainNav.after && (
-              <button onClick={() => { const n = new Date(currentDate); n.setDate(n.getDate() + dayCount); setCurrentDate(n) }}
-                className="flex items-center gap-1 px-2 py-1 text-xs bg-slate-100 dark:bg-slate-700 rounded text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-600">后 <ArrowDown className="w-3 h-3" /></button>)}
-          </div>
-        )}
         <div className="flex items-center gap-1.5">
           <button onClick={() => setCurrentDate(new Date())}
             className="px-3 py-1.5 text-xs font-medium rounded-lg bg-accent-50 dark:bg-accent-900/20 text-accent-700 dark:text-accent-300 hover:bg-accent-100 dark:hover:bg-accent-900/30 shadow-sm transition-colors">

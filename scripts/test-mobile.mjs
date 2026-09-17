@@ -37,7 +37,7 @@ try {
   assert.equal(await page.locator('html').getAttribute('data-layout'), 'mobile')
   assert.equal(await page.getByRole('button', { name: '搜索', exact: true }).count(), 1)
   assert.equal(await page.getByRole('button', { name: '分组', exact: true }).count(), 1)
-  assert.equal(await page.getByRole('button', { name: '课程作业 / 实验', exact: true }).count(), 1)
+  assert.equal(await page.getByRole('button', { name: '日程 Agent', exact: true }).count(), 1)
   await page.screenshot({ path: resolve(output, 'home.png') })
   await page.getByRole('button', { name: '分组', exact: true }).click()
   const groups = page.locator('[data-sidebar-section="groups"]')

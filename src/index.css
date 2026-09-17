@@ -30,9 +30,9 @@ button,
   @apply overflow-hidden transition-all duration-300 ease-[cubic-bezier(0.16,1,0.3,1)];
 }
 
-.app-left-panel.is-open { width: clamp(15rem, 20vw, 18rem); opacity: 1; }
+.app-left-panel.is-open { width: var(--sidebar-width, 280px); opacity: 1; }
 .app-left-panel.is-closed { width: 0; opacity: 0; }
-.app-right-panel.is-open { width: clamp(16rem, 22vw, 20rem); opacity: 1; }
+.app-right-panel.is-open { width: var(--sidebar-width, 360px); opacity: 1; }
 .app-right-panel.is-closed { width: 0; opacity: 0; }
 
 .mobile-header {
@@ -588,9 +588,28 @@ html[data-layout="mobile"] .sidebar-root svg { min-width: 16px; min-height: 16px
 .sidebar-tab { @apply rounded-lg px-2 py-2 text-xs font-medium text-slate-500 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800; min-height: 40px; }
 .sidebar-tab[aria-pressed="true"] { @apply bg-indigo-50 text-indigo-700 dark:bg-indigo-950 dark:text-indigo-300; }
 .sidebar-panel-action { @apply flex shrink-0 items-center justify-center rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800; min-width: 36px; min-height: 44px; }
-html[data-layout="desktop"] .app-right-panel.is-expanded { position: fixed; inset: 12px; z-index: 45; width: auto; border-radius: 16px; box-shadow: 0 0 0 100vmax rgb(15 23 42 / .45); transition: none; }
+html[data-layout="desktop"] .app-right-panel.is-expanded { position: fixed; inset: 12px; z-index: 45; width: auto; border-radius: 16px; box-shadow: 0 20px 70px rgb(15 23 42 / .25); transition: none; }
 .assignment-panel { container-type: inline-size; }
 .assignment-form { display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; }
 .assignment-form label { min-width: 0; font-size: 12px; }
 .assignment-form-wide { grid-column: 1 / -1; }
 @container (min-width: 520px) { .assignment-form { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+
+html[data-layout="desktop"] .app-left-panel,
+html[data-layout="desktop"] .app-right-panel { position: relative; flex-shrink: 0; }
+html[data-layout="desktop"] .app-right-panel.is-expanded { position: fixed; inset: 24px; width: auto; }
+.sidebar-resize-handle { position: absolute; top: 0; bottom: 0; width: 7px; z-index: 30; cursor: col-resize; touch-action: none; }
+.sidebar-resize-handle.left { right: 0; }
+.sidebar-resize-handle.right { left: 0; }
+.sidebar-resize-handle:hover, .sidebar-resize-handle:focus-visible { background: rgb(99 102 241 / .3); outline: none; }
+.resizing-sidebar, .resizing-sidebar * { cursor: col-resize !important; user-select: none !important; }
+.resizing-sidebar .app-left-panel, .resizing-sidebar .app-right-panel { transition: none; }
+
+/* Position is resolved by the browser while scrolling, including touch inertia. */
+.calendar-edge-layer {
+  position: sticky;
+  top: var(--edge-header-height, 0px);
+  height: var(--edge-viewport-height, 0px);
+  max-height: 100%;
+  transition: none;
+}

@@ -86,12 +86,12 @@ try {
   await swipe(details.locator('[data-sheet-drag]'), 105); await details.waitFor({ state: 'hidden' })
   // Closing an inner chain editor leaves its parent form and entered text intact.
   const editor = await openNew(); await editor.getByPlaceholder('事件名称 *').fill('保留父面板草稿')
-  await editor.getByTitle('新建事件链', { exact: true }).tap()
+  await editor.getByTitle('新建事件链', { exact: true }).click()
   const chain = page.locator('[data-mobile-sheet="创建事件链"]'); await check(chain)
   await swipe(chain.locator('[data-sheet-drag]'), 100); await chain.waitFor({ state: 'hidden' })
   assert.equal(await editor.getByPlaceholder('事件名称 *').inputValue(), '保留父面板草稿')
   await closeTap(editor)
-  for (const target of ['课程作业 / 实验', '待办', '工具']) {
+  for (const target of ['待办', '工具']) {
     await page.getByRole('button', { name: target, exact: true }).tap()
     const sheet = page.locator('[data-mobile-sheet]').last(); await check(sheet); await outside(sheet)
   }

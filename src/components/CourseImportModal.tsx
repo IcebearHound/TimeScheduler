@@ -157,7 +157,7 @@ export default function CourseImportModal() {
           <h2 className="text-xl font-bold text-slate-900 dark:text-white">
             导入课程表
           </h2>
-          <button
+          <button aria-label="关闭导入课表"
             onClick={handleClose}
             className="text-slate-500 hover:text-slate-700 dark:hover:text-slate-300 p-1"
           >

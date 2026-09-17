@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState } from 'react'
+import IntegrationPanel from './IntegrationPanel'
+import { useEffect, useRef } from 'react'
 import { Maximize2, Minimize2, PanelRightClose } from 'lucide-react'
 import useUIStore from '../stores/uiStore'
 import useLayoutStore from '../stores/layoutStore'
@@ -13,10 +14,8 @@ export default function RightSidebar() {
   const open = useUIStore(s => s.openRightPanelTab)
   const setExpanded = useUIStore(s => s.setRightPanelExpanded)
   const isMobile = useLayoutStore(s => s.isMobile)
-  const [visited, setVisited] = useState(tab === 'assignments')
   const root = useRef<HTMLDivElement>(null)
   const expandButton = useRef<HTMLButtonElement>(null)
-  useEffect(() => { if (tab === 'assignments') setVisited(true) }, [tab])
   useEffect(() => {
     if (!expanded || isMobile) return
     const previous = document.activeElement as HTMLElement
@@ -37,16 +36,17 @@ export default function RightSidebar() {
     <div className="flex shrink-0 items-center gap-1 border-b p-2 dark:border-slate-700">
       <nav aria-label="右边栏栏目" className="flex min-w-0 flex-1 flex-wrap gap-1">
         <button className="sidebar-tab" aria-pressed={tab === 'todo'} onClick={() => open('todo')}>TODO</button>
-        <button className="sidebar-tab" aria-label="课程作业 / 实验" aria-pressed={tab === 'assignments'} onClick={() => open('assignments')}>作业 / 实验</button>
+        <button className="sidebar-tab" aria-pressed={tab === 'ai'} onClick={() => open('ai')}>Agent</button>
         {selected && <button className="sidebar-tab" aria-pressed={tab === 'details'} onClick={() => open('details')}>详情</button>}
       </nav>
       <button ref={expandButton} className="sidebar-panel-action" aria-label={expanded ? '退出全屏' : '全屏放大'} onClick={() => setExpanded(!expanded)}>{expanded ? <Minimize2 size={17} /> : <Maximize2 size={17} />}</button>
       {!isMobile && <button className="sidebar-panel-action" aria-label="收起详情面板" onClick={() => useUIStore.getState().setIsRightPanelOpen(false)}><PanelRightClose size={17} /></button>}
     </div>
     <div className="min-h-0 flex-1 overflow-hidden">
-      {tab === 'todo' && <TodoView />}
+      {(tab === 'todo' || tab === 'assignments') && <div className="h-full overflow-y-auto"><div className="assignment-scroll p-3"><AssignmentPanel /></div><TodoView embedded /></div>}
+      {tab === 'ai' && <IntegrationPanel />}
       {tab === 'details' && <RightPanel />}
-      {(visited || tab === 'assignments') && <div hidden={tab !== 'assignments'} className="assignment-scroll h-full overflow-y-auto p-3"><AssignmentPanel /></div>}
+
     </div>
   </div>
 }

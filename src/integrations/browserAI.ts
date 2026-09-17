@@ -1,4 +1,4 @@
-import { aiConfigSchema, AIConfig, proposeActions } from './ai'
+import { aiConfigSchema, AIConfig, proposeActions, proposeAgent, parseAgentReply, AgentReply } from './ai'
 import { aiPresets } from './aiPresets'
 import { browserVault } from './browserVault'
 import { actionsSchema, projectActions, Snapshot, snapshotRevision } from './contracts'
@@ -41,4 +41,47 @@ export async function proposeBrowserActions(config: BrowserAIConfig, instruction
   // Check IDs, dates and references before displaying an actionable proposal.
   projectActions(snapshot, actions, () => crypto.randomUUID())
   return { actions, revision }
+}
+
+export interface AIProfile extends BrowserAIConfig { id: string; name: string }
+export interface AIProfiles { profiles: AIProfile[]; activeId: string }
+const profilesVault = 'ai-api-profiles'
+export async function loadAIProfiles(): Promise<AIProfiles> {
+  const value = await browserVault.get<AIProfiles>(profilesVault)
+  if (value) return value
+  const legacy = await loadBrowserAI()
+  const migrated = { profiles: legacy ? [{ ...legacy, id: crypto.randomUUID(), name: aiPresets[legacy.preset]?.label || '默认配置' }] : [], activeId: '' }
+  migrated.activeId = migrated.profiles[0]?.id || ''
+  if (legacy) { await saveAIProfiles(migrated); await forgetBrowserAI() }
+  return migrated
+}
+export async function saveAIProfiles(value: AIProfiles) {
+  for (const config of value.profiles) {
+    aiConfigSchema.parse(config); validateAIAddress(config.baseUrl)
+    if (config.transport === 'relay' && (!aiRelayEndpoint || aiPresets[config.preset]?.baseUrl !== config.baseUrl || aiPresets[config.preset]?.provider !== config.provider)) throw new Error('网站转发仅支持内置服务商')
+  }
+  await browserVault.set(profilesVault, value)
+  window.dispatchEvent(new Event('ai-profiles-changed'))
+}
+export async function requestBrowserAgent(config: BrowserAIConfig, instruction: string, snapshot: Snapshot, signal: AbortSignal): Promise<AgentReply & { revision: string }> {
+  aiConfigSchema.parse(config); validateAIAddress(config.baseUrl)
+  if (!instruction.trim() || instruction.length > 20000) throw new Error('对话过长，请清空会话后重试')
+  const revision = await snapshotRevision(snapshot)
+  try {
+    let reply: AgentReply
+    if (config.transport === 'relay') {
+      if (!aiRelayEndpoint) throw new Error('网站尚未配置转发服务')
+      validateAIAddress(aiRelayEndpoint)
+      const response = await fetch(aiRelayEndpoint + '/ai/propose', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${config.apiKey}` }, body: JSON.stringify({ mode: 'agent', preset: config.preset, model: config.model, instruction, snapshot }), redirect: 'error', signal })
+      const result = await response.json()
+      if (!response.ok) throw new Error(result.error || 'AI 转发失败')
+      reply = parseAgentReply(result, snapshot)
+    } else reply = await proposeAgent(config, instruction, snapshot, { browser: true, signal })
+    if (reply.actions.length) projectActions(snapshot, reply.actions, () => crypto.randomUUID())
+    return { ...reply, revision }
+  } catch (error) {
+    if (signal.aborted) throw new Error('请求已取消或超时')
+    if (error instanceof TypeError) throw new Error('无法连接 AI 服务，请检查网络、地址或在设置中切换网站转发')
+    throw error
+  }
 }
