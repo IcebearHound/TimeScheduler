@@ -13,6 +13,8 @@
 
 新增：日历上下边缘事件摘要、课程作业/实验灯珠工作台、AI API 与 MCP 存档操作、GitHub/Gitee 私有仓库自动同步。手机用户直接在右上角用户栏登录，无需安装软件或运行命令。部署者需一次性开通 [轻量授权服务](docs/WEB_ACCOUNT_SYNC.md)；课程任务和 AI/MCP 见 [功能指南](docs/LOCAL_INTEGRATIONS.md)。
 
+第一次配置 GitHub 登录？按 [从零创建 OAuth App 并部署授权服务](docs/GITHUB_LOGIN_SETUP.md) 操作，全程可在网页完成。
+
 <p align="center">
   <a href="https://icebearhound.github.io/TimeScheduler/">
     <img src="https://raw.githubusercontent.com/IcebearHound/TimeScheduler/main/public/visit-btn.svg" alt="访问 WebApp →">

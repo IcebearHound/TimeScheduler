@@ -2,7 +2,7 @@ import { AccountProvider } from '../stores/workspaceStore'
 import { browserVault } from './browserVault'
 import { Snapshot, snapshotRevision, validateSnapshot } from './contracts'
 
-export interface CloudAccount { provider: AccountProvider; accessToken: string; refreshToken?: string; expiresAt?: number; login: string; base?: Snapshot; repositoryUrl?: string }
+export interface CloudAccount { provider: AccountProvider; accessToken: string; refreshToken?: string; expiresAt?: number; refreshExpiresAt?: number; login: string; userId?: number; base?: Snapshot; repositoryUrl?: string }
 interface PendingLogin { verifier: string; nonce: string; provider: AccountProvider; expires: number }
 export const cloudEndpoint = (import.meta.env.VITE_AUTH_SERVICE_URL || '').replace(/\/$/, '')
 export class CloudAPIError extends Error { constructor(message: string, readonly status: number) { super(message) } }
@@ -26,7 +26,7 @@ export async function beginCloudLogin(provider: AccountProvider) {
   try {
     const result = await cloudRequest('/oauth/start', { provider, returnTo, challenge: await challenge(pending.verifier), nonce: pending.nonce })
     const url = new URL(result.url)
-    if (url.protocol !== 'https:' || url.hostname !== (provider === 'github' ? 'github.com' : 'gitee.com')) throw new Error('授权服务返回了无效地址')
+    if (url.protocol !== 'https:' || url.host !== (provider === 'github' ? 'github.com' : 'gitee.com') || url.pathname !== (provider === 'github' ? '/login/oauth/authorize' : '/oauth/authorize') || url.username || url.password) throw new Error('授权服务返回了无效地址')
     // Same-tab navigation works on mobile and survives page reloads; no popups or device codes.
     location.assign(url.href)
   } catch (error) { await browserVault.remove('pending-login'); throw error }
@@ -41,12 +41,12 @@ export async function completeCloudLogin(): Promise<CloudAccount | undefined> {
   try {
     const data = await cloudRequest('/oauth/exchange', { ticket, verifier: pending.verifier, nonce: pending.nonce })
     if (data.provider !== pending.provider || typeof data.accessToken !== 'string') throw new Error('授权结果不匹配，请重新登录')
-    const account: CloudAccount = { provider: data.provider, accessToken: data.accessToken, refreshToken: data.refreshToken, expiresAt: data.expiresAt, login: '' }
+    const account: CloudAccount = { provider: data.provider, accessToken: data.accessToken, refreshToken: data.refreshToken, expiresAt: data.expiresAt, refreshExpiresAt: data.refreshExpiresAt, login: '' }
     const user = await repositoryRequest(account, '/user')
-    if (!/^[\w.-]+$/.test(user.login)) throw new Error('平台未返回有效账号信息')
-    account.login = user.login
+    if (typeof user.login !== 'string' || !/^[\w.-]+$/.test(user.login) || !Number.isSafeInteger(user.id) || user.id <= 0) throw new Error('平台未返回有效账号信息')
+    account.login = user.login; account.userId = user.id
     const previous = await browserVault.get<CloudAccount>('account')
-    if (previous?.provider === account.provider && previous.login === account.login) { account.base = previous.base; account.repositoryUrl = previous.repositoryUrl }
+    if (previous?.provider === account.provider && previous.login === account.login && previous.userId === account.userId) { account.base = previous.base; account.repositoryUrl = previous.repositoryUrl }
     await browserVault.set('account', account)
     return account
   } finally { await browserVault.remove('pending-login') }
@@ -56,8 +56,11 @@ export async function repositoryRequest(account: CloudAccount, path: string, met
 }
 export async function refreshCloudAccount(account: CloudAccount) {
   if (account.expiresAt && account.expiresAt < Date.now() + 60000) {
-    if (!account.refreshToken) throw new CloudAPIError('登录已过期，请重新登录', 401)
+    if (!account.refreshToken || (account.refreshExpiresAt && account.refreshExpiresAt <= Date.now())) throw new CloudAPIError('登录已过期，请重新登录', 401)
     const next = await cloudRequest('/oauth/refresh', { provider: account.provider, refreshToken: account.refreshToken })
+    if (next.provider !== account.provider || typeof next.accessToken !== 'string' || !next.accessToken) throw new CloudAPIError('授权结果无效，请重新登录', 401)
+    const user = await repositoryRequest({ ...account, accessToken: next.accessToken }, '/user')
+    if ((account.userId !== undefined && user.id !== account.userId) || user.login !== account.login) throw new CloudAPIError('账号身份发生变化，请重新登录后同步', 401)
     Object.assign(account, next)
     await browserVault.set('account', account)
   }

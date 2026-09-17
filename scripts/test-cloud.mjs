@@ -11,7 +11,9 @@ const dist = resolve(output, 'dist')
 const env = { APP_URL: '', AUTH_STATE_SECRET: 'synthetic-state-secret-for-browser-testing', GITHUB_CLIENT_ID: 'synthetic-github-id', GITHUB_CLIENT_SECRET: 'synthetic-github-secret', GITEE_CLIENT_ID: 'synthetic-gitee-id', GITEE_CLIENT_SECRET: 'synthetic-gitee-secret' }
 const repos = new Map(), codes = new Set(), errors = [], requests = []
 const originalFetch = globalThis.fetch
-let sequence = 0, refreshes = 0
+let sequence = 0
+const refreshes = { github: 0, gitee: 0 }, userReads = { github: 0, gitee: 0 }
+const challenges = new Map()
 globalThis.fetch = async (url, init) => {
   const uri = new URL(url), provider = uri.hostname === 'gitee.com' ? 'gitee' : 'github'
   const json = (data, status = 200) => new Response(JSON.stringify(data), { status })
@@ -20,16 +22,17 @@ globalThis.fetch = async (url, init) => {
     assert.equal(params.get('client_secret'), `synthetic-${provider}-secret`)
     if (params.get('grant_type') === 'refresh_token') {
       assert.equal(params.get('refresh_token'), `synthetic-${provider}-refresh-token`)
-      ++refreshes
+      ++refreshes[provider]
       return json({ access_token: `synthetic-${provider}-access-token`, refresh_token: `synthetic-${provider}-refresh-token`, expires_in: 3600 })
     }
+    if (provider === 'github') assert.equal(Buffer.from(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(params.get('code_verifier')))).toString('base64url'), challenges.get(params.get('code')))
     assert.ok(params.get('code') && !codes.has(params.get('code'))); codes.add(params.get('code'))
-    return json({ access_token: `synthetic-${provider}-access-token`, refresh_token: `synthetic-${provider}-refresh-token`, expires_in: provider === 'gitee' ? 1 : 3600 })
+    return json({ access_token: `synthetic-${provider}-access-token`, refresh_token: `synthetic-${provider}-refresh-token`, expires_in: 1, refresh_token_expires_in: 15897600 })
   }
   assert.equal(init.headers.Authorization, `Bearer synthetic-${provider}-access-token`)
   assert.equal(init.redirect, 'error')
   const path = uri.pathname.replace('/api/v5', ''), repo = repos.get(provider)
-  if (path === '/user') return json({ login: 'test-user' })
+  if (path === '/user') { ++userReads[provider]; return json({ login: 'test-user', id: 123 }) }
   if (path === '/user/repos') {
     const data = JSON.parse(init.body); assert.equal(data.private, true); assert.equal(data.name, 'time-scheduler-private')
     assert.ok(!repo); repos.set(provider, { private: true, default_branch: 'main', html_url: `https://${provider}.com/test-user/time-scheduler-private`, file: undefined })
@@ -73,14 +76,17 @@ try {
     child.on('error', reject); child.on('exit', code => code === 0 ? resolveBuild() : reject(new Error(output)))
   })
   browser = await chromium.launch({ headless: true })
-  const createDevice = async () => {
+  const createDevice = async (deny = false) => {
     const context = await browser.newContext({ viewport: { width: 390, height: 844 } })
     const page = await context.newPage()
     page.on('pageerror', e => errors.push(e.message)); page.on('request', r => requests.push(r.url()))
     await context.addInitScript(() => { localStorage.setItem('hasSeenWelcomeGuide', 'true'); localStorage.setItem('notificationPromptSeen', 'true') })
     for (const provider of ['github', 'gitee']) await context.route(`https://${provider}.com/**`, route => {
       const url = new URL(route.request().url()), callback = new URL(url.searchParams.get('redirect_uri'))
-      callback.searchParams.set('code', `synthetic-${provider}-code-${crypto.randomUUID()}`); callback.searchParams.set('state', url.searchParams.get('state'))
+      if (deny) { callback.searchParams.set('error', 'access_denied'); callback.searchParams.set('state', url.searchParams.get('state')); return route.fulfill({ status: 302, headers: { Location: callback.href } }) }
+      const code = `synthetic-${provider}-code-${crypto.randomUUID()}`
+      if (provider === 'github') { assert.equal(url.searchParams.get('code_challenge_method'), 'S256'); assert.equal(url.searchParams.get('prompt'), 'select_account'); challenges.set(code, url.searchParams.get('code_challenge')) }
+      callback.searchParams.set('code', code); callback.searchParams.set('state', url.searchParams.get('state'))
       return route.fulfill({ status: 302, headers: { Location: callback.href } })
     })
     await page.goto(env.APP_URL)
@@ -109,8 +115,17 @@ try {
     await page.getByRole('button', { name: '收起详情面板' }).click()
   }
   const stored = page => page.evaluate(() => JSON.parse(localStorage.getItem('eventStore')).events.map(([, e]) => e))
+  const cancelled = await createDevice(true)
+  await openAccount(cancelled.page)
+  await cancelled.page.getByRole('button', { name: '使用 GitHub 账号登录' }).click()
+  await cancelled.page.getByText(/你已取消 GitHub\/Gitee 授权/).waitFor()
+  assert.equal(new URL(cancelled.page.url()).hash, '')
+  assert.equal(codes.size, 0); assert.equal(repos.size, 0)
+  await cancelled.context.close()
   const first = await createDevice()
   await login(first, 'github')
+  assert.equal(await first.page.getByRole('link', { name: '管理 GitHub 授权' }).getAttribute('href'), 'https://github.com/settings/connections/applications/synthetic-github-id')
+  assert.equal(refreshes.github, 1); assert.equal(userReads.github, 2, 'Login and refreshed token must both verify identity')
   await first.page.screenshot({ path: resolve(output, 'mobile-signed-in.png') })
   await addTask(first.page, '自动同步作业')
   await waitUntil(() => snapshot('github')?.events.some(e => e.name === '自动同步作业'), 'Automatic upload did not run')
@@ -158,7 +173,8 @@ try {
   const gitee = await createDevice(); await login(gitee, 'gitee'); await addTask(gitee.page, 'Gitee 手机作业')
   await waitUntil(() => snapshot('gitee')?.events.length === 1, 'Gitee automatic sync failed')
   await openAccount(gitee.page, 'gitee'); await gitee.page.getByText('所有更改已同步', { exact: true }).waitFor()
-  assert.equal(refreshes, 1, 'Expiring Gitee token must renew automatically')
+  assert.equal(refreshes.gitee, 1, 'Expiring Gitee token must renew automatically')
+  assert.equal(refreshes.github, 2, 'Both GitHub devices must renew their expiring tokens')
   await gitee.page.screenshot({ path: resolve(output, 'gitee-mobile-sync.png') })
   const otherTab = await gitee.context.newPage()
   await otherTab.goto(env.APP_URL); await openAccount(otherTab, 'gitee')

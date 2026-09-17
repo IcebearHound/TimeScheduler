@@ -20,6 +20,8 @@
 
 ## 部署者的一次性配置
 
+首次创建请使用 [全程网页操作的 GitHub 登录创建指南](GITHUB_LOGIN_SETUP.md)：先部署空配置服务取得地址，再注册 OAuth App 并补齐凭据。
+
 本项目的 GitHub Pages 只托管静态网页。OAuth 客户端密钥不能放进公开前端，因此另提供一个无数据库的 Cloudflare Worker：`worker/index.ts`。
 
 ### 1. 创建授权服务
@@ -30,13 +32,15 @@
 |---|---|
 | `CLOUDFLARE_API_TOKEN` | 有 Workers 部署权限的 Cloudflare API Token |
 | `CLOUDFLARE_ACCOUNT_ID` | Cloudflare 账号 ID |
-| `AUTH_STATE_SECRET` | 至少 32 字符的高熵随机值，用来封装短期授权 state 和回调票据 |
-| `GH_OAUTH_CLIENT_ID` | GitHub OAuth App Client ID |
-| `GH_OAUTH_CLIENT_SECRET` | GitHub OAuth App Client Secret |
-| `GITEE_CLIENT_ID` | Gitee OAuth App Client ID |
-| `GITEE_CLIENT_SECRET` | Gitee OAuth App Client Secret |
+| `AUTH_STATE_SECRET` | 可选；首次部署自动生成，后续保留。手动指定时至少 32 字符 |
+| `GH_OAUTH_CLIENT_ID` | 开通 GitHub 时填写；首次取得服务地址时可留空 |
+| `GH_OAUTH_CLIENT_SECRET` | 与 GitHub Client ID 成对填写 |
+| `GITEE_CLIENT_ID` | 可选，仅开通 Gitee 时填写 |
+| `GITEE_CLIENT_SECRET` | 与 Gitee Client ID 成对填写 |
 
 GitHub 自定义 Secret 不能用 `GITHUB_` 前缀，因此工作流使用 `GH_OAUTH_*`，部署到 Worker 时映射为 `GITHUB_CLIENT_*`。
+
+首次只需 Cloudflare 的两个配置即可运行工作流。Summary 会显示服务地址、回调地址和后续配置步骤。未提供的 OAuth 平台配置不会删除 Worker 中已有的密钥；需要停用平台时在 Cloudflare 删除相应 Secrets。
 
 `worker/wrangler.jsonc` 的 `APP_URL` 默认是 `https://icebearhound.github.io/TimeScheduler/`。自行部署到其他网站时改成实际的网页入口，必须精确匹配路径和末尾斜杠。服务只允许这个来源发起 API 请求及返回这个入口，防止开放重定向和跨站读取。
 
@@ -60,10 +64,10 @@ npx wrangler@4 secret put GITEE_CLIENT_SECRET --config worker/wrangler.jsonc
 
 | 平台 | 回调地址 | 权限 |
 |---|---|---|
-| GitHub OAuth App | `https://你的实际授权服务域名/oauth/callback/github` | `repo`，用于个人私有仓库创建和读写 |
+| GitHub OAuth App | `https://你的实际授权服务域名/oauth/callback/github` | `repo offline_access`，用于私有仓库同步及自动续期 |
 | Gitee 第三方应用 | `https://你的实际授权服务域名/oauth/callback/gitee` | `user_info projects` |
 
-GitHub 使用标准网页授权码流程，无需开启 Device Flow。将平台签发的应用配置填入 Worker Secrets（或上面的 GitHub Actions Secrets 后重新部署），不要写进代码、前端构建变量或普通配置文件。
+GitHub 使用标准网页授权码流程和 PKCE S256，无需开启 Device Flow；回调 URL 精确匹配，无需通配符。将平台签发的应用配置填入 Worker Secrets（或上面的 GitHub Actions Secrets 后重新部署），不要写进代码、前端构建变量或普通配置文件。
 
 ### 3. 连接前端
 
@@ -98,6 +102,7 @@ GitHub 使用标准网页授权码流程，无需开启 Device Flow。将平台�
 - 浏览器 Web Crypto 生成不可导出的 AES-256-GCM 密钥，IndexedDB 保存密钥对象与随机 IV 的密文。自动解密不需要第二个口令。凭据不进入日程存档、普通 localStorage、URL 查询串或同步仓库。
 - 这保护的是静态凭据存储和普通数据导出，不抵御已控制同源网页的恶意脚本或已解锁设备。必须保持 HTTPS、代码依赖和网页来源可信。不能将“不可导出密钥”理解为硬件保险库。
 - 回调票据是加密的短期授权码封装，不是访问令牌。只有持有本机随机 verifier 的浏览器可以换取令牌；state、有效期、平台、网站地址和 nonce 都会校验。平台授权码单次使用，交换失败后重新登录。
+- GitHub 授权 URL 携带 43 字符的 base64url SHA-256 `code_challenge` 和 `S256`，交换时提交原始 `code_verifier`；取消授权也使用绑定设备的票据。每次取得或刷新令牌均调用 `/user` 验证账号身份，身份变化时停止同步。
 - 平台原生授权回调中仍包含短期授权码。应用不记录请求 URL/请求体/令牌，Worker 默认关闭 observability。部署者不应额外启用含这些信息的请求日志。
 - 中继固定访问 GitHub/Gitee 官方 API，仅允许读取用户、创建固定名称的私有仓库，以及读写其中的 `time-scheduler-archive.json`。不接受任意目标 URL，也不提供通用代理。
 - 同步的日程 JSON 对仓库所有者和其授权协作者可读；文件内容做 SHA-256 回读核验。每次同步检查仓库私有属性，更新带文件 SHA，避免无条件覆盖。

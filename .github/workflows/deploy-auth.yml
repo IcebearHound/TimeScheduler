@@ -13,6 +13,12 @@ concurrency:
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    env:
+      AUTH_STATE_SECRET: ${{ secrets.AUTH_STATE_SECRET }}
+      GITHUB_CLIENT_ID: ${{ secrets.GH_OAUTH_CLIENT_ID }}
+      GITHUB_CLIENT_SECRET: ${{ secrets.GH_OAUTH_CLIENT_SECRET }}
+      GITEE_CLIENT_ID: ${{ secrets.GITEE_CLIENT_ID }}
+      GITEE_CLIENT_SECRET: ${{ secrets.GITEE_CLIENT_SECRET }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -22,20 +28,28 @@ jobs:
       - run: npm ci
       - run: npm run check:worker
       - run: npm test
+      - name: Validate optional OAuth configuration
+        run: node scripts/configure-auth-service.mjs --validate
       - uses: cloudflare/wrangler-action@v3
+        id: worker
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           command: deploy --config worker/wrangler.jsonc
-          secrets: |
-            AUTH_STATE_SECRET
-            GITHUB_CLIENT_ID
-            GITHUB_CLIENT_SECRET
-            GITEE_CLIENT_ID
-            GITEE_CLIENT_SECRET
+      - name: Configure authorization secrets
+        run: node scripts/configure-auth-service.mjs
         env:
-          AUTH_STATE_SECRET: ${{ secrets.AUTH_STATE_SECRET }}
-          GITHUB_CLIENT_ID: ${{ secrets.GH_OAUTH_CLIENT_ID }}
-          GITHUB_CLIENT_SECRET: ${{ secrets.GH_OAUTH_CLIENT_SECRET }}
-          GITEE_CLIENT_ID: ${{ secrets.GITEE_CLIENT_ID }}
-          GITEE_CLIENT_SECRET: ${{ secrets.GITEE_CLIENT_SECRET }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      - name: Show registration and frontend settings
+        env:
+          WORKER_URL: ${{ steps.worker.outputs.deployment-url }}
+        run: |
+          node --input-type=module <<'NODE'
+          import { appendFileSync } from 'node:fs'
+          const raw = process.env.WORKER_URL || '';
+          let url;
+          try { const parsed = new URL(raw); if (parsed.protocol === 'https:') url = parsed.origin; } catch {}
+          const lines = ['## GitHub 授权服务已部署', '', url ? `服务地址：${url}` : '请在 Cloudflare → Workers & Pages → time-scheduler-auth → Settings → Domains & Routes 中复制正式的 workers.dev 地址。', '', url ? `GitHub OAuth App 回调：${url}/oauth/callback/github` : 'GitHub OAuth App 回调：你的 Worker 地址/oauth/callback/github', '', '应用首页：https://icebearhound.github.io/TimeScheduler/', '', '1. 在 https://github.com/settings/applications/new 创建 OAuth App。', '2. 将 Client ID 和 Client Secret 分别填入仓库 Actions Secrets：GH_OAUTH_CLIENT_ID、GH_OAUTH_CLIENT_SECRET，再运行本工作流。', '3. 将 Worker 地址填入仓库 Actions Variable：VITE_AUTH_SERVICE_URL，再运行 Deploy to GitHub Pages。', '', '可以只配置 GitHub，Gitee 可稍后启用。应用密钥不要填入 Variables 或前端代码。'];
+          appendFileSync(process.env.GITHUB_STEP_SUMMARY, lines.join('\n') + '\n');
+          NODE

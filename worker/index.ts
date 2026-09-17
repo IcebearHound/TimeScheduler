@@ -11,7 +11,8 @@ export interface Env {
   GITEE_CLIENT_SECRET?: string
 }
 type Provider = 'github' | 'gitee'
-interface Flow { kind: 'state' | 'ticket'; provider: Provider; returnTo: string; challenge: string; nonce: string; expires: number; code?: string }
+class ExpiredAuthorization extends Error {}
+interface Flow { kind: 'state' | 'ticket'; provider: Provider; returnTo: string; redirectUri: string; challenge: string; nonce: string; expires: number; code?: string; error?: string }
 const encoder = new TextEncoder()
 const encode64 = (bytes: Uint8Array) => { let s = ''; for (const b of bytes) s += String.fromCharCode(b); return btoa(s).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '') }
 const decode64 = (s: string) => Uint8Array.from(atob(s.replace(/-/g, '+').replace(/_/g, '/')), c => c.charCodeAt(0))
@@ -41,8 +42,11 @@ async function tokenRequest(provider: Provider, parameters: Record<string, strin
   const response = await fetch(provider === 'github' ? 'https://github.com/login/oauth/access_token' : 'https://gitee.com/oauth/token', { method: 'POST', headers: { Accept: 'application/json', 'Content-Type': 'application/x-www-form-urlencoded' }, body: new URLSearchParams(parameters), redirect: 'error', signal: AbortSignal.timeout(20000) })
   if (!response.ok) throw new Error('平台授权暂时失败，请重新登录')
   const data = await response.json() as any
-  if (!data.access_token || data.error) throw new Error('平台授权无效或已使用，请重新登录')
-  return { provider, accessToken: data.access_token, ...(data.refresh_token ? { refreshToken: data.refresh_token } : {}), ...(data.expires_in ? { expiresAt: Date.now() + Number(data.expires_in) * 1000 } : {}) }
+  if (data.error === 'bad_refresh_token') throw new ExpiredAuthorization('登录已过期，请重新登录')
+  if (data.error === 'incorrect_client_credentials' || data.error === 'redirect_uri_mismatch') throw new Error('网站授权配置不匹配，请联系网站管理员')
+  if (typeof data.access_token !== 'string' || !data.access_token || data.error || (data.token_type && data.token_type.toLowerCase() !== 'bearer')) throw new Error('平台授权无效或已使用，请重新登录')
+  const lifetime = (value: unknown) => Number.isFinite(Number(value)) && Number(value) > 0 ? Date.now() + Number(value) * 1000 : undefined
+  return { provider, accessToken: data.access_token, ...(typeof data.refresh_token === 'string' ? { refreshToken: data.refresh_token } : {}), ...(lifetime(data.expires_in) ? { expiresAt: lifetime(data.expires_in) } : {}), ...(lifetime(data.refresh_token_expires_in) ? { refreshExpiresAt: lifetime(data.refresh_token_expires_in) } : {}) }
 }
 async function body(request: Request) {
   if (!request.headers.get('Content-Type')?.startsWith('application/json')) throw new Error('请求格式无效')
@@ -63,9 +67,9 @@ export default {
       const callback = /^\/oauth\/callback\/(github|gitee)$/.exec(url.pathname)
       if (request.method === 'GET' && callback) {
         const flow = await open(env, url.searchParams.get('state'), 'state')
-        if (flow.provider !== callback[1]) throw new Error('授权平台不匹配')
+        if (flow.provider !== callback[1] || flow.redirectUri !== `${url.origin}${url.pathname}`) throw new Error('授权回调不匹配，请重新登录')
         const destination = new URL(flow.returnTo)
-        if (url.searchParams.has('error')) destination.hash = new URLSearchParams({ ts_oauth_error: 'denied' }).toString()
+        if (url.searchParams.has('error')) destination.hash = new URLSearchParams({ ts_oauth: await seal(env, { ...flow, kind: 'ticket', error: url.searchParams.get('error') === 'access_denied' ? 'access_denied' : 'authorization_failed' }) }).toString()
         else {
           const code = url.searchParams.get('code')
           if (!code || code.length > 4096) throw new Error('缺少授权结果')
@@ -99,21 +103,28 @@ export default {
         try { projectActions(snapshot, actions, () => crypto.randomUUID()) } catch { return json({ error: 'AI 操作包含无效时间或不存在的事件，请重新描述' }, 400) }
         return json({ actions })
       }
-      if (url.pathname === '/config') return json({ github: !!(env.AUTH_STATE_SECRET?.length >= 32 && env.GITHUB_CLIENT_ID && env.GITHUB_CLIENT_SECRET), gitee: !!(env.AUTH_STATE_SECRET?.length >= 32 && env.GITEE_CLIENT_ID && env.GITEE_CLIENT_SECRET) })
+      if (url.pathname === '/config') return json({ github: !!(env.AUTH_STATE_SECRET?.length >= 32 && env.GITHUB_CLIENT_ID && env.GITHUB_CLIENT_SECRET), gitee: !!(env.AUTH_STATE_SECRET?.length >= 32 && env.GITEE_CLIENT_ID && env.GITEE_CLIENT_SECRET), ...(env.GITHUB_CLIENT_ID ? { githubAuthorizationUrl: `https://github.com/settings/connections/applications/${encodeURIComponent(env.GITHUB_CLIENT_ID)}` } : {}) })
       if (url.pathname === '/oauth/start') {
         const provider = providerName(input.provider), config = credentials(env, provider)
         if (!config.clientId || !config.clientSecret) return json({ error: '该平台登录暂未开通，请稍后再试' }, 503)
         if (input.returnTo !== app.href || !/^[a-f0-9]{64}$/.test(input.challenge || '') || !/^[a-f0-9]{64}$/.test(input.nonce || '')) return json({ error: '登录验证参数无效' }, 400)
-        const flow: Flow = { kind: 'state', provider, returnTo: app.href, challenge: input.challenge, nonce: input.nonce, expires: Date.now() + 600000 }
-        const query = new URLSearchParams({ client_id: config.clientId, redirect_uri: `${url.origin}/oauth/callback/${provider}`, response_type: 'code', scope: provider === 'github' ? 'repo' : 'user_info projects', state: await seal(env, flow) })
+        const flow: Flow = { kind: 'state', provider, returnTo: app.href, redirectUri: `${url.origin}/oauth/callback/${provider}`, challenge: input.challenge, nonce: input.nonce, expires: Date.now() + 600000 }
+        const query = new URLSearchParams({ client_id: config.clientId, redirect_uri: flow.redirectUri, response_type: 'code', scope: provider === 'github' ? 'repo offline_access' : 'user_info projects', state: await seal(env, flow) })
+        if (provider === 'github') {
+          // GitHub requires the base64url SHA-256 digest (43 characters), not our hex binding.
+          query.set('code_challenge', encode64(Uint8Array.from(input.challenge.match(/../g) as string[], value => parseInt(value, 16))))
+          query.set('code_challenge_method', 'S256')
+          query.set('prompt', 'select_account')
+        }
         return json({ url: `${provider === 'github' ? 'https://github.com/login/oauth/authorize' : 'https://gitee.com/oauth/authorize'}?${query}` })
       }
       if (url.pathname === '/oauth/exchange') {
         const flow = await open(env, input.ticket, 'ticket')
         if (typeof input.verifier !== 'string' || input.verifier.length !== 64 || flow.nonce !== input.nonce || flow.challenge !== await hash(input.verifier)) return json({ error: '登录验证失败，请从此设备重新登录' }, 403)
+        if (flow.error) return json({ error: flow.error === 'access_denied' ? '你已取消 GitHub/Gitee 授权，日程仍保存在此设备，可随时重新登录' : '平台未完成授权，请重新登录' }, 400)
         const config = credentials(env, flow.provider)
-        if (!config.clientId || !config.clientSecret || !flow.code) throw new Error('授权配置不完整')
-        return json(await tokenRequest(flow.provider, { grant_type: 'authorization_code', code: flow.code, client_id: config.clientId, client_secret: config.clientSecret, redirect_uri: `${url.origin}/oauth/callback/${flow.provider}` }))
+        if (!config.clientId || !config.clientSecret || !flow.code || flow.redirectUri !== `${url.origin}/oauth/callback/${flow.provider}`) throw new Error('授权配置不完整或已变更，请重新登录')
+        return json(await tokenRequest(flow.provider, { grant_type: 'authorization_code', code: flow.code, client_id: config.clientId, client_secret: config.clientSecret, redirect_uri: flow.redirectUri, ...(flow.provider === 'github' ? { code_verifier: input.verifier } : {}) }))
       }
       if (url.pathname === '/oauth/refresh') {
         const provider = providerName(input.provider), config = credentials(env, provider)
@@ -142,6 +153,6 @@ export default {
         return new Response(response.body, { status: response.status, headers })
       }
       return json({ error: '接口不存在' }, 404)
-    } catch (error) { return json({ error: error instanceof Error && !['TypeError', 'SyntaxError'].includes(error.name) ? error.message : '登录或同步暂时失败，请重试' }, 400) }
+    } catch (error) { return json({ error: error instanceof Error && !['TypeError', 'SyntaxError'].includes(error.name) ? error.message : '登录或同步暂时失败，请重试' }, error instanceof ExpiredAuthorization ? 401 : 400) }
   },
 }

@@ -40,6 +40,15 @@ for (const provider of ['github', 'gitee'] as const) test(`${provider} hosted OA
   assert.equal((await worker.fetch(request('/oauth/start', { ...args, returnTo: 'https://untrusted.example/' }), env)).status, 400)
   const start = await (await worker.fetch(request('/oauth/start', args), env)).json() as any
   const state = new URL(start.url).searchParams.get('state')!
+  const authorization = new URL(start.url)
+  assert.equal(authorization.searchParams.get('redirect_uri'), `https://auth.example/oauth/callback/${provider}`)
+  if (provider === 'github') {
+    assert.equal(authorization.searchParams.get('code_challenge'), Buffer.from(challenge, 'hex').toString('base64url'))
+    assert.equal(authorization.searchParams.get('code_challenge')!.length, 43)
+    assert.equal(authorization.searchParams.get('code_challenge_method'), 'S256')
+    assert.equal(authorization.searchParams.get('prompt'), 'select_account')
+    assert.equal(authorization.searchParams.get('scope'), 'repo offline_access')
+  } else assert.equal(authorization.searchParams.has('code_challenge'), false)
   const forged = await worker.fetch(new Request(`https://auth.example/oauth/callback/${provider}?state=forged&code=test-code`), env)
   assert.equal(forged.status, 400)
   const callback = await worker.fetch(new Request(`https://auth.example/oauth/callback/${provider}?state=${encodeURIComponent(state)}&code=test-code`), env)
@@ -53,6 +62,8 @@ for (const provider of ['github', 'gitee'] as const) test(`${provider} hosted OA
   globalThis.fetch = (async (url: string, init: RequestInit) => {
     assert.ok(!url.includes('secret')); assert.equal(init.redirect, 'error')
     const params = init.body as URLSearchParams
+    assert.equal(params.get('code_verifier'), provider === 'github' ? verifier : null)
+    assert.equal(params.get('redirect_uri'), `https://auth.example/oauth/callback/${provider}`)
     assert.equal(params.get('code'), 'test-code'); assert.equal(params.get('client_secret'), `synthetic-${provider}-secret`)
     return new Response(JSON.stringify(++exchanges === 1 ? { access_token: 'synthetic-login-token', refresh_token: 'synthetic-refresh-token' } : { error: 'invalid_grant' }))
   }) as typeof fetch

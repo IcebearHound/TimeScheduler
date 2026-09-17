@@ -8,8 +8,10 @@ import { logoutCloud, resolveSyncConflict, syncNow } from '../integrations/autoS
 export default function CloudAccountPanel({ initialProvider }: { initialProvider: AccountProvider }) {
   const sync = useCloudSyncStore()
   const [available, setAvailable] = useState<Record<AccountProvider, boolean> | null>(null)
+  const [authorizationUrl, setAuthorizationUrl] = useState('')
+  const [retry, setRetry] = useState(0)
   const [busy, setBusy] = useState(false), [error, setError] = useState('')
-  useEffect(() => { let active = true; if (cloudEndpoint) void cloudRequest('/config').then(result => { if (active) setAvailable(result) }).catch(() => { if (active) setError('登录服务暂时不可用，请稍后重试') }); return () => { active = false } }, [])
+  useEffect(() => { let active = true; if (cloudEndpoint) { setError(''); void cloudRequest('/config').then(result => { if (active) { setAvailable(result); if (typeof result.githubAuthorizationUrl === 'string' && /^https:\/\/github\.com\/settings\/connections\/applications\/[\w-]+$/.test(result.githubAuthorizationUrl)) setAuthorizationUrl(result.githubAuthorizationUrl) } }).catch(() => { if (active) setError('登录服务暂时不可用，请稍后重试') }) }; return () => { active = false } }, [retry])
   const run = async (job: () => Promise<void>) => { setBusy(true); setError(''); try { await job() } catch (e) { setError(e instanceof Error ? e.message : '操作未完成，请重试') } finally { setBusy(false) } }
   const providers = [initialProvider, initialProvider === 'github' ? 'gitee' : 'github'] as AccountProvider[]
   return <div className="space-y-6">
@@ -26,6 +28,7 @@ export default function CloudAccountPanel({ initialProvider }: { initialProvider
         <button className="workspace-button" disabled={busy || sync.status === 'syncing' || !!sync.conflict} onClick={() => void run(syncNow)}>立即同步</button>
         {sync.repositoryUrl && /^https:\/\/(github\.com|gitee\.com)\//.test(sync.repositoryUrl) && <a className="workspace-button" href={sync.repositoryUrl} target="_blank" rel="noreferrer">查看私有仓库</a>}
         <button className="workspace-button" disabled={busy || sync.status === 'syncing'} onClick={() => void run(logoutCloud)}>退出登录</button>
+        {sync.provider === 'github' && authorizationUrl && <a className="workspace-button" href={authorizationUrl} target="_blank" rel="noreferrer">管理 GitHub 授权</a>}
       </div>
       {sync.conflict && <div className="space-y-2 rounded-lg bg-amber-50 p-3 text-sm dark:bg-amber-900/20"><p>两台设备同时修改了同一项内容，自动同步已暂停。</p><p className="text-xs">{sync.conflict.message}。选择后会保留一份本机恢复备份。</p><button className="workspace-button" disabled={busy} onClick={() => void run(() => resolveSyncConflict('local'))}>保留此设备版本</button><button className="workspace-button" disabled={busy} onClick={() => void run(() => resolveSyncConflict('remote'))}>采用云端版本</button></div>}
     </section> : sync.status === 'error' && <p role="alert" className="text-sm text-rose-600">{sync.message}</p>}
@@ -35,6 +38,8 @@ export default function CloudAccountPanel({ initialProvider }: { initialProvider
         return <button key={provider} disabled={busy || !available?.[provider]} onClick={() => void run(() => beginCloudLogin(provider))} className="workspace-button flex w-full items-center justify-center gap-3 py-3 text-base primary"><Icon size={20} />使用 {provider === 'github' ? 'GitHub' : 'Gitee'} 账号登录</button>
       })}
       {!cloudEndpoint || (available && !available.github && !available.gitee) ? <p role="status" className="text-sm text-slate-500">网站暂未开通账号同步，你仍可正常使用和保存日程。服务开通后即可登录。</p> : !available && !error ? <p className="text-xs text-slate-500">正在连接登录服务…</p> : null}
+      {cloudEndpoint && <button className="workspace-button" disabled={busy} onClick={() => setRetry(n => n + 1)}>重新检查登录服务</button>}
+      <p className="text-xs text-slate-500">GitHub 授权页会请求私有仓库访问权限，用于自动创建和同步专用日程仓库。你可以随时在 GitHub 管理或撤销授权。</p>
     </section>}
     <p className="text-xs text-slate-500">登录令牌加密保存在当前浏览器，仅用于你的私有仓库。退出登录不会删除日程；清除网站数据后需要重新登录。</p>
     {error && <p role="alert" className="text-sm text-rose-600">{error}</p>}
