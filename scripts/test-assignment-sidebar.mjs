@@ -27,29 +27,32 @@ try {
       localStorage.setItem('hasSeenWelcomeGuide', 'true'); localStorage.setItem('notificationPromptSeen', 'true')
       if (localStorage.getItem('eventStore')) return
       const now = new Date(), chain = id => ({ id, name: id === 'math' ? '高等数学' : '计算机实验', typeId: 'course', color: '#2563eb', defaultReminders: [], createdAt: now, updatedAt: now })
-      const task = (id, day, hour, completed = false, chainId = 'math') => {
+      const task = (id, day, hour, completed = false, chainId = 'math', typeId = 'lab') => {
         const end = new Date(now.getFullYear(), now.getMonth(), now.getDate() + day, hour, 0)
-        return [id, { id, name: id, startTime: new Date(+end - 1800000), endTime: end, chainId, typeId: 'course', createdAt: now, updatedAt: now, properties: { taskKind: '实验', completed: String(completed) }, reminders: [], isHighlight: false, priority: 0 }]
+        return [id, { id, name: id, startTime: new Date(+end - 110 * 60000), endTime: end, chainId, typeId, createdAt: now, updatedAt: now, properties: { ...(id === '今日任务' ? {} : { taskKind: '实验' }), completed: String(completed) }, reminders: [], isHighlight: false, priority: 0 }]
       }
-      localStorage.setItem('eventStore', JSON.stringify({ events: [task('今日任务', 0, 23), task('今日逾期', 0, 10), task('已完成任务', 0, 9, true, 'lab'), task('明日任务', 1, 13), task('历史逾期', -1, 12), task('远期任务', 35, 12)], eventChains: [['math', chain('math')], ['lab', chain('lab')]], eventTypes: [['course', { id: 'course', name: '课程', emoji: '📚', category: 'course', color: '#2563eb' }]], semesterStartDate: now }))
+      localStorage.setItem('eventStore', JSON.stringify({ events: [task('今日任务', 0, 23), task('今日逾期', 0, 10), task('已完成任务', 0, 9, true, 'lab'), task('明日任务', 1, 13), task('历史逾期', -1, 12), task('远期任务', 35, 12), task('非实验类型', 0, 18, false, 'math', 'course'), task('仅名称含实验', 0, 18, false, 'excluded', 'course')], eventChains: [['math', chain('math')], ['lab', chain('lab')], ['excluded', chain('excluded')]], eventTypes: [['course', { id: 'course', name: '课程', emoji: '📚', category: 'course', color: '#2563eb' }], ['lab', { id: 'lab', name: '实验', emoji: '🧪', category: 'lab', color: '#16a34a' }]], semesterStartDate: now }))
     })
     await page.goto(`http://127.0.0.1:${server.address().port}/TimeScheduler/`)
     if (width < 500) await page.getByRole('button', { name: '待办', exact: true }).click()
     const sidebar = page.locator('[data-right-sidebar]')
     await sidebar.getByRole('button', { name: '全屏放大', exact: true }).waitFor()
     assert.equal(await sidebar.getByRole('button', { name: 'TODO', exact: true }).count(), 1)
+    assert.equal(await page.locator('[data-assignment-days]').count(), 0, 'TODO must not contain the experiment panel')
+    for (const name of ['TODO', '实验作业', 'Agent']) assert.equal(await sidebar.getByRole('button', { name, exact: true }).locator('svg').count(), 1)
+    await sidebar.getByRole('button', { name: '实验作业', exact: true }).click()
     const dayCount = () => page.locator('[data-assignment-date]').count()
     const autoFits = async () => {
       await page.waitForFunction(() => {
         const table = document.querySelector('[data-assignment-days]'), viewport = table.parentElement
         const unused = viewport.clientWidth - parseFloat(getComputedStyle(table).minWidth)
-        return table.dataset.dayMode === 'auto' && viewport.clientWidth > 0 && viewport.scrollWidth <= viewport.clientWidth + 1 && unused < 8 * parseFloat(getComputedStyle(document.documentElement).fontSize)
+        return table.dataset.dayMode === 'auto' && viewport.clientWidth > 0 && viewport.scrollWidth <= viewport.clientWidth + 1 && unused < Number(table.dataset.dayWidth)
       })
     }
     await autoFits()
     assert.equal(await page.getByLabel('灯珠显示天数').inputValue(), 'auto')
     const initialDays = await dayCount()
-    assert.ok(initialDays >= 1 && initialDays < 7, 'A narrow sidebar should fit a readable subset of days')
+    assert.ok(initialDays >= 3 && initialDays < 10, 'Compact lamp columns should fit more dates in the sidebar')
     if (width > 500) {
       const handle = page.getByRole('separator', { name: '调整右边栏宽度' }), box = await handle.boundingBox()
       await page.mouse.move(box.x + 3, box.y + 100); await page.mouse.down(); await page.mouse.move(box.x - 270, box.y + 100); await page.mouse.up()
@@ -66,6 +69,9 @@ try {
     assert.equal(await page.locator('[data-assignment-date]').nth(1).getAttribute('data-assignment-date'), '2027-01-01')
     for (const [id, status] of [['今日任务', '今日截止'], ['今日逾期', '已逾期'], ['已完成任务', '已完成'], ['明日任务', '待验收'], ['历史逾期', '已逾期']]) assert.equal(await page.locator(`[data-task-lamp="${id}"]`).getAttribute('data-status'), status)
     assert.equal(await page.locator('tbody [data-assignment-course]').count(), 2)
+    assert.equal(await page.locator('[data-task-lamp="非实验类型"], [data-task-lamp="仅名称含实验"], [data-assignment-course="excluded"]').count(), 0, 'Only event type lab qualifies, regardless of taskKind or chain name')
+    assert.ok((await page.locator('[data-task-date]').allTextContents()).every(text => text.trim() === ''), 'Date cells should contain lamps without visible text')
+    assert.ok(await page.locator('[data-task-lamp="今日任务"]').getAttribute('aria-label'), 'Lamps retain accessible details')
     if (width < 500) {
       const scroller = page.getByRole('region', { name: '每日灯珠表格，可横向滚动' })
       await scroller.scrollIntoViewIfNeeded()
@@ -78,7 +84,7 @@ try {
       await scroller.evaluate(el => { el.scrollLeft = 0 })
       await cdp.detach()
     }
-    assert.ok(await page.locator('[data-assignment-course="lab"] [data-task-date]').first().getByText('已完成任务').isVisible())
+    assert.ok(await page.locator('[data-assignment-course="lab"] [data-task-date]').first().locator('[data-task-lamp="已完成任务"]').isVisible())
     await sidebar.getByRole('button', { name: '全屏放大', exact: true }).click()
     const box = await (width > 500 ? page.locator('.app-right-panel') : page.locator('[data-mobile-sheet]')).boundingBox()
     assert.ok(box.width > width * .88 && box.height > 800, 'Fullscreen should use the visible screen')
@@ -98,6 +104,9 @@ try {
     await page.getByRole('button', { name: '保存任务', exact: true }).click()
     await page.getByText('已保存到事件链，可撤销', { exact: true }).waitFor()
     assert.equal(await page.evaluate(() => JSON.parse(localStorage.getItem('eventStore')).events.find(([id]) => id === '今日任务')[1].name), '全屏保留的草稿')
+    const edited = await page.evaluate(() => JSON.parse(localStorage.getItem('eventStore')).events.find(([id]) => id === '今日任务')[1])
+    assert.equal(+new Date(edited.endTime) - +new Date(edited.startTime), 110 * 60000, 'Editing a scheduled lab must preserve its duration')
+    assert.equal(edited.properties.taskKind, undefined, 'Editing a lab class must not turn it into a deadline task')
     await page.locator('[data-task-lamp="今日任务"]').click()
     await page.getByRole('button', { name: '切换完成状态', exact: true }).click()
     await page.getByText('已更新完成状态', { exact: true }).waitFor()
@@ -119,7 +128,7 @@ try {
     assert.deepEqual(errors, [])
     await page.close()
   }
-  console.log('PASS: merged TODO and task panel, daily task lights, empty cells and overdue tasks, automatic days, sidebar drag/fullscreen/viewport resizing, manual 7/14-day ranges, year/midnight rollover, fullscreen draft retention, edit/save/completion, 320px/390px/desktop layouts and dismissal')
+  console.log('PASS: separate icon tabs, lab-only events in course chains, compact accessible lamp-only cells, automatic days, sidebar drag/fullscreen/viewport resizing, manual ranges, midnight rollover, lab duration preservation, edit/save/completion, 320px/390px/desktop layouts and dismissal')
 } catch (error) {
   if (page && !page.isClosed()) console.error(await page.locator('[role="status"]').allTextContents(), await page.locator('form input:invalid').evaluateAll(inputs => inputs.map(input => [input.outerHTML, input.validationMessage])))
   if (page && !page.isClosed()) await page.screenshot({ path: resolve(output, 'failure.png') })

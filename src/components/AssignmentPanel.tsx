@@ -17,10 +17,10 @@ export default function AssignmentPanel() {
   const [menu, setMenu] = useState(false), [mode, setMode] = useState<'quick' | 'table' | null>(null)
   const [busy, setBusy] = useState(false)
   const editor = useRef<HTMLFormElement>(null)
-  const tasks = useMemo(() => [...events.values()].filter(e => e.properties.taskKind).sort((a, b) => +a.endTime - +b.endTime), [events])
+  const tasks = useMemo(() => [...events.values()].filter(e => types.get(e.typeId)?.category === 'lab').sort((a, b) => +a.endTime - +b.endTime), [events, types])
   const revealEditor = () => { setMode('quick'); setMenu(false) }
-  const courses = useMemo(() => [...chains.values()].filter(c => types.get(c.typeId)?.category === 'course' || [...events.values()].some(e => e.chainId === c.id && e.properties.taskKind)), [chains, types, events])
-  const edit = (e: Event) => { setEditing(e.id); setForm({ course: chains.get(e.chainId)?.name || '', name: e.name, deadline: localDateTime(new Date(e.endTime)), kind: e.properties.taskKind || '作业', link: e.properties.submissionUrl || '', submission: e.properties.submissionMethod || '', content: e.properties.taskContent || '', notes: e.properties.notes || '' }); revealEditor() }
+  const courses = useMemo(() => { const ids = new Set(tasks.map(e => e.chainId)); return [...chains.values()].filter(c => ids.has(c.id)) }, [chains, tasks])
+  const edit = (e: Event) => { setEditing(e.id); setForm({ course: chains.get(e.chainId)?.name || '', name: e.name, deadline: localDateTime(new Date(e.endTime)), kind: e.properties.taskKind || '实验', link: e.properties.submissionUrl || '', submission: e.properties.submissionMethod || '', content: e.properties.taskContent || '', notes: e.properties.notes || '' }); revealEditor() }
   const run = async (job: () => Promise<void>) => { setBusy(true); setMessage(''); try { await job() } catch (e) { setMessage(e instanceof Error ? e.message : '操作失败') } finally { setBusy(false) } }
   const prepare = async (book: XLSX.WorkBook) => {
     const rows = readAssignmentWorkbook(book), snapshot = captureArchive()
@@ -31,16 +31,15 @@ export default function AssignmentPanel() {
       {menu && <><button aria-label="关闭添加任务菜单" data-dismiss-layer className="fixed inset-0 z-40" onClick={() => setMenu(false)} /><div role="menu" className="absolute right-0 top-full z-50 mt-1 rounded-xl border bg-white p-2 shadow-xl dark:border-slate-700 dark:bg-slate-800"><button role="menuitem" className="workspace-button block w-full" onClick={() => { setEditing(null); setForm(empty); revealEditor() }}>快捷添加</button><button role="menuitem" className="workspace-button mt-1 block w-full" onClick={() => { setMode('table'); setMenu(false) }}>从表格获取</button></div></>}
     </div>
     <div onDoubleClick={e => { if (!(e.target as HTMLElement).closest('button, input, select, textarea, summary, a')) { window.getSelection()?.removeAllRanges(); useUIStore.getState().setRightPanelExpanded(!useUIStore.getState().rightPanelExpanded) } }}><p className="text-[10px] text-slate-400">双击面板空白处可全屏放大；也可使用右上角放大按钮。</p><AssignmentTimeline courses={courses} tasks={tasks} onEdit={edit} /></div>
-    <details className="space-y-3"><summary className="cursor-pointer text-sm font-medium">全部课程任务 · {tasks.length} 项（含历史与远期）</summary>
+    <details className="space-y-3"><summary className="cursor-pointer text-sm font-medium">全部实验 · {tasks.length} 项（含历史与远期）</summary>
     <div className="space-y-3" aria-label="课程任务线路">
-      {!courses.length && <p className="p-6 text-center text-slate-500">暂无课程，添加任务时填写课程名称即可创建事件链。</p>}
+      {!courses.length && <p className="p-6 text-center text-slate-500">暂无实验类型事件，添加实验或将课程事件类型改为实验后显示。</p>}
       {courses.map(c => {
-        const tasks = [...events.values()].filter(e => e.chainId === c.id && e.properties.taskKind).sort((a, b) => +a.endTime - +b.endTime)
+        const courseTasks = tasks.filter(e => e.chainId === c.id)
         return <div key={c.id} className="rounded-xl border border-slate-200 p-3 dark:border-slate-700">
           <div className="flex items-center justify-between"><strong style={{ color: c.color }}>{c.name}</strong><button className="workspace-button" onClick={() => { setEditing(null); setForm({ ...empty, course: c.name }); revealEditor() }}>＋ 添加任务</button></div>
           <div className="flex gap-6 overflow-x-auto py-3">
-            {!tasks.length && <span className="text-xs text-slate-400">尚无作业 / 实验</span>}
-            {tasks.map(e => <button key={e.id} onClick={() => edit(e)} className="relative min-w-32 text-left text-xs" title="修改任务详情">
+            {courseTasks.map(e => <button key={e.id} onClick={() => edit(e)} className="relative min-w-32 text-left text-xs" title="修改任务详情">
               <span className="absolute left-2 right-[-24px] top-2 h-0.5" style={{ background: c.color }} />
               <span className={`relative mb-2 block h-4 w-4 rounded-full border-2 border-white ring-2 ${e.properties.completed === 'true' ? 'bg-emerald-500 ring-emerald-300' : +e.endTime < Date.now() ? 'bg-rose-500 ring-rose-300' : 'bg-indigo-500 ring-indigo-300'}`} />
               <span className="block font-medium">{e.name}</span><span className="block text-slate-500">{new Date(e.endTime).toLocaleString('zh-CN', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</span>
@@ -56,12 +55,12 @@ export default function AssignmentPanel() {
       if (editing) {
         const e = events.get(editing); if (!e) throw new Error('该任务已删除')
         const end = new Date(form.deadline)
-        await applyActions([{ op: 'update_event', id: editing, changes: { name: form.name, endTime: end.toISOString(), startTime: new Date(+end - 1800000).toISOString(), properties: { ...e.properties, taskKind: form.kind, submissionUrl: safeSubmissionLink(form.link), submissionMethod: form.submission, taskContent: form.content, notes: form.notes } } }], revision)
+        await applyActions([{ op: 'update_event', id: editing, changes: { name: form.name, endTime: end.toISOString(), startTime: new Date(+end - (+e.endTime - +e.startTime)).toISOString(), properties: { ...e.properties, ...(e.properties.taskKind ? { taskKind: form.kind } : {}), submissionUrl: safeSubmissionLink(form.link), submissionMethod: form.submission, taskContent: form.content, notes: form.notes } } }], revision)
       } else await applyActions(assignmentActions(snapshot, [form]), revision)
       setEditing(null); setForm({ ...empty, course: form.course }); setMessage('已保存到事件链，可撤销'); setMode(null)
     }) }}>
       <h3 className="font-semibold assignment-form-wide">{editing ? '修改任务详情' : '快捷添加作业 / 实验'}</h3>
-      <label>课程<input required disabled={!!editing} list="course-options" className="workspace-input" value={form.course} onChange={e => setForm({ ...form, course: e.target.value })} /><datalist id="course-options">{courses.map(c => <option key={c.id} value={c.name} />)}</datalist></label>
+      <label>课程<input required disabled={!!editing} list="course-options" className="workspace-input" value={form.course} onChange={e => setForm({ ...form, course: e.target.value })} /><datalist id="course-options">{[...chains.values()].map(c => <option key={c.id} value={c.name} />)}</datalist></label>
       <label>名称<input required className="workspace-input" value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} /></label>
       <label>类别<select className="workspace-input" value={form.kind} onChange={e => setForm({ ...form, kind: e.target.value })}><option>作业</option><option>实验</option><option>项目</option><option>其他</option></select></label>
       <label>验收截止时间<input required type="datetime-local" className="workspace-input" value={form.deadline} onChange={e => setForm({ ...form, deadline: e.target.value })} /></label>

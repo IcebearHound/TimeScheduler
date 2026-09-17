@@ -87,6 +87,7 @@ try {
     assert.ok(!(await page.evaluate(() => JSON.stringify(localStorage))).includes('synthetic-key'))
     if (mobile) { await page.evaluate(() => history.back()); await page.locator('[data-mobile-sheet]').waitFor({ state: 'hidden' }); await page.getByRole('button', { name: '待办', exact: true }).click() }
     else await page.getByRole('button', { name: 'TODO', exact: true }).click()
+    await page.locator('[data-right-sidebar]').getByRole('button', { name: '实验作业', exact: true }).click()
     assert.equal(await page.getByText('快捷添加作业 / 实验', { exact: true }).count(), 0)
     await page.getByRole('button', { name: '＋ 添加作业 / 实验', exact: true }).click()
     await page.getByRole('menuitem', { name: '快捷添加', exact: true }).click()

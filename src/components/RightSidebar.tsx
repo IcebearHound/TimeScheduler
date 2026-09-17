@@ -1,6 +1,6 @@
 import IntegrationPanel from './IntegrationPanel'
 import { useEffect, useRef } from 'react'
-import { Maximize2, Minimize2, PanelRightClose } from 'lucide-react'
+import { CheckSquare, FlaskConical, Info, Maximize2, Minimize2, PanelRightClose, Sparkles } from 'lucide-react'
 import useUIStore from '../stores/uiStore'
 import useLayoutStore from '../stores/layoutStore'
 import RightPanel from './RightPanel'
@@ -35,15 +35,17 @@ export default function RightSidebar() {
   return <div ref={root} data-right-sidebar role={expanded && !isMobile ? 'dialog' : undefined} aria-modal={expanded && !isMobile ? true : undefined} aria-label="待办与课程任务" className="flex h-full min-h-0 flex-col bg-white text-slate-800 dark:bg-slate-900 dark:text-slate-200">
     <div className="flex shrink-0 items-center gap-1 border-b p-2 dark:border-slate-700">
       <nav aria-label="右边栏栏目" className="flex min-w-0 flex-1 flex-wrap gap-1">
-        <button className="sidebar-tab" aria-pressed={tab === 'todo'} onClick={() => open('todo')}>TODO</button>
-        <button className="sidebar-tab" aria-pressed={tab === 'ai'} onClick={() => open('ai')}>Agent</button>
-        {selected && <button className="sidebar-tab" aria-pressed={tab === 'details'} onClick={() => open('details')}>详情</button>}
+        <button className="sidebar-tab" aria-pressed={tab === 'todo'} onClick={() => open('todo')}><CheckSquare size={16} aria-hidden="true" />TODO</button>
+        <button className="sidebar-tab" aria-pressed={tab === 'assignments'} onClick={() => open('assignments')}><FlaskConical size={16} aria-hidden="true" />实验作业</button>
+        <button className="sidebar-tab" aria-pressed={tab === 'ai'} onClick={() => open('ai')}><Sparkles size={16} aria-hidden="true" />Agent</button>
+        {selected && <button className="sidebar-tab" aria-pressed={tab === 'details'} onClick={() => open('details')}><Info size={16} aria-hidden="true" />详情</button>}
       </nav>
       <button ref={expandButton} className="sidebar-panel-action" aria-label={expanded ? '退出全屏' : '全屏放大'} onClick={() => setExpanded(!expanded)}>{expanded ? <Minimize2 size={17} /> : <Maximize2 size={17} />}</button>
       {!isMobile && <button className="sidebar-panel-action" aria-label="收起详情面板" onClick={() => useUIStore.getState().setIsRightPanelOpen(false)}><PanelRightClose size={17} /></button>}
     </div>
     <div className="min-h-0 flex-1 overflow-hidden">
-      {(tab === 'todo' || tab === 'assignments') && <div className="h-full overflow-y-auto"><div className="assignment-scroll p-3"><AssignmentPanel /></div><TodoView embedded /></div>}
+      {tab === 'todo' && <div className="h-full overflow-y-auto"><TodoView embedded /></div>}
+      {tab === 'assignments' && <div className="assignment-scroll h-full overflow-y-auto p-3"><AssignmentPanel /></div>}
       {tab === 'ai' && <IntegrationPanel />}
       {tab === 'details' && <RightPanel />}
 
