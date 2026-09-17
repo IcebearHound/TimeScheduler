@@ -1,8 +1,8 @@
 import useDismissiblePanel from '../utils/useDismissiblePanel'
-import React, { useState, useMemo, useCallback, useRef, useEffect } from 'react'
+import React, { useState, useMemo, useRef, useEffect } from 'react'
 import {
   Pin, Star, Clock, GripVertical, ChevronDown, ChevronRight,
-  RefreshCw, Settings, Layers, Link2, ListTodo
+  RefreshCw, Settings, Layers, Link2, ListTodo, Check, ArrowUpRight, MoreHorizontal
 } from 'lucide-react'
 import useUIStore from '../stores/uiStore'
 import useEventStore from '../stores/eventStore'
@@ -10,8 +10,10 @@ import useEventGroupStore from '../stores/eventGroupStore'
 import { Event } from '../types/event'
 import EventContextMenu from './EventContextMenu'
 import { scrollToEventBlock } from '../utils/scrollTarget'
+import { completionProperties, courseTaskCompleted, courseTaskKind, courseTaskStatus, courseTaskTime, sortedCourseTasks } from '../utils/courseTasks'
+import CourseTaskIcon from './CourseTaskIcon'
 
-export default function TodoView({ embedded = false }: { embedded?: boolean }) {
+export default function TodoView({ embedded = false, onNavigate }: { embedded?: boolean; onNavigate?: () => void }) {
   const setSelectedEvent = useUIStore((s) => s.setSelectedEvent)
   const setCurrentDate = useUIStore((s) => s.setCurrentDate)
   const setFlashEventId = useUIStore((s) => s.setFlashEventId)
@@ -20,6 +22,7 @@ export default function TodoView({ embedded = false }: { embedded?: boolean }) {
   const todoUpcomingDays = useUIStore((s) => s.todoUpcomingDays)
   const setTodoUpcomingDays = useUIStore((s) => s.setTodoUpcomingDays)
   const events = useEventStore((s) => s.events)
+  const eventTypes = useEventStore((s) => s.eventTypes)
   const eventChains = useEventStore((s) => s.eventChains)
   const groups = useEventGroupStore((s) => s.groups)
   const togglePinEvent = useEventStore((s) => s.togglePinEvent)
@@ -41,6 +44,15 @@ export default function TodoView({ embedded = false }: { embedded?: boolean }) {
   const [dragPosition, setDragPosition] = useState<'above' | 'below' | null>(null)
   const [ctxMenu, setCtxMenu] = useState<{ event: Event; x: number; y: number } | null>(null)
   const [selectedTodoId, setSelectedTodoId] = useState<string | null>(null)
+  const [filter, setFilter] = useState<'all' | 'pending' | 'completed'>('all')
+  const [showAll, setShowAll] = useState(false)
+  const [now, setNow] = useState(() => new Date())
+  useEffect(() => {
+    const tick = () => setNow(new Date())
+    const timer = window.setInterval(tick, 30000)
+    window.addEventListener('focus', tick)
+    return () => { clearInterval(timer); window.removeEventListener('focus', tick) }
+  }, [])
 
   useEffect(() => { setShowSettings(false) }, [popoverCloseToken])
 
@@ -56,12 +68,17 @@ export default function TodoView({ embedded = false }: { embedded?: boolean }) {
     return () => document.removeEventListener('mousedown', handler)
   }, [showSettings])
 
-  const now = new Date()
   const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate())
   const highlightCutoff = new Date(now.getTime() + todoHighlightDays * 24 * 60 * 60 * 1000)
   const upcomingCutoff = new Date(now.getTime() + todoUpcomingDays * 24 * 60 * 60 * 1000)
 
-  const allEvents = Array.from(events.values())
+  const types = Array.from(eventTypes.values())
+  const courseEvents = sortedCourseTasks(Array.from(events.values()), types)
+  const allEvents = Array.from(events.values()).filter(e => !courseTaskKind(e, types))
+  const isCompleted = (e: Event) => {
+    const kind = courseTaskKind(e, types)
+    return kind ? courseTaskCompleted(e, kind, now) : e.properties.completed === 'true'
+  }
 
   function isInTodo(event: Event): boolean {
     if (event.pinned) return true
@@ -113,11 +130,20 @@ export default function TodoView({ embedded = false }: { embedded?: boolean }) {
   const allTodoEvents = useMemo(() => {
     const seen = new Set<string>()
     const result: Event[] = []
-    for (const e of [...pinnedEvents, ...highlightEvents, ...upcomingEvents]) {
+    for (const e of [...courseEvents, ...pinnedEvents, ...highlightEvents, ...upcomingEvents]) {
       if (!seen.has(e.id)) { seen.add(e.id); result.push(e) }
     }
     return result
-  }, [pinnedEvents, highlightEvents, upcomingEvents])
+  }, [courseEvents, pinnedEvents, highlightEvents, upcomingEvents])
+
+  const completedCount = allTodoEvents.filter(isCompleted).length
+  const visible = (items: Event[]) => items.filter(e => filter === 'all' || isCompleted(e) === (filter === 'completed'))
+  const sections = [
+    { key: 'course', name: '课程任务 · 按时间排序', icon: ListTodo, events: visible(courseEvents), empty: '添加实验课、验收、报告或作业后在此显示。', tone: 'text-indigo-500' },
+    { key: 'pinned', name: '置顶', icon: Pin, events: visible(pinnedEvents), empty: '把常用事项置顶，随时查看。', tone: 'text-indigo-500' },
+    { key: 'highlight', name: '重点事项', icon: Star, events: visible(highlightEvents), empty: '标记星号，让重要安排更醒目。', tone: 'text-amber-500' },
+    { key: 'upcoming', name: '近期安排', icon: Clock, events: visible(upcomingEvents), empty: '当前范围内暂无安排。', tone: 'text-sky-500' },
+  ]
 
   function handleReorder() {
     const ids = [...pinnedEvents, ...highlightEvents, ...upcomingEvents].map(e => e.id)
@@ -162,6 +188,7 @@ export default function TodoView({ embedded = false }: { embedded?: boolean }) {
 
   function handleDrop(e: React.DragEvent) {
     e.preventDefault()
+    e.stopPropagation()
     const droppedId = dragIdRef.current
     const dropPos = dragPositionRef.current
     const targetId = dragOverId.current
@@ -170,6 +197,7 @@ export default function TodoView({ embedded = false }: { embedded?: boolean }) {
     dragPositionRef.current = null
     setDragPosition(null)
     if (!droppedId || !targetId || droppedId === targetId) return
+    if ([droppedId, targetId].some(id => { const e = events.get(id); return e && courseTaskKind(e, types) })) return
 
     const ids = allTodoEvents.map(ev => ev.id)
     const fromIdx = ids.indexOf(droppedId)
@@ -222,17 +250,19 @@ export default function TodoView({ embedded = false }: { embedded?: boolean }) {
     setFlashEventId(event.id)
     setCurrentDate(new Date(event.startTime))
     setSelectedEvent(event.id)
+    onNavigate?.()
   }
 
   return (
     <>
     <div
-      className={`${embedded ? 'min-h-64' : 'h-full'} w-full bg-white dark:bg-slate-800 flex flex-col overflow-hidden`}
+      data-todo-view
+      className={`${embedded ? 'min-h-64' : 'h-full'} todo-view w-full bg-slate-50/60 dark:bg-slate-900 flex flex-col overflow-hidden`}
       onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = 'move' }}
       onDrop={(e) => {
         e.preventDefault()
         const evtId = dragIdRef.current || e.dataTransfer.getData('text/plain')
-        if (evtId) {
+        if (evtId && !courseEvents.some(e => e.id === evtId)) {
           useEventStore.getState().updateEvent(evtId, { pinned: false, isHighlight: false })
         }
         setDragId(null); dragIdRef.current = null; setDragPosition(null)
@@ -242,35 +272,36 @@ export default function TodoView({ embedded = false }: { embedded?: boolean }) {
         onDrop={(e) => {
           e.preventDefault(); e.stopPropagation()
           const evtId = dragIdRef.current || e.dataTransfer.getData('text/plain')
-          if (evtId) {
+          if (evtId && !courseEvents.some(e => e.id === evtId)) {
             useEventStore.getState().updateEvent(evtId, { pinned: true })
           }
           setDragId(null); dragIdRef.current = null; setDragPosition(null)
         }}>
-        <span className="text-xs font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1.5"><ListTodo className="w-3.5 h-3.5" /> Todo</span>
+        <div className="min-w-0"><h2 className="flex items-center gap-2 text-base font-semibold text-slate-800 dark:text-slate-100"><ListTodo size={18} className="text-indigo-500" />待办清单</h2><p className="mt-1 text-xs text-slate-500">{now.toLocaleDateString('zh-CN', { month: 'long', day: 'numeric', weekday: 'long' })}</p></div>
         <div className="flex items-center gap-1">
-          <button onClick={handleReorder} className="p-1 hover:bg-slate-50 dark:hover:bg-slate-700/50 rounded text-slate-400" title="一键重排">
-            <RefreshCw className="w-3.5 h-3.5" />
+          <button onClick={handleReorder} className="todo-icon-button" aria-label="一键重排" title="重排其他安排；课程任务始终按时间排序">
+            <RefreshCw size={16} />
           </button>
           <div className="relative flex items-center" ref={settingsWrapperRef}>
-            <button onClick={() => setShowSettings(!showSettings)} className="p-1 hover:bg-slate-50 dark:hover:bg-slate-700/50 rounded text-slate-400" title="Todo 设置">
-              <Settings className="w-3.5 h-3.5" />
+            <button onClick={() => setShowSettings(!showSettings)} className="todo-icon-button" aria-label="Todo 设置" aria-expanded={showSettings} title="Todo 设置">
+              <Settings size={16} />
             </button>
             {showSettings && (
               <div className="absolute right-0 top-full mt-1 w-60 bg-white dark:bg-slate-800 rounded-lg shadow-xl border border-slate-200/60 dark:border-slate-700/60 p-3 z-50 space-y-3" onClick={(e) => e.stopPropagation()}>
                 <div>
                   <label className="block text-xs text-slate-500 mb-1">重点事项时间范围（天）</label>
-                  <input type="number" min={1} max={365} value={todoHighlightDays}
-                    onChange={e => setTodoHighlightDays(Math.max(1, Number(e.target.value)))}
+                  <input aria-label="重点事项时间范围（天）" type="number" min={1} max={365} value={todoHighlightDays}
+                    onChange={e => setTodoHighlightDays(Math.min(365, Math.max(1, Number(e.target.value))))}
                     className="w-full px-2 py-1 text-xs border border-slate-200 dark:border-slate-700 rounded-lg bg-white dark:bg-slate-700 text-slate-900 dark:text-white focus:outline-none focus:ring-1 focus:ring-accent-500/40" />
                 </div>
                 <div>
                   <label className="block text-xs text-slate-500 mb-1">待办事项时间范围（天）</label>
-                  <input type="number" min={1} max={365} value={todoUpcomingDays}
-                    onChange={e => setTodoUpcomingDays(Math.max(1, Number(e.target.value)))}
+                  <input aria-label="待办事项时间范围（天）" type="number" min={1} max={365} value={todoUpcomingDays}
+                    onChange={e => setTodoUpcomingDays(Math.min(365, Math.max(1, Number(e.target.value))))}
                     className="w-full px-2 py-1 text-xs border border-slate-200 dark:border-slate-700 rounded-lg bg-white dark:bg-slate-700 text-slate-900 dark:text-white focus:outline-none focus:ring-1 focus:ring-accent-500/40" />
                 </div>
                 <div className="border-t border-slate-200/60 dark:border-slate-600/60 pt-3">
+                  <p className="mb-2 text-xs text-slate-500">课程任务始终显示全部日期，包含逾期事项；以下范围和来源仅影响其他安排。</p>
                   <p className="text-[10px] text-slate-400 mb-1.5">Todo 来源</p>
                   <div className="space-y-1.5 max-h-32 overflow-y-auto">
                     <div>
@@ -302,135 +333,40 @@ export default function TodoView({ embedded = false }: { embedded?: boolean }) {
         </div>
       </div>
 
-      <div className={embedded ? '' : 'flex-1 overflow-y-auto'}>
-        {/* 置顶区 */}
-        <div className="border-b border-slate-100 dark:border-slate-800"
-          onDragOver={(e) => { e.preventDefault(); e.stopPropagation() }}
-          onDrop={(e) => {
-            e.preventDefault(); e.stopPropagation()
-            const evtId = dragIdRef.current
-            if (evtId) {
-              useEventStore.getState().updateEvent(evtId, { pinned: true })
-            }
-            setDragId(null); dragIdRef.current = null; setDragPosition(null)
-          }}>
-          <button onClick={() => toggleSection('pinned')}
-            className="flex items-center gap-1.5 w-full px-3 py-2 text-xs font-medium text-slate-500 hover:bg-slate-50 dark:hover:bg-slate-700/50">
-            {collapsedSections.has('pinned') ? <ChevronRight className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
-            <Pin className="w-3 h-3" /> 置顶 ({pinnedEvents.length})
-          </button>
-          {!collapsedSections.has('pinned') && (
-            <div className="px-1 pb-1 min-h-[2rem]">
-              {pinnedEvents.length === 0 && (
-                <p className="text-xs text-slate-400 px-3 py-2">拖拽事件到此处置顶</p>
-              )}
-              {pinnedEvents.map(event => (
-                <TodoItem key={event.id} event={event}
-                  selected={selectedTodoId === event.id}
-                  onSelect={() => setSelectedTodoId(event.id)}
-                  onDoubleClick={() => jumpToEvent(event)}
-                  onTogglePin={() => togglePinEvent(event.id)}
-                  onDragStart={handleDragStart}
-                  onDragOver={handleDragOver}
-                  onDragLeave={handleDragLeave}
-                  onDrop={handleDrop}
-                  onDragEnd={handleDragEnd}
-                  onContextMenu={handleContextMenu}
-                  onToggleHighlight={() => handleToggleHighlight(event.id)}
-                  dragId={dragId}
-                  dragPosition={dragId && dragOverId.current === event.id ? dragPosition : null}
-                  eventStore={eventStore} />
-              ))}
-            </div>
-          )}
+      <div className="shrink-0 space-y-3 px-3 py-3">
+        <div className="rounded-xl border border-indigo-100 bg-white p-3 dark:border-slate-700 dark:bg-slate-800">
+          <div className="flex items-baseline justify-between gap-2"><p className="text-xs text-slate-500">清单进度</p><span className="text-xs text-slate-500">已完成 {completedCount} / {allTodoEvents.length}</span></div>
+          <p className="mt-1 text-sm text-slate-600 dark:text-slate-300"><strong className="mr-1 text-2xl font-semibold tabular-nums text-slate-900 dark:text-white">{allTodoEvents.length - completedCount}</strong> 项待完成</p>
+          <div role="progressbar" aria-label="清单完成进度" aria-valuemin={0} aria-valuemax={allTodoEvents.length || 1} aria-valuenow={completedCount} className="mt-3 h-1.5 overflow-hidden rounded-full bg-slate-100 dark:bg-slate-700"><div className="h-full rounded-full bg-indigo-500 transition-all" style={{ width: `${allTodoEvents.length ? completedCount / allTodoEvents.length * 100 : 0}%` }} /></div>
         </div>
-
-        {/* 重点区 */}
-        <div className="border-b border-slate-100 dark:border-slate-800"
-          onDragOver={(e) => { e.preventDefault(); e.stopPropagation() }}
-          onDrop={(e) => {
-            e.preventDefault(); e.stopPropagation()
-            const evtId = dragIdRef.current
-            if (evtId) {
-              useEventStore.getState().updateEvent(evtId, { isHighlight: true, pinned: false })
-            }
-            setDragId(null); dragIdRef.current = null; setDragPosition(null)
-          }}>
-          <button onClick={() => toggleSection('highlight')}
-            className="flex items-center gap-1.5 w-full px-3 py-2 text-xs font-medium text-slate-500 hover:bg-slate-50 dark:hover:bg-slate-700/50">
-            {collapsedSections.has('highlight') ? <ChevronRight className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
-            <Star className="w-3 h-3 text-yellow-500" /> 重点事项 ({highlightEvents.length})
-          </button>
-          {!collapsedSections.has('highlight') && (
-            <div className="px-1 pb-1 min-h-[2rem]">
-              {highlightEvents.length === 0 && (
-                <p className="text-xs text-slate-400 px-3 py-2">拖拽事件到此设置重点事项</p>
-              )}
-              {highlightEvents.map(event => (
-                <TodoItem key={event.id} event={event}
-                  selected={selectedTodoId === event.id}
-                  onSelect={() => setSelectedTodoId(event.id)}
-                  onDoubleClick={() => jumpToEvent(event)}
-                  onTogglePin={() => togglePinEvent(event.id)}
-                  onDragStart={handleDragStart}
-                  onDragOver={handleDragOver}
-                  onDragLeave={handleDragLeave}
-                  onDrop={handleDrop}
-                  onDragEnd={handleDragEnd}
-                  onContextMenu={handleContextMenu}
-                  onToggleHighlight={() => handleToggleHighlight(event.id)}
-                  dragId={dragId}
-                  dragPosition={dragId && dragOverId.current === event.id ? dragPosition : null}
-                  eventStore={eventStore} />
-              ))}
-            </div>
-          )}
+        <div role="group" aria-label="筛选待办状态" className="flex rounded-xl bg-slate-100 p-1 dark:bg-slate-800">
+          {([{ id: 'all', name: '全部', count: allTodoEvents.length }, { id: 'pending', name: '待完成', count: allTodoEvents.length - completedCount }, { id: 'completed', name: '已完成', count: completedCount }] as const).map(item => <button key={item.id} aria-pressed={filter === item.id} onClick={() => { setFilter(item.id); setShowAll(false) }} className={`min-h-10 min-w-0 flex-1 rounded-lg px-1 text-xs font-medium transition-colors ${filter === item.id ? 'bg-white text-indigo-600 shadow-sm dark:bg-slate-700 dark:text-indigo-300' : 'text-slate-500 hover:text-slate-800 dark:text-slate-400'}`}>{item.name} <span className="tabular-nums opacity-70">{item.count}</span></button>)}
         </div>
-
-        {/* 待办区 */}
-        <div
-          onDragOver={(e) => { e.preventDefault(); e.stopPropagation() }}
-          onDrop={(e) => {
+      </div>
+      <div className={`${embedded ? '' : 'min-h-0 flex-1 overflow-y-auto'} space-y-3 px-3 pb-4`}>
+        {allTodoEvents.length === 0 && <div className="rounded-xl border border-dashed border-slate-200 p-6 text-center dark:border-slate-700"><ListTodo size={28} className="mx-auto mb-3 text-indigo-400" /><p className="text-sm font-medium">清单里还没有安排</p><p className="mt-2 text-xs leading-relaxed text-slate-500">在日程中添加事件，或在设置里调整显示范围与来源。</p></div>}
+        {sections.map(section => <section key={section.key} data-todo-section={section.key}
+          onDragOver={e => { e.preventDefault(); e.stopPropagation() }}
+          onDrop={e => {
             e.preventDefault(); e.stopPropagation()
-            const evtId = dragIdRef.current
-            if (evtId) {
-              useEventStore.getState().updateEvent(evtId, { isHighlight: false, pinned: false })
-            }
-            setDragId(null); dragIdRef.current = null; setDragPosition(null)
+            const id = dragIdRef.current || e.dataTransfer.getData('text/plain')
+            if (id && section.key !== 'course' && !courseEvents.some(e => e.id === id)) useEventStore.getState().updateEvent(id, { pinned: section.key === 'pinned', ...(section.key !== 'pinned' ? { isHighlight: section.key === 'highlight' } : {}) })
+            handleDragEnd()
           }}>
-          <button onClick={() => toggleSection('upcoming')}
-            className="flex items-center gap-1.5 w-full px-3 py-2 text-xs font-medium text-slate-500 hover:bg-slate-50 dark:hover:bg-slate-700/50">
-            {collapsedSections.has('upcoming') ? <ChevronRight className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
-            <Clock className="w-3 h-3" /> 待办事项 ({upcomingEvents.length})
+          <button aria-expanded={!collapsedSections.has(section.key)} onClick={() => toggleSection(section.key)} className="flex min-h-11 w-full items-center gap-2 rounded-lg text-left text-xs font-semibold text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800">
+            <section.icon size={15} className={section.tone} /><span>{section.name}</span><span className="rounded-md bg-slate-100 px-1.5 py-0.5 tabular-nums text-slate-500 dark:bg-slate-800">{section.events.length}</span>
+            {collapsedSections.has(section.key) ? <ChevronRight size={14} className="ml-auto" /> : <ChevronDown size={14} className="ml-auto" />}
           </button>
-          {!collapsedSections.has('upcoming') && (
-            <div className="px-1 pb-1 min-h-[2rem]">
-              {upcomingEvents.length === 0 && (
-                <p className="text-xs text-slate-400 px-3 py-2">拖拽事件到此归入待办</p>
-              )}
-              {upcomingEvents.slice(0, 10).map(event => (
-                <TodoItem key={event.id} event={event}
-                  selected={selectedTodoId === event.id}
-                  onSelect={() => setSelectedTodoId(event.id)}
-                  onDoubleClick={() => jumpToEvent(event)}
-                  onTogglePin={() => togglePinEvent(event.id)}
-                  onDragStart={handleDragStart}
-                  onDragOver={handleDragOver}
-                  onDragLeave={handleDragLeave}
-                  onDrop={handleDrop}
-                  onDragEnd={handleDragEnd}
-                  onContextMenu={handleContextMenu}
-                  onToggleHighlight={() => handleToggleHighlight(event.id)}
-                  dragId={dragId}
-                  dragPosition={dragId && dragOverId.current === event.id ? dragPosition : null}
-                  eventStore={eventStore} />
-              ))}
-              {upcomingEvents.length > 10 && (
-                <p className="text-xs text-slate-400 text-center py-1">还有 {upcomingEvents.length - 10} 项...</p>
-              )}
-            </div>
-          )}
-        </div>
+          {!collapsedSections.has(section.key) && <div className="space-y-2">
+            {section.events.length === 0 && dragId && <p className="rounded-xl border border-dashed border-slate-200 px-3 py-3 text-xs leading-relaxed text-slate-400 dark:border-slate-700">{filter === 'all' ? section.empty : '没有符合筛选条件的事项。'}</p>}
+            {(section.key === 'upcoming' && !showAll ? section.events.slice(0, 10) : section.events).map(event => <TodoItem key={event.id} event={event} now={now}
+              selected={selectedTodoId === event.id} onSelect={() => setSelectedTodoId(event.id)} onDoubleClick={() => jumpToEvent(event)}
+              onTogglePin={() => togglePinEvent(event.id)} onToggleHighlight={() => handleToggleHighlight(event.id)}
+              onDragStart={handleDragStart} onDragOver={handleDragOver} onDragLeave={handleDragLeave} onDrop={handleDrop} onDragEnd={handleDragEnd}
+              onContextMenu={handleContextMenu} dragId={dragId} dragPosition={dragId && dragOverId.current === event.id ? dragPosition : null} eventStore={eventStore} />)}
+            {section.key === 'upcoming' && section.events.length > 10 && <button className="min-h-11 w-full rounded-lg text-xs font-medium text-indigo-600 hover:bg-indigo-50 dark:text-indigo-300 dark:hover:bg-indigo-950" onClick={() => setShowAll(!showAll)}>{showAll ? '收起更多' : `展开其余 ${section.events.length - 10} 项`}</button>}
+          </div>}
+        </section>)}
       </div>
     </div>
     {ctxMenu && (
@@ -448,6 +384,7 @@ export default function TodoView({ embedded = false }: { embedded?: boolean }) {
 
 interface TodoItemProps {
   event: Event
+  now: Date
   selected: boolean
   onSelect: () => void
   onDoubleClick: () => void
@@ -464,19 +401,23 @@ interface TodoItemProps {
   eventStore: ReturnType<typeof useEventStore.getState>
 }
 
-function TodoItem({ event, selected, onSelect, onDoubleClick, onTogglePin, onToggleHighlight, onDragStart, onDragOver, onDragLeave, onDrop, onDragEnd, onContextMenu, dragId, dragPosition, eventStore }: TodoItemProps) {
+function TodoItem({ event, now, selected, onSelect, onDoubleClick, onTogglePin, onToggleHighlight, onDragStart, onDragOver, onDragLeave, onDrop, onDragEnd, onContextMenu, dragId, dragPosition, eventStore }: TodoItemProps) {
   const type = eventStore.getEventType(event.typeId)
   const chain = eventStore.getEventChain(event.chainId)
-  const isDragging = dragId === event.id
+  const kind = courseTaskKind(event, Array.from(eventStore.eventTypes.values()))
+  const completed = kind ? courseTaskCompleted(event, kind, now) : event.properties.completed === 'true'
+  const task = kind ? kind !== '实验课' : !!event.properties.taskKind
+  const when = kind ? courseTaskTime(event, kind) : task ? new Date(event.endTime) : new Date(event.startTime)
+  const status = kind ? courseTaskStatus(event, kind, now) : completed ? '已完成' : +event.endTime < +now ? (task ? '已逾期' : '已结束') : +event.startTime <= +now ? (task ? '即将截止' : '进行中') : ''
 
   function fmtDate(d: Date): string {
-    const now = new Date()
-    const diff = d.getTime() - now.getTime()
-    const days = Math.ceil(diff / (1000 * 60 * 60 * 24))
+    const day = (v: Date) => Date.UTC(v.getFullYear(), v.getMonth(), v.getDate())
+    const days = Math.round((day(d) - day(now)) / 86400000)
     if (days === 0) return '今天'
     if (days === 1) return '明天'
     if (days === 2) return '后天'
-    return `${d.getMonth() + 1}/${d.getDate()}`
+    if (days === -1) return '昨天'
+    return d.toLocaleDateString('zh-CN', { ...(d.getFullYear() !== now.getFullYear() ? { year: 'numeric' } as const : {}), month: 'numeric', day: 'numeric' })
   }
 
   function fmtTime(d: Date): string {
@@ -485,7 +426,7 @@ function TodoItem({ event, selected, onSelect, onDoubleClick, onTogglePin, onTog
 
   return (
     <div
-      draggable
+      draggable={!kind}
       onDragStart={(e) => {
         onDragStart(e, event.id);
         (e.currentTarget as HTMLElement).style.opacity = '0.4'
@@ -503,27 +444,29 @@ function TodoItem({ event, selected, onSelect, onDoubleClick, onTogglePin, onTog
       {dragPosition === 'above' && (
         <div className="h-0.5 bg-accent-500 mx-3 rounded pointer-events-none" />
       )}
-      <div onClick={onSelect}
-        onDoubleClick={onDoubleClick}
-        className={`flex items-center gap-2 px-3 py-1.5 cursor-pointer rounded mx-1 transition-colors hover:bg-slate-50 dark:hover:bg-slate-700/50 ${event.isHighlight ? 'bg-yellow-50 dark:bg-yellow-900/10' : ''} ${selected ? 'ring-2 ring-accent-400 bg-accent-50 dark:bg-accent-900/20' : ''}`}>
-        <GripVertical className="w-3 h-3 text-slate-300 flex-shrink-0 cursor-grab" />
-        <button onClick={e => { e.stopPropagation(); onTogglePin() }}
-          className={`flex-shrink-0 ${event.pinned ? 'text-accent-500' : 'text-slate-300 hover:text-slate-500'}`}>
-          <Pin className="w-3 h-3" />
-        </button>
-        <span className="text-sm flex-shrink-0">{type?.emoji || '📌'}</span>
-        <div className="flex-1 min-w-0">
-          <p className="text-xs text-slate-700 dark:text-slate-300 truncate">{event.name}</p>
-          <p className="text-[10px] text-slate-400">
-            {fmtDate(new Date(event.startTime))} {fmtTime(new Date(event.startTime))} ~ {fmtTime(new Date(event.endTime))}
-            {chain && <span className="ml-1">· {chain.name}</span>}
-          </p>
+      <article data-todo-event={event.id} data-completed={completed} onClick={onSelect} onDoubleClick={onDoubleClick}
+        className={`todo-card ${selected ? 'is-selected' : ''} ${completed ? 'is-completed' : ''}`}>
+        <div className="flex items-start gap-2">
+          <button type="button" role="checkbox" disabled={kind === '实验课'} aria-checked={completed} aria-label={`${kind === '实验验收' ? '验收' : task ? '提交' : '完成'}：${event.name}`} title={kind === '实验课' ? '上课状态按时间自动更新' : completed ? '标记为待完成' : kind === '实验验收' ? '标记为已验收' : task ? '标记为已提交' : '标记为已完成'}
+            onDoubleClick={e => e.stopPropagation()} onClick={e => { e.stopPropagation(); const current = useEventStore.getState().events.get(event.id); if (current) useEventStore.getState().updateEvent(event.id, { properties: completionProperties(current, !completed) }) }}
+            className="todo-check shrink-0"><span className={`flex h-5 w-5 items-center justify-center rounded-full border-2 ${completed ? 'border-indigo-500 bg-indigo-500 text-white' : 'border-slate-300 dark:border-slate-500'}`}>{completed && <Check size={13} strokeWidth={3} />}</span></button>
+          <div className="min-w-0 flex-1 py-1.5">
+            {kind && <span className="mb-1 flex items-center gap-1.5 text-xs text-indigo-600 dark:text-indigo-300"><CourseTaskIcon kind={kind} size={14} />{kind}</span>}
+            <p className={`break-words text-sm font-medium leading-5 ${completed ? 'text-slate-400 line-through' : 'text-slate-800 dark:text-slate-100'}`}>{event.name}</p>
+            <p className={`mt-1 flex flex-wrap items-center gap-x-1.5 gap-y-1 text-xs ${status === '已逾期' ? 'text-rose-600 dark:text-rose-400' : 'text-slate-500 dark:text-slate-400'}`}><Clock size={12} aria-hidden="true" /><span>{fmtDate(when)} {fmtTime(when)}{task ? ' 截止' : ` – ${fmtDate(new Date(event.endTime)) !== fmtDate(when) ? fmtDate(new Date(event.endTime)) + ' ' : ''}${fmtTime(new Date(event.endTime))}`}</span></p>
+            <div className="mt-2 flex flex-wrap items-center gap-1.5 text-[11px]"><span className="max-w-full truncate rounded-md bg-slate-100 px-1.5 py-0.5 text-slate-500 dark:bg-slate-700 dark:text-slate-300" title={chain?.name || type?.name}>{type?.emoji || '📌'} {chain?.name || type?.name || '独立事件'}</span>{status && <span className={`rounded-md px-1.5 py-0.5 ${completed ? 'bg-emerald-50 text-emerald-600 dark:bg-emerald-950 dark:text-emerald-400' : status === '已逾期' ? 'bg-rose-50 text-rose-600 dark:bg-rose-950 dark:text-rose-400' : 'bg-slate-100 text-slate-500 dark:bg-slate-700 dark:text-slate-300'}`}>{status}</span>}</div>
+          </div>
         </div>
-        <button onClick={e => { e.stopPropagation(); onToggleHighlight() }}
-          className={`flex-shrink-0 ml-auto ${event.isHighlight ? 'text-yellow-400' : 'text-slate-300 hover:text-yellow-400'}`}>
-          <Star className={`w-3 h-3 ${event.isHighlight ? 'fill-yellow-400' : ''}`} />
-        </button>
-      </div>
+        <div className="mt-2 flex items-center justify-between border-t border-slate-100 pt-1 dark:border-slate-700" onDoubleClick={e => e.stopPropagation()}>
+          {kind ? <span className="ml-2 text-[10px] text-slate-400">按{task ? '截止' : '上课'}时间排序</span> : <GripVertical size={14} aria-hidden="true" className="ml-2 cursor-grab text-slate-300 dark:text-slate-600" />}
+          <div className="flex items-center gap-0.5">
+            {!kind && <button className="todo-icon-button" aria-label={event.pinned ? '取消置顶' : '置顶'} aria-pressed={!!event.pinned} title={event.pinned ? '取消置顶' : '置顶'} onClick={e => { e.stopPropagation(); onTogglePin() }}><Pin size={15} className={event.pinned ? 'fill-indigo-100 text-indigo-500 dark:fill-indigo-950' : ''} /></button>}
+            <button className="todo-icon-button" aria-label={event.isHighlight ? '取消重点' : '标记重点'} aria-pressed={event.isHighlight} title={event.isHighlight ? '取消重点' : '标记重点'} onClick={e => { e.stopPropagation(); onToggleHighlight() }}><Star size={15} className={event.isHighlight ? 'fill-amber-400 text-amber-400' : ''} /></button>
+            <button className="todo-icon-button" aria-label={`更多操作：${event.name}`} title="更多操作" onClick={e => { e.stopPropagation(); onContextMenu(e, event) }}><MoreHorizontal size={16} /></button>
+            <button className="todo-icon-button text-indigo-500" aria-label={`定位：${event.name}`} title="在日程中查看" onClick={e => { e.stopPropagation(); onDoubleClick() }}><ArrowUpRight size={17} /></button>
+          </div>
+        </div>
+      </article>
       {dragPosition === 'below' && (
         <div className="h-0.5 bg-accent-500 mx-3 rounded pointer-events-none" />
       )}

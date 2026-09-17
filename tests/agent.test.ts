@@ -31,3 +31,45 @@ test('hosted Agent preserves clarification without requiring a nonempty action l
   const result = await worker.fetch(request, { APP_URL: 'https://planner.example/', AUTH_STATE_SECRET: '' })
   assert.equal(result.status, 200); assert.deepEqual(await result.json(), reply)
 })
+
+for (const provider of ['openai', 'anthropic', 'gemini'] as const) test(`Agent ${provider} sends text, image and PDF attachments in provider format`, async t => {
+  const attachments = [
+    { kind: 'text' as const, name: '安排.txt', text: '星期一 19:00 实验' },
+    { kind: 'image' as const, name: '课表.png', mimeType: 'image/png' as const, data: 'aGVsbG8=' },
+    { kind: 'pdf' as const, name: '课程.pdf', mimeType: 'application/pdf' as const, data: 'JVBERi0xLjc=' },
+  ]
+  t.mock.method(globalThis, 'fetch', async (_url, init) => {
+    const body = JSON.parse(String(init?.body))
+    const parts = provider === 'gemini' ? body.contents[0].parts : body.messages.at(-1).content
+    assert.equal(parts.length, 3)
+    assert.equal(JSON.parse(parts[0].text).attachments[0].text, attachments[0].text)
+    if (provider === 'openai') {
+      assert.equal(parts[1].image_url.url, 'data:image/png;base64,aGVsbG8=')
+      assert.equal(parts[2].file.filename, '课程.pdf')
+      assert.equal(parts[2].file.file_data, 'data:application/pdf;base64,JVBERi0xLjc=')
+    } else if (provider === 'anthropic') {
+      assert.equal(parts[1].type, 'image'); assert.equal(parts[2].type, 'document')
+      assert.equal(parts[2].source.media_type, 'application/pdf')
+    } else {
+      assert.equal(parts[1].inline_data.mime_type, 'image/png')
+      assert.equal(parts[2].inline_data.data, 'JVBERi0xLjc=')
+    }
+    const raw = JSON.stringify({ intent: 'query', message: '已读取附件' })
+    return new Response(JSON.stringify(provider === 'anthropic' ? { content: [{ type: 'text', text: raw }] } : provider === 'gemini' ? { candidates: [{ content: { parts: [{ text: raw }] } }] } : { choices: [{ message: { content: raw } }] }))
+  })
+  assert.equal((await proposeAgent({ provider, baseUrl: 'https://example.com/v1', model: 'test', apiKey: 'synthetic' }, '读取附件', snapshot, { attachments })).message, '已读取附件')
+})
+
+test('relay forwards validated attachments and rejects invalid attachment types before contacting provider', async t => {
+  let calls = 0
+  t.mock.method(globalThis, 'fetch', async (_url, init) => {
+    calls++
+    const body = JSON.parse(String(init?.body))
+    assert.equal(JSON.parse(body.messages[1].content).attachments[0].text, '周一晚实验课')
+    return new Response(JSON.stringify({ choices: [{ message: { content: JSON.stringify({ intent: 'query', message: '附件摘要' }) } }] }))
+  })
+  const send = (attachments: unknown) => worker.fetch(new Request('https://relay.example/ai/propose', { method: 'POST', headers: { Origin: 'https://planner.example', 'Content-Type': 'application/json', Authorization: 'Bearer synthetic' }, body: JSON.stringify({ mode: 'agent', preset: 'deepseek', instruction: '读取附件', snapshot, attachments }) }), { APP_URL: 'https://planner.example/', AUTH_STATE_SECRET: '' })
+  assert.equal((await send([{ kind: 'text', name: '任务.txt', text: '周一晚实验课' }])).status, 200)
+  assert.equal((await send([{ kind: 'image', name: '图片.svg', mimeType: 'image/svg+xml', data: 'aGVsbG8=' }])).status, 400)
+  assert.equal(calls, 1)
+})

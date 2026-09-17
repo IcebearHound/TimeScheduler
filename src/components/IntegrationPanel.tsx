@@ -7,15 +7,22 @@ import { AIProfiles, loadAIProfiles, requestBrowserAgent, saveAIProfiles } from 
 import useUIStore from '../stores/uiStore'
 import useLayoutStore from '../stores/layoutStore'
 import { navigateToEvent } from '../utils/navigation'
-import MCPConnectionPanel from './MCPConnectionPanel'
+import { Paperclip, FileText, X, Download, Globe } from 'lucide-react'
+import { AgentAttachment, attachmentsSchema } from '../integrations/attachments'
+import { agentFileAccept, readAgentFile } from '../utils/agentFiles'
+import { AgentWebPage, GeneratedFile } from '../integrations/agentArtifacts'
+import { messageLinks, readAgentWebPage, publicWebUrl } from '../utils/agentWeb'
+import { downloadAgentFile } from '../utils/agentDownloads'
 
-type Message = { role: 'user' | 'assistant'; text: string; ids?: string[] }
-const useConversation = create<{ models: Record<string, { defaultModel: string; chosenModel: string }>; messages: Message[]; proposal: (AgentReply & { revision: string }) | null }>(() => ({ models: {}, messages: [], proposal: null }))
+type Message = { role: 'user' | 'assistant'; text: string; ids?: string[]; files?: string[]; generatedFiles?: GeneratedFile[] }
+const useConversation = create<{ models: Record<string, { defaultModel: string; chosenModel: string }>; messages: Message[]; attachments: AgentAttachment[]; webPages: AgentWebPage[]; proposal: (AgentReply & { revision: string }) | null }>(() => ({ models: {}, messages: [], attachments: [], webPages: [], proposal: null }))
 export default function IntegrationPanel() {
-  const { messages, proposal } = useConversation()
+  const { messages, proposal, attachments, webPages } = useConversation()
   const [configs, setConfigs] = useState<AIProfiles>({ profiles: [], activeId: '' })
   const [model, setModel] = useState(''), [instruction, setInstruction] = useState(''), [busy, setBusy] = useState(false), [loading, setLoading] = useState(true), [error, setError] = useState('')
-  const [advanced, setAdvanced] = useState(false)
+  const [reading, setReading] = useState(false)
+  const [requestStage, setRequestStage] = useState('正在处理…')
+  const fileInput = useRef<HTMLInputElement>(null)
   const configIdentity = useRef('')
   const controller = useRef<AbortController | null>(null), alive = useRef(true), bottom = useRef<HTMLDivElement>(null)
   const chosenModel = (id: string, defaultModel: string) => { const saved = useConversation.getState().models[id]; return saved?.defaultModel === defaultModel ? saved.chosenModel : defaultModel }
@@ -38,18 +45,41 @@ export default function IntegrationPanel() {
   const activeProfile = configs.profiles.find(p => p.id === configs.activeId) || configs.profiles[0]
   const modelOptions = [...new Set([...(aiModelSuggestions[activeProfile?.preset || ''] || []), ...configs.profiles.filter(p => p.baseUrl === activeProfile?.baseUrl).map(p => p.model)])]
   const append = (message: Message) => useConversation.setState(s => ({ messages: [...s.messages, message] }))
+  const upload = async (files: File[]) => {
+    if (!files.length || busy || reading) return
+    setReading(true); setError('')
+    try {
+      const retained = attachments.filter(a => !files.some(f => f.name === a.name))
+      if (retained.length + files.length > 5) throw new Error('最多附带 5 个文件，请先移除部分附件')
+      const parsed = await Promise.all(files.map(readAgentFile))
+      const checked = attachmentsSchema.safeParse([...retained, ...parsed])
+      if (!checked.success) throw new Error(checked.error.issues[0]?.message || '附件过大，请分批发送')
+      if (alive.current) useConversation.setState({ attachments: checked.data })
+    } catch (e) { if (alive.current) setError(e instanceof Error ? e.message : '文件读取失败') }
+    finally { if (alive.current) setReading(false) }
+  }
   const send = async () => {
     const profile = configs.profiles.find(p => p.id === configs.activeId) || configs.profiles[0]
     if (!profile) { configure(); return }
-    if (!instruction.trim() || busy) return
-    const text = instruction.trim(), history = messages.slice(-12)
-    setInstruction(''); setBusy(true); setError(''); useConversation.setState({ proposal: null }); append({ role: 'user', text })
+    if ((!instruction.trim() && !attachments.length) || busy || reading) return
+    const text = instruction.trim() || '请先概述附件内容，再询问我希望如何处理。', history = messages.slice(-12).map(({ generatedFiles, ...m }) => ({ ...m, ...(generatedFiles?.length ? { generatedFileNames: generatedFiles.map(f => f.name) } : {}) }))
+    const links = messageLinks(text)
+    if (links.length > 3) { setError('每次最多读取 3 个网页链接，请分批发送'); return }
+    setInstruction(''); setBusy(true); setError(''); useConversation.setState({ proposal: null }); append({ role: 'user', text, files: attachments.map(a => a.name) })
     const request = new AbortController(); controller.current = request
     const timer = setTimeout(() => request.abort(), 90000)
     try {
-      const result = await requestBrowserAgent({ ...profile, model }, JSON.stringify({ timezone: Intl.DateTimeFormat().resolvedOptions().timeZone, localTime: new Date().toString(), conversation: history, instruction: text }), captureArchive(), request.signal)
+      let pages = webPages
+      if (links.length) {
+        setRequestStage('正在读取网页…')
+        pages = await Promise.all(links.map(url => readAgentWebPage(url, request.signal, configs.readerApiKey)))
+        if (!alive.current || request.signal.aborted) return
+        useConversation.setState({ webPages: pages })
+      }
+      setRequestStage('Agent 正在处理…')
+      const result = await requestBrowserAgent({ ...profile, model }, JSON.stringify({ timezone: Intl.DateTimeFormat().resolvedOptions().timeZone, localTime: new Date().toString(), conversation: history, instruction: text }), captureArchive(), request.signal, attachments, pages)
       if (!alive.current || request.signal.aborted) return
-      append({ role: 'assistant', text: result.message + (result.question ? '\n\n' + result.question : ''), ids: result.eventIds })
+      append({ role: 'assistant', text: result.message + (result.question ? '\n\n' + result.question : ''), ids: result.eventIds, generatedFiles: result.files })
       if (result.intent === 'edit') useConversation.setState({ proposal: result })
       if (result.intent === 'query' && result.eventIds.length) jump(result.eventIds[0])
       if (result.intent === 'import') useUIStore.getState().setIsImportDialogOpen(true)
@@ -58,13 +88,13 @@ export default function IntegrationPanel() {
   }
   return <div className="flex h-full min-h-0 flex-col">
     <div className="shrink-0 space-y-2 border-b p-3 dark:border-slate-700">
-      <div className="flex items-center justify-between"><h3 className="font-semibold">日程 Agent</h3><button className="workspace-button" onClick={configure}>AI 设置</button></div>
+      <div className="flex items-center justify-between"><h3 className="font-semibold">日程 Agent</h3><button className="workspace-button" onClick={configure}>API 配置</button></div>
       <label className="block text-xs">API 配置<select aria-label="API 配置" className="workspace-input" disabled={busy || loading} value={configs.activeId} onChange={e => { const next = { ...configs, activeId: e.target.value }; const selected = next.profiles.find(p => p.id === next.activeId); configIdentity.current = `${selected?.id}:${selected?.model}`; setConfigs(next); setModel(selected ? chosenModel(selected.id, selected.model) : ''); void saveAIProfiles(next).catch(e => setError(e.message)) }}>{!configs.profiles.length && <option value="">尚未配置</option>}{configs.profiles.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}</select></label>
       <label className="block text-xs">当前模型（可选择或输入）<input aria-label="当前模型" className="workspace-input" list="agent-models" value={model} disabled={busy} onChange={e => { const value = e.target.value; setModel(value); if (activeProfile) useConversation.setState(state => ({ models: { ...state.models, [activeProfile.id]: { defaultModel: activeProfile.model, chosenModel: value } } })) }} /><datalist id="agent-models">{modelOptions.map(m => <option key={m} value={m} />)}</datalist></label>
     </div>
     <div className="min-h-0 flex-1 space-y-3 overflow-y-auto p-3" aria-label="Agent 对话" aria-live="polite">
       {!messages.length && <div className="space-y-3 rounded-xl bg-slate-50 p-3 text-sm dark:bg-slate-800"><p>查询日程、安排事件，或导入课程表。</p><p className="text-xs text-slate-500">查询先给结果再追问；创建或编辑缺少关键信息时会先询问。修改经预览确认后写入，可撤销。</p></div>}
-      {messages.map((m, i) => <div key={i} className={`rounded-xl p-3 text-sm ${m.role === 'user' ? 'ml-5 bg-indigo-50 dark:bg-indigo-950' : 'mr-2 bg-slate-50 dark:bg-slate-800'}`}><p className="mb-1 text-xs text-slate-400">{m.role === 'user' ? '你' : 'Agent'}</p><p className="whitespace-pre-wrap break-words">{m.text}</p>{m.ids?.map(id => <button key={id} className="workspace-button mt-2 w-full text-left" onClick={() => jump(id)}>定位：{captureArchive().events.find(e => e.id === id)?.name || '事件已删除'}</button>)}</div>)}
+      {messages.map((m, i) => <div key={i} className={`rounded-xl p-3 text-sm ${m.role === 'user' ? 'ml-5 bg-indigo-50 dark:bg-indigo-950' : 'mr-2 bg-slate-50 dark:bg-slate-800'}`}><p className="mb-1 text-xs text-slate-400">{m.role === 'user' ? '你' : 'Agent'}</p><p className="whitespace-pre-wrap break-words">{m.text}</p>{m.files?.map((name, index) => <span key={index} className="mt-2 flex items-center gap-1 text-xs text-slate-500"><FileText size={13} className="shrink-0" /><span className="break-all">{name}</span></span>)}{m.generatedFiles?.map((file, index) => <button key={index} className="workspace-button mt-2 flex w-full items-center gap-2 text-left" onClick={() => { try { downloadAgentFile(file) } catch { setError('文件生成失败，请让 Agent 重新生成') } }}><Download size={16} className="shrink-0" /><span className="min-w-0 break-all">下载 {file.name}</span></button>)}{m.ids?.map(id => <button key={id} className="workspace-button mt-2 w-full text-left" onClick={() => jump(id)}>定位：{captureArchive().events.find(e => e.id === id)?.name || '事件已删除'}</button>)}</div>)}
       {proposal && <div className="space-y-2 rounded-xl border p-3 dark:border-slate-700"><h4 className="text-sm font-semibold">即将应用 {proposal.actions.length} 项操作</h4>{proposal.actions.map((a, i) => <details key={i} className="text-xs"><summary className="cursor-pointer py-1">{a.op === 'create_event' ? `新增：${a.event.name}` : a.op === 'create_chain' ? `新建事件链：${a.chain.name}` : `${a.op === 'delete_event' ? '删除' : '修改'}：${captureArchive().events.find(e => e.id === a.id)?.name || a.id}`}</summary><pre className="whitespace-pre-wrap break-all">{JSON.stringify(a, null, 2)}</pre></details>)}<div className="flex flex-wrap gap-2"><button disabled={busy} className="workspace-button primary" onClick={async () => {
         setBusy(true); setError('')
         try {
@@ -73,12 +103,16 @@ export default function IntegrationPanel() {
           useConversation.setState({ proposal: null }); append({ role: 'assistant', text: '已应用到日程，可整体撤销。', ids: target ? [target.id] : [] }); if (target) jump(target.id)
         } catch (e) { setError(e instanceof Error ? e.message : '应用失败') } finally { setBusy(false) }
       }}>确认应用到存档</button><button disabled={busy} className="workspace-button" onClick={() => useConversation.setState({ proposal: null })}>取消预览</button></div></div>}
-      {busy && <p role="status" className="text-sm text-slate-500">正在处理…</p>}{error && <p role="alert" className="break-words text-sm text-rose-600">{error}</p>}      <details className="text-xs" onToggle={e => setAdvanced(e.currentTarget.open)}><summary className="cursor-pointer">外部 MCP 连接</summary>{advanced && <MCPConnectionPanel />}</details><div ref={bottom} />
+      {busy && <p role="status" className="text-sm text-slate-500">{requestStage}</p>}{error && <p role="alert" className="break-words text-sm text-rose-600">{error}</p>}<div ref={bottom} />
     </div>
-    <form className="shrink-0 space-y-2 border-t p-3 dark:border-slate-700" onSubmit={e => { e.preventDefault(); void send() }}>
+    <form className="max-h-[50%] shrink-0 space-y-2 overflow-y-auto border-t p-3 dark:border-slate-700" onSubmit={e => { e.preventDefault(); void send() }}>
+      <input ref={fileInput} aria-label="上传 Agent 附件" type="file" multiple accept={agentFileAccept} className="hidden" disabled={busy || reading} onChange={e => { const files = Array.from(e.target.files || []); e.target.value = ''; void upload(files) }} />
+      {webPages.length > 0 && <details className="text-xs"><summary className="cursor-pointer text-slate-500">网页来源 · {webPages.length} 个</summary><div className="max-h-24 space-y-2 overflow-y-auto py-2">{webPages.map((page, i) => <div key={i} className="break-all"><Globe size={12} className="mr-1 inline" />{(() => { try { const url = publicWebUrl(page.url); return <a href={url} target="_blank" rel="noreferrer" className="text-indigo-500 underline">{page.url}</a> } catch { return <span>{page.url}</span> } })()}<p className={page.error ? 'text-rose-500' : 'text-slate-500'}>{page.error || (page.truncated ? '已读取部分正文（前 2 万字）' : '已读取正文，可继续追问')}</p></div>)}<button type="button" disabled={busy} className="workspace-button" onClick={() => useConversation.setState({ webPages: [] })}>移除网页上下文</button></div></details>}
+      {attachments.length > 0 && <div aria-label="对话附件" className="max-h-32 space-y-1 overflow-y-auto">{attachments.map((a, i) => <div key={i} className="flex items-center gap-2 rounded-lg bg-slate-50 px-2 text-xs dark:bg-slate-800"><FileText size={14} className="shrink-0 text-indigo-500" /><span className="min-w-0 flex-1 truncate" title={a.name}>{a.name}</span><button type="button" className="todo-icon-button" disabled={busy || reading} aria-label={`移除附件：${a.name}`} onClick={() => useConversation.setState({ attachments: attachments.filter((_, index) => index !== i) })}><X size={14} /></button></div>)}<p className="text-[10px] text-slate-500">附件随后续消息一起发送，移除后停止附带。</p></div>}
+      {reading && <p role="status" className="text-xs text-slate-500">正在读取附件…</p>}
       <textarea aria-label="发送给 Agent" className="workspace-input" rows={3} value={instruction} onChange={e => setInstruction(e.target.value)} placeholder="明天有哪些课？或：导入课程表" />
-      <div className="flex flex-wrap gap-2"><button disabled={busy || loading || !instruction.trim() || !model.trim()} className="workspace-button primary">发送</button>{busy && <button type="button" className="workspace-button" onClick={() => controller.current?.abort()}>取消请求</button>}<button type="button" disabled={busy} className="workspace-button" onClick={() => useUIStore.getState().setIsImportDialogOpen(true)}>导入课程表</button><button type="button" disabled={busy} className="workspace-button" onClick={() => useConversation.setState({ messages: [], proposal: null })}>清空对话</button></div>
-      <p className="text-[10px] text-slate-500">发送会将当前日程与最近对话提交给所选 AI 服务。</p>
+      <div className="flex flex-wrap gap-2"><button disabled={busy || reading || loading || (!instruction.trim() && !attachments.length) || !model.trim()} className="workspace-button primary">发送</button><button type="button" disabled={busy || reading} className="workspace-button inline-flex items-center gap-1" onClick={() => fileInput.current?.click()}><Paperclip size={15} />上传文件</button>{busy && <button type="button" className="workspace-button" onClick={() => controller.current?.abort()}>取消请求</button>}<button type="button" disabled={busy} className="workspace-button" onClick={() => useUIStore.getState().setIsImportDialogOpen(true)}>导入课程表</button><button type="button" disabled={busy || reading} className="workspace-button" onClick={() => useConversation.setState({ messages: [], attachments: [], webPages: [], proposal: null })}>清空对话</button></div>
+      <details className="text-[10px] text-slate-500"><summary className="cursor-pointer">附件、联网与文件格式说明</summary><p className="pt-1 leading-relaxed">支持文本、CSV / Excel、PDF、PNG / JPG / WebP；每个 ≤5 MB，最多 5 个。图片和 PDF 需要所选模型支持。提供链接时通过 Jina Reader 读取公开网页。可生成 TXT / Markdown / CSV / JSON / ICS / Excel。发送会将附件、日程与最近对话提交给所选 AI 服务；附件仅保留在当前页面会话。</p></details>
 
     </form>
   </div>

@@ -1,5 +1,7 @@
 import { aiPresets } from '../src/integrations/aiPresets'
 import { aiConfigSchema, proposeActions, proposeAgent } from '../src/integrations/ai'
+import { attachmentsSchema } from '../src/integrations/attachments'
+import { webPagesSchema } from '../src/integrations/agentArtifacts'
 import { projectActions, validateSnapshot } from '../src/integrations/contracts'
 /** Stateless OAuth, AI and restricted repository relay. No credential persistence. */
 export interface Env {
@@ -99,7 +101,9 @@ export default {
         try { snapshot = validateSnapshot(input.snapshot) } catch { return json({ error: '存档格式无效' }, 400) }
         if (input.mode === 'agent') {
           try {
-            const reply = await proposeAgent(config.data, input.instruction, snapshot, { signal: request.signal })
+            const attachments = attachmentsSchema.parse(input.attachments || [])
+            const webPages = webPagesSchema.parse(input.webPages || [])
+            const reply = await proposeAgent(config.data, input.instruction, snapshot, { signal: request.signal, attachments, webPages })
             if (reply.actions.length) projectActions(snapshot, reply.actions, () => crypto.randomUUID())
             return json(reply)
           } catch (error) { return json({ error: error instanceof Error && !['TypeError', 'SyntaxError', 'ZodError'].includes(error.name) ? error.message : 'AI 返回无效结果，请重试' }, 400) }

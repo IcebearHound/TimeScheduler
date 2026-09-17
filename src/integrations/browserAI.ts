@@ -2,6 +2,8 @@ import { aiConfigSchema, AIConfig, proposeActions, proposeAgent, parseAgentReply
 import { aiPresets } from './aiPresets'
 import { browserVault } from './browserVault'
 import { actionsSchema, projectActions, Snapshot, snapshotRevision } from './contracts'
+import { AgentAttachment, attachmentsSchema } from './attachments'
+import { AgentWebPage, webPagesSchema } from './agentArtifacts'
 
 export interface BrowserAIConfig extends AIConfig { preset: string; transport: 'direct' | 'relay' }
 export const aiRelayEndpoint = (import.meta.env.VITE_AI_SERVICE_URL || import.meta.env.VITE_AUTH_SERVICE_URL || '').replace(/\/$/, '')
@@ -44,7 +46,7 @@ export async function proposeBrowserActions(config: BrowserAIConfig, instruction
 }
 
 export interface AIProfile extends BrowserAIConfig { id: string; name: string }
-export interface AIProfiles { profiles: AIProfile[]; activeId: string }
+export interface AIProfiles { profiles: AIProfile[]; activeId: string; readerApiKey?: string }
 const profilesVault = 'ai-api-profiles'
 export async function loadAIProfiles(): Promise<AIProfiles> {
   const value = await browserVault.get<AIProfiles>(profilesVault)
@@ -63,8 +65,10 @@ export async function saveAIProfiles(value: AIProfiles) {
   await browserVault.set(profilesVault, value)
   window.dispatchEvent(new Event('ai-profiles-changed'))
 }
-export async function requestBrowserAgent(config: BrowserAIConfig, instruction: string, snapshot: Snapshot, signal: AbortSignal): Promise<AgentReply & { revision: string }> {
+export async function requestBrowserAgent(config: BrowserAIConfig, instruction: string, snapshot: Snapshot, signal: AbortSignal, attachments: AgentAttachment[] = [], webPages: AgentWebPage[] = []): Promise<AgentReply & { revision: string }> {
   aiConfigSchema.parse(config); validateAIAddress(config.baseUrl)
+  attachmentsSchema.parse(attachments)
+  webPagesSchema.parse(webPages)
   if (!instruction.trim() || instruction.length > 20000) throw new Error('对话过长，请清空会话后重试')
   const revision = await snapshotRevision(snapshot)
   try {
@@ -72,11 +76,11 @@ export async function requestBrowserAgent(config: BrowserAIConfig, instruction: 
     if (config.transport === 'relay') {
       if (!aiRelayEndpoint) throw new Error('网站尚未配置转发服务')
       validateAIAddress(aiRelayEndpoint)
-      const response = await fetch(aiRelayEndpoint + '/ai/propose', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${config.apiKey}` }, body: JSON.stringify({ mode: 'agent', preset: config.preset, model: config.model, instruction, snapshot }), redirect: 'error', signal })
+      const response = await fetch(aiRelayEndpoint + '/ai/propose', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${config.apiKey}` }, body: JSON.stringify({ mode: 'agent', preset: config.preset, model: config.model, instruction, snapshot, attachments, webPages }), redirect: 'error', signal })
       const result = await response.json()
       if (!response.ok) throw new Error(result.error || 'AI 转发失败')
       reply = parseAgentReply(result, snapshot)
-    } else reply = await proposeAgent(config, instruction, snapshot, { browser: true, signal })
+    } else reply = await proposeAgent(config, instruction, snapshot, { browser: true, signal, attachments, webPages })
     if (reply.actions.length) projectActions(snapshot, reply.actions, () => crypto.randomUUID())
     return { ...reply, revision }
   } catch (error) {
