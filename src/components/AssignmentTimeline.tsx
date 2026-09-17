@@ -46,18 +46,17 @@ export default function AssignmentTimeline({ courses, tasks, onEdit }: { courses
     <div className="flex flex-wrap items-center justify-between gap-2"><h3 className="text-sm font-semibold">从今天开始</h3><label className="flex items-center gap-2 text-xs">显示天数<select aria-label="灯珠显示天数" className="rounded-lg border bg-transparent p-2 dark:border-slate-700" value={count} onChange={e => setCount(Number(e.target.value))}>{[7, 14, 30].map(n => <option key={n} value={n}>{n} 天</option>)}</select></label></div>
     <div className="flex flex-wrap gap-x-3 gap-y-2 text-[10px] text-slate-500">{(Object.keys(colors) as (keyof typeof colors)[]).map(status => <span key={status} className="flex items-center gap-1.5"><Lamp status={status} />{status}</span>)}</div>
     {overdue.length > 0 && <details open className="rounded-lg border border-rose-200 p-2 dark:border-rose-900"><summary className="cursor-pointer text-xs font-medium text-rose-600">此前逾期未完成 · {overdue.length} 项</summary>{overdue.map(e => taskButton(e, true))}</details>}
-    <p className="text-xs text-slate-500">每天一行，每门课程一列；灯珠按验收截止日亮起。点击任务可编辑，横滑可查看其他课程。</p>
+    <p className="text-xs text-slate-500">每门课程一行，日期从今天向右排列；灯珠按验收截止日亮起。点击任务可编辑，横滑可查看后续日期。</p>
     <div className="overflow-x-auto rounded-xl border border-slate-200 dark:border-slate-700" tabIndex={0} role="region" aria-label="每日灯珠表格，可横向滚动">
       <table className="w-full border-collapse text-xs" data-assignment-days>
-        <thead><tr className="bg-slate-50 dark:bg-slate-800"><th scope="col" className="sticky left-0 z-10 w-20 min-w-20 bg-slate-50 p-2 text-left dark:bg-slate-800">截止日</th>{courses.map(course => <th key={course.id} scope="col" className="min-w-32 p-2 text-left"><span className="break-words" style={{ color: course.color }}>{course.name}</span></th>)}{!courses.length && <th scope="col" className="p-2 text-left">任务状态</th>}</tr></thead>
-        <tbody>{dates.map((date, index) => <tr key={assignmentDay(date)} data-assignment-date={assignmentDay(date)} className="border-t border-slate-100 dark:border-slate-800">
-          <th scope="row" className={`sticky left-0 z-10 p-2 text-left align-top ${index === 0 ? 'bg-indigo-50 text-indigo-700 dark:bg-indigo-950 dark:text-indigo-300' : 'bg-white dark:bg-slate-900'}`}><span className="block">{index === 0 ? '今天' : date.toLocaleDateString('zh-CN', { weekday: 'short' })}</span><span className="whitespace-nowrap font-normal">{date.getMonth() + 1}/{date.getDate()}</span></th>
-          {courses.map(course => {
+        <thead><tr className="bg-slate-50 dark:bg-slate-800"><th scope="col" className="sticky left-0 z-10 w-24 min-w-24 bg-slate-50 p-2 text-left dark:bg-slate-800">课程</th>{dates.map((date, index) => <th key={assignmentDay(date)} data-assignment-date={assignmentDay(date)} scope="col" className={`min-w-32 p-2 text-left ${index === 0 ? 'bg-indigo-50 text-indigo-700 dark:bg-indigo-950 dark:text-indigo-300' : ''}`}><span className="block">{index === 0 ? '今天' : date.toLocaleDateString('zh-CN', { weekday: 'short' })}</span><span className="whitespace-nowrap font-normal">{date.getMonth() + 1}/{date.getDate()}</span></th>)}</tr></thead>
+        <tbody>{courses.map(course => <tr key={course.id} data-assignment-course={course.id} className="border-t border-slate-100 dark:border-slate-800">
+          <th scope="row" className="sticky left-0 z-10 bg-white p-2 text-left align-top dark:bg-slate-900"><span className="block max-w-28 break-words" style={{ color: course.color }}>{course.name}</span></th>
+          {dates.map((date, index) => {
             const daily = byCell.get(`${assignmentDay(date)}/${course.id}`) || []
-            return <td key={course.id} className="p-1 align-top">{daily.length ? daily.map(e => taskButton(e)) : <span className="flex min-h-11 items-center gap-2 p-2 text-slate-400"><Lamp status="无任务" /><span>无任务</span></span>}</td>
+            return <td key={assignmentDay(date)} data-task-date={assignmentDay(date)} className={`p-1 align-top ${index === 0 ? 'bg-indigo-50/50 dark:bg-indigo-950/30' : ''}`}>{daily.length ? daily.map(e => taskButton(e)) : <span className="flex min-h-11 items-center gap-2 p-2 text-slate-400"><Lamp status="无任务" /><span>无任务</span></span>}</td>
           })}
-          {!courses.length && <td className="p-3 text-slate-400"><Lamp status="无任务" /> 暂无课程任务</td>}
-        </tr>)}</tbody>
+        </tr>)}{!courses.length && <tr><td colSpan={count + 1} className="p-3 text-slate-400"><Lamp status="无任务" /> 暂无课程任务，在下方添加课程即可亮灯。</td></tr>}</tbody>
       </table>
     </div>
   </section>

@@ -29,6 +29,7 @@ jobs:
       - run: npm run build
         env:
           VITE_AUTH_SERVICE_URL: ${{ vars.VITE_AUTH_SERVICE_URL }}
+          VITE_AI_SERVICE_URL: ${{ vars.VITE_AI_SERVICE_URL }}
 
       - uses: actions/configure-pages@v4
 

@@ -35,6 +35,8 @@
     "test:workspace": "npm run build && node scripts/test-workspace.mjs",
     "test:mobile-panels": "npm run build && node scripts/test-mobile-panels.mjs",
     "test:assignment-sidebar": "npm run build && node scripts/test-assignment-sidebar.mjs",
+    "test:browser-ai": "npm run build && node scripts/test-browser-ai.mjs",
+    "test:ai-relay": "node --import tsx scripts/test-ai-relay.mjs",
     "test:mobile": "npm run build && node scripts/test-mobile.mjs",
     "test:cloud": "node --import tsx scripts/test-cloud.mjs"
   },

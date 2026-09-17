@@ -106,7 +106,7 @@ try {
     await page.getByLabel('验收截止时间').fill('2026-10-18T23:59')
     await page.getByRole('button', { name: '保存任务', exact: true }).click()
     await page.getByText('已保存到事件链，可撤销', { exact: true }).waitFor()
-    await page.getByRole('button', { name: '关闭工作台' }).click()
+    await page.getByRole('button', { name: '收起详情面板' }).click()
   }
   const stored = page => page.evaluate(() => JSON.parse(localStorage.getItem('eventStore')).events.map(([, e]) => e))
   const first = await createDevice()
@@ -128,11 +128,12 @@ try {
   const editNotes = async (page, notes) => {
     if (await page.getByRole('dialog').count()) await page.getByRole('button', { name: '关闭工作台' }).click()
     await page.getByRole('button', { name: '课程作业 / 实验', exact: true }).click()
+    await page.getByText(/全部课程任务 ·/).click()
     await page.getByRole('dialog').getByRole('button', { name: /自动同步作业/ }).click()
     await page.getByLabel('备注', { exact: true }).fill(notes)
     await page.getByRole('button', { name: '保存任务', exact: true }).click()
     await page.getByText('已保存到事件链，可撤销', { exact: true }).waitFor()
-    await page.getByRole('button', { name: '关闭工作台' }).click()
+    await page.getByRole('button', { name: '收起详情面板' }).click()
   }
   await first.context.setOffline(true); await second.context.setOffline(true)
   await editNotes(first.page, '手机一的备注'); await editNotes(second.page, '手机二的备注')

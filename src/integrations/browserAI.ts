@@ -1,0 +1,44 @@
+import { aiConfigSchema, AIConfig, proposeActions } from './ai'
+import { aiPresets } from './aiPresets'
+import { browserVault } from './browserVault'
+import { actionsSchema, projectActions, Snapshot, snapshotRevision } from './contracts'
+
+export interface BrowserAIConfig extends AIConfig { preset: string; transport: 'direct' | 'relay' }
+export const aiRelayEndpoint = (import.meta.env.VITE_AI_SERVICE_URL || import.meta.env.VITE_AUTH_SERVICE_URL || '').replace(/\/$/, '')
+const vaultName = 'ai-api-config'
+export async function loadBrowserAI() { return browserVault.get<BrowserAIConfig>(vaultName) }
+export async function saveBrowserAI(config: BrowserAIConfig) {
+  aiConfigSchema.parse(config)
+  validateAIAddress(config.baseUrl)
+  if (config.transport === 'relay' && (!aiRelayEndpoint || !aiPresets[config.preset] || aiPresets[config.preset].baseUrl !== config.baseUrl || aiPresets[config.preset].provider !== config.provider)) throw new Error('网站转发仅支持内置服务商，请使用直连访问自定义地址')
+  await browserVault.set(vaultName, config)
+}
+export const forgetBrowserAI = () => browserVault.remove(vaultName)
+function validateAIAddress(address: string) {
+  const url = new URL(address)
+  if (url.protocol !== 'https:' && !(url.protocol === 'http:' && ['localhost', '127.0.0.1', '[::1]'].includes(url.hostname))) throw new Error('API 地址需要 HTTPS')
+  if (url.username || url.password || url.search || url.hash) throw new Error('API 地址不能包含凭据、查询参数或片段')
+}
+export async function proposeBrowserActions(config: BrowserAIConfig, instruction: string, snapshot: Snapshot, signal: AbortSignal) {
+  aiConfigSchema.parse(config); validateAIAddress(config.baseUrl)
+  if (!instruction.trim() || instruction.length > 20000) throw new Error('请输入 1 至 20000 字的安排')
+  const revision = await snapshotRevision(snapshot)
+  let actions
+  try {
+    if (config.transport === 'relay') {
+      if (!aiRelayEndpoint) throw new Error('网站尚未开通 AI 转发，请选择直连')
+      validateAIAddress(aiRelayEndpoint)
+      const response = await fetch(aiRelayEndpoint + '/ai/propose', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${config.apiKey}` }, body: JSON.stringify({ preset: config.preset, model: config.model, instruction, snapshot }), redirect: 'error', signal })
+      const result = await response.json()
+      if (!response.ok) throw new Error(typeof result.error === 'string' ? result.error : '网站 AI 转发暂时不可用')
+      actions = actionsSchema.parse(result.actions)
+    } else actions = await proposeActions(config, instruction, snapshot, { browser: true, signal })
+  } catch (error) {
+    if (signal.aborted) throw new Error('请求已取消或超时，请重试')
+    if (error instanceof TypeError) throw new Error(config.transport === 'direct' ? `无法连接 AI 服务，请检查网络。若服务商限制浏览器访问，${aiRelayEndpoint ? '可在高级设置选择网站转发' : '请换用支持网页直连的服务商，或联系网站管理员开通转发'}。` : '无法连接网站 AI 转发服务，请稍后重试')
+    throw error
+  }
+  // Check IDs, dates and references before displaying an actionable proposal.
+  projectActions(snapshot, actions, () => crypto.randomUUID())
+  return { actions, revision }
+}

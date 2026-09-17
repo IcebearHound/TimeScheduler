@@ -1,4 +1,7 @@
-/** Stateless OAuth and restricted repository relay. No databases, user sessions or token persistence. */
+import { aiPresets } from '../src/integrations/aiPresets'
+import { aiConfigSchema, proposeActions } from '../src/integrations/ai'
+import { projectActions, validateSnapshot } from '../src/integrations/contracts'
+/** Stateless OAuth, AI and restricted repository relay. No credential persistence. */
 export interface Env {
   APP_URL: string
   AUTH_STATE_SECRET: string
@@ -80,6 +83,22 @@ export default {
       }
       if (request.method !== 'POST') return json({ error: '请求方法无效' }, 405)
       const input = await body(request)
+      if (url.pathname === '/ai/propose') {
+        const preset = typeof input.preset === 'string' && Object.hasOwn(aiPresets, input.preset) ? aiPresets[input.preset] : undefined
+        if (!preset) return json({ error: '网站 AI 转发仅支持内置服务商' }, 400)
+        const authorization = request.headers.get('Authorization')
+        if (!authorization?.startsWith('Bearer ') || authorization.length > 5007) return json({ error: '请填写 API Key' }, 401)
+        const config = aiConfigSchema.safeParse({ ...preset, apiKey: authorization.slice(7), model: input.model || preset.model })
+        if (!config.success || typeof input.instruction !== 'string' || !input.instruction.trim() || input.instruction.length > 20000) return json({ error: 'AI 请求参数无效' }, 400)
+        // Fixed provider origins only: never forward credentials to a caller-supplied URL.
+        let snapshot
+        try { snapshot = validateSnapshot(input.snapshot) } catch { return json({ error: '存档格式无效' }, 400) }
+        let actions
+        try { actions = await proposeActions(config.data, input.instruction, snapshot) }
+        catch (error) { return json({ error: error instanceof Error && !['TypeError', 'SyntaxError', 'ZodError'].includes(error.name) ? error.message : 'AI 服务返回无效结果或暂时无法连接，请重试' }, 400) }
+        try { projectActions(snapshot, actions, () => crypto.randomUUID()) } catch { return json({ error: 'AI 操作包含无效时间或不存在的事件，请重新描述' }, 400) }
+        return json({ actions })
+      }
       if (url.pathname === '/config') return json({ github: !!(env.AUTH_STATE_SECRET?.length >= 32 && env.GITHUB_CLIENT_ID && env.GITHUB_CLIENT_SECRET), gitee: !!(env.AUTH_STATE_SECRET?.length >= 32 && env.GITEE_CLIENT_ID && env.GITEE_CLIENT_SECRET) })
       if (url.pathname === '/oauth/start') {
         const provider = providerName(input.provider), config = credentials(env, provider)

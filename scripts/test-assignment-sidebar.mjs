@@ -41,7 +41,8 @@ try {
     assert.equal(await page.locator('[data-assignment-date]').first().getAttribute('data-assignment-date'), '2026-12-31')
     assert.equal(await page.locator('[data-assignment-date]').nth(1).getAttribute('data-assignment-date'), '2027-01-01')
     for (const [id, status] of [['今日任务', '今日截止'], ['今日逾期', '已逾期'], ['已完成任务', '已完成'], ['明日任务', '待验收'], ['历史逾期', '已逾期']]) assert.equal(await page.locator(`[data-task-lamp="${id}"]`).getAttribute('data-status'), status)
-    assert.equal(await page.locator('[data-assignment-date]').count(), 7)
+    assert.equal(await page.locator('thead [data-assignment-date]').count(), 7)
+    assert.equal(await page.locator('tbody [data-assignment-course]').count(), 2)
     await page.getByLabel('灯珠显示天数').selectOption('14')
     assert.equal(await page.locator('[data-assignment-date]').count(), 14)
     await page.getByLabel('灯珠显示天数').selectOption('7')
@@ -57,7 +58,7 @@ try {
       await scroller.evaluate(el => { el.scrollLeft = 0 })
       await cdp.detach()
     }
-    assert.ok(await page.locator('[data-assignment-date]').first().getByText('已完成任务').isVisible())
+    assert.ok(await page.locator('[data-assignment-course="lab"] [data-task-date]').first().getByText('已完成任务').isVisible())
     await page.locator('[data-task-lamp="今日任务"]').click()
     await page.getByLabel('名称', { exact: true }).fill('全屏保留的草稿')
     await sidebar.getByRole('button', { name: '全屏放大', exact: true }).click()

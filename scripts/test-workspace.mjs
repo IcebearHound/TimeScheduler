@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { mkdtempSync, mkdirSync, readFileSync, rmSync } from 'node:fs'
+import { mkdtempSync, mkdirSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { chromium } from 'playwright'
@@ -15,6 +15,8 @@ const client = new Client({ name: 'workspace-browser-test', version: '1.0.0' })
 let browser
 let aiRequests = 0
 const mockAI = createServer(async (req, res) => {
+  res.setHeader('Access-Control-Allow-Origin', 'http://127.0.0.1:4318'); res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization')
+  if (req.method === 'OPTIONS') { res.writeHead(204); return res.end() }
   let raw = ''; for await (const part of req) raw += part
   assert.equal(req.headers.authorization, 'Bearer synthetic-ai-test-key')
   const request = JSON.parse(raw), archive = JSON.parse(request.messages[1].content).archive
@@ -60,18 +62,17 @@ try {
   await page.screenshot({ path: join(output, 'course-workspace-desktop.png') })
   await page.getByRole('button', { name: '收起详情面板' }).click()
   await page.getByRole('button', { name: 'AI / MCP', exact: true }).click()
+  await page.getByText('高级：外部 MCP 客户端连接', { exact: true }).click()
   await page.getByLabel('本机配对码').fill(code)
   await page.getByRole('button', { name: '连接此存档（允许 MCP 读写）' }).click()
-  await page.getByLabel('本地加密口令').fill('browser-test-only-password')
-  await page.getByRole('button', { name: '创建 / 解锁凭据库' }).click()
-  await page.getByRole('button', { name: '锁定凭据库', exact: true }).waitFor()
   assert.equal(await page.getByRole('heading', { name: 'GitHub / Gitee 私有仓库同步' }).count(), 0)
   await page.getByText('此存档已连接 · MCP 可读写', { exact: true }).waitFor()
+  await page.getByLabel('AI 服务商').selectOption('custom')
   await page.getByLabel('API 基础地址').fill(`http://127.0.0.1:${mockAI.address().port}/v1`)
   await page.getByLabel('模型名称').fill('synthetic-model')
-  await page.getByLabel('API 密钥').fill('synthetic-ai-test-key')
-  await page.getByRole('button', { name: '加密保存 API 配置' }).click()
-  await page.getByText('AI 配置已加密保存在本机', { exact: true }).waitFor()
+  await page.getByLabel('API Key', { exact: true }).fill('synthetic-ai-test-key')
+  await page.getByRole('button', { name: '保存密钥' }).click()
+  await page.getByText('API Key 已加密保存在此设备', { exact: true }).waitFor()
   await page.getByLabel('用自然语言安排日程').fill('给第三次作业添加备注')
   await page.getByRole('button', { name: '生成操作预览' }).click()
   await page.getByRole('button', { name: '确认应用到存档' }).waitFor()
@@ -133,7 +134,7 @@ try {
   assert.ok(!rawStorage.includes('browser-test-only-password'))
   assert.ok(!rawStorage.includes('synthetic-ai-test-key'))
   assert.ok(!rawStorage.includes('synthetic-gitee-secret'))
-  const encrypted = readFileSync(join(directory, 'credentials.enc'), 'utf8')
+  const encrypted = await page.evaluate(() => new Promise((resolve, reject) => { const request = indexedDB.open('time-scheduler-private'); request.onsuccess = () => { const db = request.result; const get = db.transaction('vault').objectStore('vault').get('ai-api-config'); get.onsuccess = () => { resolve(JSON.stringify(get.result)); db.close() }; get.onerror = reject }; request.onerror = reject }))
   assert.ok(!encrypted.includes('browser-test-only-password'))
   assert.ok(!encrypted.includes('synthetic-ai-test-key'))
   assert.ok(!encrypted.includes('synthetic-gitee-secret'))
