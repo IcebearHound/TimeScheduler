@@ -10,6 +10,7 @@ import TodoView from './TodoView'
 import ReminderQuickPicker from './EventForm/ReminderQuickPicker'
 import TimeEditPopover from './EventForm/TimeEditPopover'
 import { scrollToEventBlock } from '../utils/scrollTarget'
+import { completionProperties, courseTaskCompleted, courseTaskKind } from '../utils/courseTasks'
 
 const PROP_ICON_MAP: Record<string, React.ReactNode> = {
   MapPin: <MapPin className="w-3.5 h-3.5 text-slate-400 dark:text-slate-300 flex-shrink-0" />,
@@ -58,6 +59,7 @@ export default function RightPanel() {
   const [editName, setEditName] = useState('')
   const [editProps, setEditProps] = useState<Record<string, string>>({})
   const [editTypeId, setEditTypeId] = useState('')
+  const [editChainId, setEditChainId] = useState('')
   const [showTypePicker, setShowTypePicker] = useState(false)
   const [editReminders, setEditReminders] = useState(event?.reminders || [])
   const [showTimeEdit, setShowTimeEdit] = useState(false)
@@ -105,6 +107,7 @@ export default function RightPanel() {
       }
       setEditProps(mapped)
       setEditTypeId(event.typeId)
+      setEditChainId(event.chainId)
       setEditReminders(event.reminders || [])
       setEditStartTime(new Date(event.startTime))
       setEditEndTime(new Date(event.endTime))
@@ -153,15 +156,18 @@ export default function RightPanel() {
     const sameTime = current.startTime.getTime() === editStartTime.getTime() && current.endTime.getTime() === editEndTime.getTime()
     const sameName = current.name === editName
     const sameType = current.typeId === editTypeId
+    const sameChain = current.chainId === editChainId
     const sameReminders = JSON.stringify(current.reminders || []) === JSON.stringify(editReminders)
     const sameProps = JSON.stringify(current.properties || {}) === JSON.stringify(editProps)
-    if (sameTime && sameName && sameType && sameReminders && sameProps) return
+    if (sameTime && sameName && sameType && sameChain && sameReminders && sameProps) return
+    if (!Number.isFinite(+editStartTime) || !Number.isFinite(+editEndTime) || +editEndTime <= +editStartTime) return
+    if (editChainId && !useEventStore.getState().eventChains.has(editChainId)) return
     useEventStore.getState().updateEvent(selectedEventId!, {
-      name: editName, properties: editProps, typeId: editTypeId,
+      name: editName, properties: editProps, typeId: editTypeId, chainId: editChainId,
       reminders: editReminders,
       startTime: editStartTime, endTime: editEndTime,
     })
-  }, [editName, editProps, editTypeId, editReminders, editStartTime, editEndTime, selectedEventId, loadedEventId])
+  }, [editName, editProps, editTypeId, editChainId, editReminders, editStartTime, editEndTime, selectedEventId, loadedEventId])
 
   useEffect(() => {
     const t = setTimeout(save, 400)
@@ -179,7 +185,7 @@ export default function RightPanel() {
   const barColor = chain?.color || event.color || '#3B82F6'
 
   return (
-    <div className="h-full w-full bg-white/95 dark:bg-slate-900/95 border-l border-slate-200/60 dark:border-slate-800/60 overflow-y-auto flex flex-col">
+    <div data-event-details className="h-full w-full bg-white/95 dark:bg-slate-900/95 border-l border-slate-200/60 dark:border-slate-800/60 overflow-y-auto flex flex-col">
       {/* 顶部地铁线路图 — 事件链各事件横向排列 */}
       {chain && (() => {
         const ce = eventStore.getEventsByChain(chain.id)
@@ -283,7 +289,11 @@ export default function RightPanel() {
       <div className="p-4 flex-1 overflow-y-auto space-y-4">
         {/* 标题栏 + 折叠 */}
         <div className="flex items-center justify-between">
-          <span className="text-xs text-slate-400">事件详情</span>
+          <span className="text-base font-bold">事件详情</span><span className="text-xs text-slate-400">修改自动保存</span>
+        </div>
+        <div className="space-y-3 rounded-xl border border-indigo-200 bg-indigo-50/60 p-3 dark:border-indigo-800 dark:bg-indigo-950/30">
+          <label className="block text-xs font-semibold">所属事件链<select aria-label="详情所属事件链" className="workspace-input mt-2 min-h-11" value={editChainId} onChange={e => setEditChainId(e.target.value)}><option value="">无事件链</option>{allChains.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}</select></label>
+          <div className="flex gap-2"><button className="workspace-button primary flex-1" onClick={() => { const kind = courseTaskKind(event, allTypes); const completed = kind ? courseTaskCompleted({ ...event, properties: editProps }, kind, new Date()) : editProps.completed === 'true'; setEditProps(completionProperties({ properties: editProps }, !completed, new Date(), kind === '实验课' || kind === '考试') as Record<string, string>) }}>切换完成状态</button><button className="workspace-button flex-1" onClick={() => { setShowTimeEdit(true); setCollapsedSections(prev => { const next = new Set(prev); next.delete('time'); return next }) }}>修改时间</button></div>
         </div>
 
         {/* 类型 + 重点 */}
@@ -326,7 +336,7 @@ export default function RightPanel() {
         </div>
 
         {/* 名称 */}
-        <input type="text" value={editName} onChange={e => setEditName(e.target.value)}
+        <input aria-label="详情事件名称" type="text" value={editName} onChange={e => setEditName(e.target.value)}
           className="w-full text-lg font-bold text-slate-900 dark:text-white bg-transparent border-b border-transparent hover:border-slate-300 dark:hover:border-slate-600 focus:border-accent-500 focus:outline-none pb-0.5 transition-colors" />
 
         {/* 时间 */}

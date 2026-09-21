@@ -85,7 +85,7 @@ export async function requestBrowserAgent(config: BrowserAIConfig, instruction: 
     return { ...reply, revision }
   } catch (error) {
     if (signal.aborted) throw new Error('请求已取消或超时')
-    if (error instanceof TypeError) throw new Error('无法连接 AI 服务，请检查网络、地址或在设置中切换网站转发')
+    if (error instanceof TypeError) throw new Error('无法连接 AI 服务，请检查网络、地址或在对话框下方的 API 配置中切换网站转发')
     throw error
   }
 }

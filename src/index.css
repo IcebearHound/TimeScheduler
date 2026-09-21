@@ -602,6 +602,22 @@ html[data-layout="desktop"] .app-right-panel.is-expanded { position: fixed; inse
 .assignment-form { display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; }
 .assignment-form label { min-width: 0; font-size: 12px; }
 .assignment-form-wide { grid-column: 1 / -1; }
+.assignment-form-actions { position: sticky; bottom: 0; z-index: 2; padding: 12px 0 max(12px, env(safe-area-inset-bottom)); background: rgb(255 255 255 / .97); }
+.dark .assignment-form-actions { background: rgb(15 23 42 / .97); }
+.assignment-form-actions > button { flex: 1; min-height: 44px; }
+.todo-exam-card { border: 2px solid #fda4af; background: #fff1f2; }
+[data-event-details] button, [data-event-popover] button, [data-event-popover] select, [data-event-popover] input { min-height: 44px; }
+@media (max-width: 767px) {
+  [data-event-popover] { left: 12px !important; right: 12px !important; top: auto !important; bottom: max(12px, env(safe-area-inset-bottom)) !important; width: auto !important; max-height: 80dvh; overscroll-behavior: contain; }
+  [data-event-details] input, [data-event-details] select, [data-event-popover] input, [data-event-popover] select { font-size: 16px; }
+}
+.dark .todo-exam-card { border-color: #9f1239; background: #4c0519; }
+@media (max-width: 767px) {
+  .assignment-form .workspace-input { min-height: 44px; font-size: 16px; width: 100%; }
+  .assignment-form textarea.workspace-input { min-height: 88px; }
+  [data-task-lamp] { min-height: 48px; touch-action: manipulation; -webkit-tap-highlight-color: transparent; }
+  .assignment-form input[type="checkbox"] { width: 20px; height: 20px; flex-shrink: 0; }
+}
 @container (min-width: 520px) { .assignment-form { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 
 html[data-layout="desktop"] .app-left-panel,
@@ -621,4 +637,24 @@ html[data-layout="desktop"] .app-right-panel.is-expanded { position: fixed; inse
   height: var(--edge-viewport-height, 0px);
   max-height: 100%;
   transition: none;
+}
+
+.agent-window { @apply fixed flex-col overflow-hidden rounded-2xl border border-indigo-200 bg-white text-slate-800 shadow-2xl outline-none dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200; z-index: 48; box-shadow: 0 16px 64px rgb(15 23 42 / .24); }
+.agent-window-header { @apply flex shrink-0 items-center gap-1 border-b border-slate-200 px-3 dark:border-slate-700; min-height: 52px; cursor: move; touch-action: none; user-select: none; }
+.agent-window-header button { @apply inline-flex items-center justify-center rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800; width: 40px; height: 44px; cursor: pointer; }
+.agent-thread-bar { @apply flex shrink-0 items-center gap-2 border-b border-slate-100 px-3 py-2 dark:border-slate-800; }
+.agent-thread-bar .workspace-button { min-height: 36px; }
+.agent-restore { @apply fixed inline-flex items-center gap-2 shadow-xl; right: 24px; bottom: max(80px, env(safe-area-inset-bottom)); z-index: 48; }
+.agent-composer { @apply shrink-0 overflow-y-auto border-t border-slate-200 p-3 dark:border-slate-700; max-height: 62%; overscroll-behavior: contain; }
+.agent-model-controls { @apply mt-3 grid items-end gap-2 border-t border-slate-100 pt-2 dark:border-slate-800; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto; }
+.agent-model-controls > * { min-width: 0; }
+.agent-window .workspace-input { width: 100%; min-width: 0; }
+@media (max-width: 767px) {
+  .agent-window { padding-bottom: env(safe-area-inset-bottom); }
+  .agent-window-header { cursor: default; }
+  .agent-window button, .agent-window select { min-height: 44px; }
+  .agent-window input, .agent-window textarea, .agent-window select { font-size: 16px; }
+  .agent-model-controls { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+  .agent-model-controls > button { grid-column: 1 / -1; }
+  .agent-composer { max-height: 65%; }
 }

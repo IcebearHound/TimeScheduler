@@ -1,3 +1,4 @@
+import AgentWindow from './components/AgentWindow'
 import PanelNavigation from './components/PanelNavigation'
 import SidebarResizeHandle, { useSidebarWidth } from './components/SidebarResizeHandle'
 import MobileSheet from './components/MobileSheet'
@@ -28,8 +29,10 @@ import MobileHeader from './components/MobileHeader'
 import MobileBottomNav from './components/MobileBottomNav'
 import WorkspaceTools from './components/WorkspaceTools'
 import { startAutoSync } from './integrations/autoSync'
+import { startCalendarSync } from './integrations/calendarSync'
 import { PanelLeftOpen, PanelRightOpen } from 'lucide-react'
 import { getReminderMilliseconds } from './utils/eventUtils'
+import { buildCourseTaskSchedule } from './utils/courseTaskSchedule'
 
 export default function App() {
   const leftWidth = useSidebarWidth('left', 280), rightWidth = useSidebarWidth('right', 360)
@@ -38,7 +41,7 @@ export default function App() {
   const isMobileToolsOpen = useUIStore(s => s.isMobileToolsOpen)
   const isSearchOpen = useUIStore(s => s.isSearchOpen)
   const [initialized, setInitialized] = useState(false)
-  useEffect(() => { if (initialized) void startAutoSync() }, [initialized])
+  useEffect(() => { if (initialized) void startAutoSync().then(() => startCalendarSync()) }, [initialized])
   const isConflictDialogOpen = useUIStore((s) => s.isConflictDialogOpen)
   const setIsConflictDialogOpen = useUIStore((s) => s.setIsConflictDialogOpen)
   const conflictConflicts = useUIStore((s) => s.conflictConflicts)
@@ -201,7 +204,10 @@ export default function App() {
       const store = useEventStore.getState()
       const now = new Date()
       const cutoff = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000)
-      for (const event of store.getAllEvents()) {
+      const events = store.getAllEvents()
+      const schedule = buildCourseTaskSchedule(events, Array.from(store.eventTypes.values()), Array.from(store.eventChains.values()))
+      for (const event of events) {
+        if (schedule.entries.get(event.id)?.skipped) continue
         if (new Date(event.startTime) > cutoff) continue
         for (const reminder of event.reminders) {
           if (!reminder.enabled || reminder.notified) continue
@@ -284,6 +290,7 @@ export default function App() {
         )}
       </div>
       {isMobile && <MobileBottomNav />}
+      <AgentWindow />
       {isSettingsOpen && <SettingsPanel />}
       {isMobileToolsOpen && <MobileToolsPanel />}
       {isSearchOpen && <SearchDialog onClose={() => useUIStore.getState().setIsSearchOpen(false)} />}

@@ -1,10 +1,13 @@
 import * as XLSX from 'xlsx'
 import { Action, Snapshot } from '../integrations/contracts'
+import { courseTaskKind, courseTaskKinds } from './courseTasks'
+import { createCourseTaskActions, updateCourseTaskActions } from '../integrations/courseTasks'
 
-export interface AssignmentRow { course: string; name: string; deadline: string; kind: string; link: string; submission: string; content: string; notes: string }
+export interface AssignmentRow { course: string; name: string; deadline: string; kind: string; link: string; submission: string; content: string; notes: string; startTime?: string; labGroupId?: string }
 const aliases: Record<keyof AssignmentRow, string[]> = {
   course: ['课程', '课程名称', 'course'], name: ['名称', '作业名称', '实验名称', '任务', 'name'], deadline: ['截止日期', '截止时间', '验收截止日期', 'deadline'],
   kind: ['类别', '类型', 'kind'], link: ['提交链接', '链接', 'url', 'link'], submission: ['提交方式', 'submission'], content: ['内容', '作业内容', '实验内容', 'content'], notes: ['备注', 'notes'],
+  startTime: ['开始时间', '上课时间', 'starttime'], labGroupId: ['实验关联编号', 'labgroupid'],
 }
 export function safeSubmissionLink(value: string): string {
   if (!value.trim()) return ''
@@ -27,11 +30,14 @@ export function readAssignmentWorkbook(workbook: XLSX.WorkBook): AssignmentRow[]
       const item = Object.fromEntries(Object.keys(aliases).map(key => [key, String(row[indices[key as keyof AssignmentRow]] ?? '').trim()])) as unknown as AssignmentRow
       const linkCell = sheet[XLSX.utils.encode_cell({ r: range.s.r + index + 1, c: range.s.c + indices.link })]
       if (linkCell?.l?.Target) item.link = linkCell.l.Target
-      const deadlineCell = indices.deadline >= 0 ? sheet[XLSX.utils.encode_cell({ r: range.s.r + index + 1, c: range.s.c + indices.deadline })] : undefined
-      if (deadlineCell?.t === 'n') {
-        const d = XLSX.SSF.parse_date_code(deadlineCell.v, { date1904: !!workbook.Workbook?.WBProps?.date1904 })
-        if (d) item.deadline = `${d.y}-${String(d.m).padStart(2, '0')}-${String(d.d).padStart(2, '0')}T${String(d.H).padStart(2, '0')}:${String(d.M).padStart(2, '0')}`
-      } else if (deadlineCell?.v instanceof Date) item.deadline = localDateTime(deadlineCell.v)
+      for (const field of ['deadline', 'startTime'] as const) {
+        const column = indices[field] ?? -1
+        const cell = column >= 0 ? sheet[XLSX.utils.encode_cell({ r: range.s.r + index + 1, c: range.s.c + column })] : undefined
+        if (cell?.t === 'n') {
+          const d = XLSX.SSF.parse_date_code(cell.v, { date1904: !!workbook.Workbook?.WBProps?.date1904 })
+          if (d) item[field] = `${d.y}-${String(d.m).padStart(2, '0')}-${String(d.d).padStart(2, '0')}T${String(d.H).padStart(2, '0')}:${String(d.M).padStart(2, '0')}`
+        } else if (cell?.v instanceof Date) item[field] = localDateTime(cell.v)
+      }
       if (!item.course || !item.name) throw new Error(`${sheetName} 第 ${index + 2} 行：课程和名称不能为空`)
       item.link = safeSubmissionLink(item.link)
       result.push(item)
@@ -46,7 +52,8 @@ export function localDateTime(date: Date) { return new Date(+date - date.getTime
 export function assignmentActions(snapshot: Snapshot, rows: AssignmentRow[]): Action[] {
   const actions: Action[] = [], chains = [...snapshot.eventChains], seen = new Set<string>()
   for (const row of rows) {
-    const key = `${row.course}\u0000${row.name}`
+    const normalizedKind = row.kind === '实验' ? '实验验收' : row.kind
+    const key = `${row.course}\u0000${row.name}\u0000${normalizedKind}`
     if (seen.has(key)) throw new Error(`表格中任务重复：${row.course} / ${row.name}`)
     seen.add(key)
     const matches = chains.filter(c => c.name === row.course)
@@ -59,17 +66,19 @@ export function assignmentActions(snapshot: Snapshot, rows: AssignmentRow[]): Ac
       chains.push(chain)
       actions.push({ op: 'create_chain', id: chain.id, chain: { name: chain.name, typeId, color: chain.color, defaultReminders: [] } })
     }
-    const existing = snapshot.events.filter(e => e.chainId === chain.id && e.name === row.name && e.properties.taskKind)
+    const existing = snapshot.events.filter(e => e.chainId === chain.id && e.name === row.name && courseTaskKind(e, snapshot.eventTypes) && (!normalizedKind || courseTaskKind(e, snapshot.eventTypes) === normalizedKind))
     if (existing.length > 1) throw new Error(`同一课程有多个同名任务：${row.name}`)
     const previous = existing[0]
     const deadline = row.deadline ? new Date(/^\d{4}-\d{2}-\d{2}$/.test(row.deadline) ? `${row.deadline}T23:59` : row.deadline) : previous ? new Date(previous.endTime) : null
     if (!deadline || !Number.isFinite(+deadline)) throw new Error(`${row.name}：新增任务必须填写有效截止时间`)
     const localParts = /^(\d{4})-(\d{2})-(\d{2})(?:T(\d{2}):(\d{2}))?$/.exec(row.deadline)
     if (localParts && (deadline.getFullYear() !== +localParts[1] || deadline.getMonth() + 1 !== +localParts[2] || deadline.getDate() !== +localParts[3])) throw new Error(`${row.name}：截止日期不存在`)
-    const props: Record<string, string | undefined> = { ...previous?.properties, taskKind: row.kind || previous?.properties.taskKind || '作业' }
-    for (const [field, value] of Object.entries({ submissionUrl: safeSubmissionLink(row.link), submissionMethod: row.submission, taskContent: row.content, notes: row.notes })) if (value) props[field] = value
-    if (previous) actions.push({ op: 'update_event', id: previous.id, changes: { endTime: deadline.toISOString(), startTime: new Date(+deadline - 30 * 60000).toISOString(), properties: props } })
-    else actions.push({ op: 'create_event', event: { name: row.name, chainId: chain.id, typeId: row.kind === '实验' ? snapshot.eventTypes.find(t => t.category === 'lab')?.id || chain.typeId : chain.typeId, startTime: new Date(+deadline - 30 * 60000).toISOString(), endTime: deadline.toISOString(), properties: props, isHighlight: true, priority: 1, pinned: true, reminders: chain.defaultReminders } })
+    const kind = normalizedKind || (previous && courseTaskKind(previous, snapshot.eventTypes)) || '作业'
+    if (!courseTaskKinds.includes(kind as typeof courseTaskKinds[number])) throw new Error(`${row.name}：类别应为实验课、实验验收、实验报告、作业或考试`)
+    const detail = Object.fromEntries(Object.entries({ submissionUrl: safeSubmissionLink(row.link), submissionMethod: row.submission, taskContent: row.content, notes: row.notes }).filter(([, value]) => value))
+    const startTime = row.startTime ? new Date(row.startTime).toISOString() : undefined
+    if (previous) actions.push(...updateCourseTaskActions(snapshot, previous.id, { ...detail, endTime: deadline.toISOString(), ...(startTime ? { startTime } : {}) }))
+    else actions.push(...createCourseTaskActions({ ...snapshot, eventChains: chains }, { ...detail, courseId: chain.id, name: row.name, kind: kind as typeof courseTaskKinds[number], endTime: deadline.toISOString(), ...(startTime ? { startTime } : {}), ...(row.labGroupId ? { labGroupId: row.labGroupId } : {}) }))
   }
   return actions
 }

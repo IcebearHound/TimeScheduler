@@ -6,6 +6,7 @@ import useEventStore from '../stores/eventStore'
 import useEventGroupStore from '../stores/eventGroupStore'
 import { Event, Reminder } from '../types/event'
 import ReminderQuickPicker from './EventForm/ReminderQuickPicker'
+import { completionProperties, courseTaskCompleted, courseTaskKind } from '../utils/courseTasks'
 
 interface Props { eventId: string; anchorRect: DOMRect | null; anchorRef?: React.RefObject<HTMLElement>; onClose: () => void }
 
@@ -97,6 +98,7 @@ export default function PopoverEventEditor({ eventId, anchorRect, anchorRef, onC
   const save = useCallback(() => {
     if (!name.trim() || !event) return
     const st = new Date(startTime); const ed = new Date(endTime)
+    if (!Number.isFinite(+st) || !Number.isFinite(+ed) || +ed <= +st) return
     const merged: Record<string, string> = {}
     for (const [k, v] of Object.entries(editProps)) {
       if (v) merged[k] = v
@@ -191,7 +193,7 @@ export default function PopoverEventEditor({ eventId, anchorRect, anchorRef, onC
   if (!displayPos) return null
 
   const popoverEl = (
-    <div ref={ref} className="fixed z-[120] bg-white dark:bg-slate-900 rounded-2xl shadow-modal dark:shadow-modal-dark border border-slate-200/60 dark:border-slate-700/60 w-80 max-h-[85vh] overflow-y-auto animate-popover-in"
+    <div ref={ref} data-event-popover className="fixed z-[120] bg-white dark:bg-slate-900 rounded-2xl shadow-modal dark:shadow-modal-dark border border-slate-200/60 dark:border-slate-700/60 w-80 max-h-[85vh] overflow-y-auto animate-popover-in"
       style={{ top: displayPos.top, left: displayPos.left }}>
       <div className="h-1 rounded-t-xl" style={{ backgroundColor: chain?.color || '#3B82F6' }} />
       <div className="p-4 space-y-3">
@@ -208,6 +210,7 @@ export default function PopoverEventEditor({ eventId, anchorRect, anchorRef, onC
         </div>
 
         {/* 名称 */}
+        <button type="button" className="workspace-button primary w-full" onClick={() => { const kind = courseTaskKind(event, allTypes), completed = kind ? courseTaskCompleted({ ...event, properties: editProps }, kind, new Date()) : editProps.completed === 'true'; setEditProps(completionProperties({ properties: editProps }, !completed, new Date(), kind === '实验课' || kind === '考试') as Record<string, string>) }}>切换完成状态</button>
         <input type="text" value={name} onChange={e => setName(e.target.value)} placeholder="事件名称"
           className="w-full text-base font-bold text-slate-900 dark:text-white bg-transparent border-b border-slate-200/60 dark:border-slate-700/60 focus:border-accent-500 focus:outline-none pb-1" />
 
@@ -215,7 +218,7 @@ export default function PopoverEventEditor({ eventId, anchorRect, anchorRef, onC
         <div className="flex gap-2">
           <div className="flex-1">
             <label className="text-[10px] text-slate-400">事件链</label>
-            <select value={chainId} onChange={e => setChainId(e.target.value)}
+            <select aria-label="弹窗所属事件链" value={chainId} onChange={e => setChainId(e.target.value)}
               className="w-full px-2 py-1 text-xs border border-slate-200 dark:border-slate-700 rounded bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 mt-0.5 focus:outline-none focus:ring-1 focus:ring-accent-500/40">
               <option value="">无</option>
               {chains.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}

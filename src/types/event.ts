@@ -11,7 +11,7 @@ export interface Reminder {
   notified: boolean
 }
 
-export type EventTypeCategory = 'course' | 'exam' | 'lab' | 'custom'
+export type EventTypeCategory = 'course' | 'exam' | 'lab' | 'homework' | 'custom'
 
 export interface PropertyField {
   name: string
@@ -98,8 +98,18 @@ export interface EventChain {
   defaultReminders: Reminder[] // 重点事件的默认提醒
   batchRules?: BatchRule[]
   includeInTodo?: boolean // 是否包含在 Todo 中
+  taskRules?: CourseTaskRules
   createdAt: Date
   updatedAt: Date
+}
+
+export interface CourseTaskRules {
+  homeworkAnchor?: { eventId: string; number: number }
+  labAnchor?: { eventId: string; number: number }
+  examAnchor?: { eventId: string; number: number }
+  skipHolidays?: boolean
+  extraSkipDates?: string[]
+  keepDates?: string[]
 }
 
 export interface EventGroup {

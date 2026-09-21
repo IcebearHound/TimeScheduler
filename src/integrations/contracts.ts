@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { ensureDefaultTaskTypes } from '../utils/defaultTaskTypes'
 
 const text = z.string().max(20000)
 const id = z.string().min(1).max(200)
@@ -18,12 +19,15 @@ const batchRule = z.object({
   createTime: z.object({ startTime: text, endTime: text }).optional(), modifyFilter: z.object({ position: z.number() }).optional(),
   modifyUpdates: z.object({ name: text.optional(), description: text.optional(), startTimeOffset: z.number().optional(), endTimeOffset: z.number().optional() }).optional(),
 })
-const chainFields = { name: z.string().trim().min(1).max(500), description: text.optional(), typeId: id, color: z.string().max(100), defaultReminders: z.array(reminder), batchRules: z.array(batchRule).optional(), includeInTodo: z.boolean().optional() }
+const calendarDate = z.string().date()
+const taskAnchor = z.object({ eventId: id, number: z.number().int().min(1).max(100000) }).strict()
+export const taskRulesSchema = z.object({ homeworkAnchor: taskAnchor.optional(), labAnchor: taskAnchor.optional(), examAnchor: taskAnchor.optional(), skipHolidays: z.boolean().optional(), extraSkipDates: z.array(calendarDate).max(1000).optional(), keepDates: z.array(calendarDate).max(1000).optional() }).strict()
+const chainFields = { name: z.string().trim().min(1).max(500), description: text.optional(), typeId: id, color: z.string().max(100), defaultReminders: z.array(reminder), batchRules: z.array(batchRule).optional(), includeInTodo: z.boolean().optional(), taskRules: taskRulesSchema.optional() }
 export const snapshotSchema = z.object({
   version: z.literal(1), semesterStartDate: date,
   events: z.array(z.object({ ...eventFields, id, createdAt: date, updatedAt: date })).max(100000),
   eventChains: z.array(z.object({ ...chainFields, id, createdAt: date, updatedAt: date })).max(20000),
-  eventTypes: z.array(z.object({ id, name: text, emoji: text, category: z.enum(['course', 'exam', 'lab', 'custom']), parentId: id.optional(), color: text, propertyFields: z.array(z.object({ name: text, icon: text.optional() })).optional() })),
+  eventTypes: z.array(z.object({ id, name: text, emoji: text, category: z.enum(['course', 'exam', 'lab', 'homework', 'custom']), parentId: id.optional(), color: text, propertyFields: z.array(z.object({ name: text, icon: text.optional() })).optional() })),
   groups: z.array(z.object({ id, name: text, emoji: text, eventChainIds: z.array(id), eventIds: z.array(id), description: text.optional(), includeInTodo: z.boolean().optional(), createdAt: date, updatedAt: date })),
   groupOrder: z.array(id), activeGroupId: z.string().max(200),
 }).strict()
@@ -33,12 +37,14 @@ export const actionSchema = z.discriminatedUnion('op', [
   z.object({ op: z.literal('update_event'), id, changes: eventInputSchema.partial() }).strict(),
   z.object({ op: z.literal('delete_event'), id }).strict(),
   z.object({ op: z.literal('create_chain'), id, chain: z.object(chainFields).strict() }).strict(),
+  z.object({ op: z.literal('set_course_task_rules'), id, rules: taskRulesSchema }).strict(),
 ])
 export const actionsSchema = z.array(actionSchema).min(1).max(200)
 export type Action = z.infer<typeof actionSchema>
 
 export function validateSnapshot(input: unknown): Snapshot {
   const s = snapshotSchema.parse(input)
+  s.eventTypes = ensureDefaultTaskTypes(s.eventTypes)
   const unique = (items: { id: string }[]) => {
     const keys = new Set(items.map(x => x.id))
     if (keys.size !== items.length) throw new Error('存档包含重复 ID')
@@ -64,6 +70,10 @@ export function projectActions(input: Snapshot, actions: unknown, newId: () => s
     if (a.op === 'create_chain') {
       if (s.eventChains.some(c => c.id === a.id)) throw new Error('事件链 ID 已存在')
       s.eventChains.push({ ...a.chain, id: a.id, createdAt: now, updatedAt: now }); group.eventChainIds.push(a.id)
+    } else if (a.op === 'set_course_task_rules') {
+      const chain = s.eventChains.find(c => c.id === a.id)
+      if (!chain) throw new Error('课程事件链不存在')
+      chain.taskRules = a.rules; chain.updatedAt = now
     } else if (a.op === 'create_event') {
       const e = { ...a.event, id: newId(), createdAt: now, updatedAt: now }
       s.events.push(e); group.eventIds.push(e.id)

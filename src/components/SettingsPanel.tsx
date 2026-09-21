@@ -1,5 +1,5 @@
-import AISettings from './AISettings'
-import { useEffect, useRef } from 'react'
+import { useRef } from 'react'
+import CalendarSyncSettings from './CalendarSyncSettings'
 import AppPanel from './AppPanel'
 import useLayoutStore, { LayoutMode } from '../stores/layoutStore'
 import useUIStore from '../stores/uiStore'
@@ -11,7 +11,6 @@ import { dialogConfirm, dialogAlert } from '../utils/dialog'
 
 export default function SettingsPanel() {
   const ui = useUIStore(), layout = useLayoutStore()
-  useEffect(() => { if (ui.settingsSection === 'ai') document.getElementById('ai-settings')?.scrollIntoView({ block: 'start' }) }, [ui.settingsSection])
   const file = useRef<HTMLInputElement>(null)
   const close = () => ui.setIsSettingsOpen(false)
   const backup = () => {
@@ -20,7 +19,7 @@ export default function SettingsPanel() {
   }
   return <AppPanel title="设置" onClose={close}>
     <div className="space-y-6">
-      <AISettings />
+      <CalendarSyncSettings />
       <fieldset><legend className="mb-2 font-semibold">界面布局</legend><div className="grid grid-cols-3 gap-2">
         {([['auto', '自动适配'], ['mobile', '手机版'], ['desktop', '桌面版']] as [LayoutMode, string][]).map(([mode, label]) => <button key={mode} aria-pressed={layout.mode === mode} className={`workspace-button min-h-11 ${layout.mode === mode ? 'primary' : ''}`} onClick={() => layout.setMode(mode)}>{label}</button>)}
       </div><p className="mt-2 text-xs text-slate-500">当前为{layout.isMobile ? '手机版' : '桌面版'}，此设备会记住你的选择。小屏使用桌面版时可横向滚动。</p></fieldset>

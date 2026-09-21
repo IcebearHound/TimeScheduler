@@ -8,8 +8,8 @@ import { EventConflict } from '../types/event'
 import { DialogConfig } from '../components/DialogModal'
 
 interface UIStore {
-  settingsSection: 'general' | 'ai'
-  setSettingsSection: (section: 'general' | 'ai') => void
+  isAgentOpen: boolean
+  setIsAgentOpen: (open: boolean) => void
   isSettingsOpen: boolean
   setIsSettingsOpen: (open: boolean) => void
   isMobileToolsOpen: boolean
@@ -136,8 +136,8 @@ const initialTheme = getSavedTheme()
 
 const useUIStore = create<UIStore>()(
   subscribeWithSelector((set) => ({
-    settingsSection: 'general',
-    setSettingsSection: section => set({ settingsSection: section }),
+    isAgentOpen: false,
+    setIsAgentOpen: open => set({ isAgentOpen: open }),
     isSettingsOpen: false,
     setIsSettingsOpen: (open) => set({ isSettingsOpen: open }),
     isMobileToolsOpen: false,
@@ -174,7 +174,7 @@ const useUIStore = create<UIStore>()(
     isRightPanelOpen: true,
     setIsRightPanelOpen: (open) => set(s => ({ isRightPanelOpen: open, rightPanelExpanded: open && s.rightPanelExpanded })),
     rightPanelTab: 'todo',
-    openRightPanelTab: (tab) => set({ rightPanelTab: tab, isRightPanelOpen: true }),
+    openRightPanelTab: (tab) => set(tab === 'ai' ? { isAgentOpen: true } : { rightPanelTab: tab, isRightPanelOpen: true }),
     rightPanelExpanded: false,
     setRightPanelExpanded: (expanded) => set({ rightPanelExpanded: expanded }),
 

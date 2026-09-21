@@ -1,4 +1,3 @@
-import IntegrationPanel from './IntegrationPanel'
 import { useEffect, useRef } from 'react'
 import { CheckSquare, FlaskConical, Info, Maximize2, Minimize2, PanelRightClose, Sparkles } from 'lucide-react'
 import useUIStore from '../stores/uiStore'
@@ -8,6 +7,7 @@ import TodoView from './TodoView'
 import AssignmentPanel from './AssignmentPanel'
 
 export default function RightSidebar() {
+  const agentOpen = useUIStore(s => s.isAgentOpen)
   const tab = useUIStore(s => s.rightPanelTab)
   const expanded = useUIStore(s => s.rightPanelExpanded)
   const selected = useUIStore(s => s.selectedEventId)
@@ -37,7 +37,7 @@ export default function RightSidebar() {
       <nav aria-label="右边栏栏目" className="flex min-w-0 flex-1 flex-wrap gap-1">
         <button className="sidebar-tab" aria-pressed={tab === 'todo'} onClick={() => open('todo')}><CheckSquare size={16} aria-hidden="true" />TODO</button>
         <button className="sidebar-tab" aria-pressed={tab === 'assignments'} onClick={() => open('assignments')}><FlaskConical size={16} aria-hidden="true" />实验作业</button>
-        <button className="sidebar-tab" aria-pressed={tab === 'ai'} onClick={() => open('ai')}><Sparkles size={16} aria-hidden="true" />Agent</button>
+        <button className="sidebar-tab" aria-pressed={agentOpen} onClick={() => open('ai')}><Sparkles size={16} aria-hidden="true" />Agent</button>
         {selected && <button className="sidebar-tab" aria-pressed={tab === 'details'} onClick={() => open('details')}><Info size={16} aria-hidden="true" />详情</button>}
       </nav>
       <button ref={expandButton} className="sidebar-panel-action" aria-label={expanded ? '退出全屏' : '全屏放大'} onClick={() => setExpanded(!expanded)}>{expanded ? <Minimize2 size={17} /> : <Maximize2 size={17} />}</button>
@@ -46,7 +46,6 @@ export default function RightSidebar() {
     <div className="min-h-0 flex-1 overflow-hidden">
       {tab === 'todo' && <div className="h-full overflow-y-auto"><TodoView embedded /></div>}
       {tab === 'assignments' && <div className="assignment-scroll h-full overflow-y-auto p-3"><AssignmentPanel /></div>}
-      {tab === 'ai' && <IntegrationPanel />}
       {tab === 'details' && <RightPanel />}
 
     </div>

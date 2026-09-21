@@ -12,6 +12,7 @@ import EventContextMenu from './EventContextMenu'
 import { scrollToEventBlock } from '../utils/scrollTarget'
 import { completionProperties, courseTaskCompleted, courseTaskKind, courseTaskStatus, courseTaskTime, sortedCourseTasks } from '../utils/courseTasks'
 import CourseTaskIcon from './CourseTaskIcon'
+import { buildCourseTaskSchedule } from '../utils/courseTaskSchedule'
 
 export default function TodoView({ embedded = false, onNavigate }: { embedded?: boolean; onNavigate?: () => void }) {
   const setSelectedEvent = useUIStore((s) => s.setSelectedEvent)
@@ -73,7 +74,8 @@ export default function TodoView({ embedded = false, onNavigate }: { embedded?: 
   const upcomingCutoff = new Date(now.getTime() + todoUpcomingDays * 24 * 60 * 60 * 1000)
 
   const types = Array.from(eventTypes.values())
-  const courseEvents = sortedCourseTasks(Array.from(events.values()), types)
+  const courseSchedule = useMemo(() => buildCourseTaskSchedule([...events.values()], [...eventTypes.values()], [...eventChains.values()]), [events, eventTypes, eventChains])
+  const courseEvents = sortedCourseTasks(Array.from(events.values()), types).filter(e => !courseSchedule.entries.get(e.id)?.skipped)
   const allEvents = Array.from(events.values()).filter(e => !courseTaskKind(e, types))
   const isCompleted = (e: Event) => {
     const kind = courseTaskKind(e, types)
@@ -360,7 +362,7 @@ export default function TodoView({ embedded = false, onNavigate }: { embedded?: 
           {!collapsedSections.has(section.key) && <div className="space-y-2">
             {section.events.length === 0 && dragId && <p className="rounded-xl border border-dashed border-slate-200 px-3 py-3 text-xs leading-relaxed text-slate-400 dark:border-slate-700">{filter === 'all' ? section.empty : '没有符合筛选条件的事项。'}</p>}
             {(section.key === 'upcoming' && !showAll ? section.events.slice(0, 10) : section.events).map(event => <TodoItem key={event.id} event={event} now={now}
-              selected={selectedTodoId === event.id} onSelect={() => setSelectedTodoId(event.id)} onDoubleClick={() => jumpToEvent(event)}
+              sequence={courseSchedule.entries.get(event.id)?.sequence} selected={selectedTodoId === event.id} onSelect={() => setSelectedTodoId(event.id)} onDoubleClick={() => jumpToEvent(event)}
               onTogglePin={() => togglePinEvent(event.id)} onToggleHighlight={() => handleToggleHighlight(event.id)}
               onDragStart={handleDragStart} onDragOver={handleDragOver} onDragLeave={handleDragLeave} onDrop={handleDrop} onDragEnd={handleDragEnd}
               onContextMenu={handleContextMenu} dragId={dragId} dragPosition={dragId && dragOverId.current === event.id ? dragPosition : null} eventStore={eventStore} />)}
@@ -383,6 +385,7 @@ export default function TodoView({ embedded = false, onNavigate }: { embedded?: 
 }
 
 interface TodoItemProps {
+  sequence?: number
   event: Event
   now: Date
   selected: boolean
@@ -401,12 +404,12 @@ interface TodoItemProps {
   eventStore: ReturnType<typeof useEventStore.getState>
 }
 
-function TodoItem({ event, now, selected, onSelect, onDoubleClick, onTogglePin, onToggleHighlight, onDragStart, onDragOver, onDragLeave, onDrop, onDragEnd, onContextMenu, dragId, dragPosition, eventStore }: TodoItemProps) {
+function TodoItem({ event, now, sequence, selected, onSelect, onDoubleClick, onTogglePin, onToggleHighlight, onDragStart, onDragOver, onDragLeave, onDrop, onDragEnd, onContextMenu, dragId, dragPosition, eventStore }: TodoItemProps) {
   const type = eventStore.getEventType(event.typeId)
   const chain = eventStore.getEventChain(event.chainId)
   const kind = courseTaskKind(event, Array.from(eventStore.eventTypes.values()))
   const completed = kind ? courseTaskCompleted(event, kind, now) : event.properties.completed === 'true'
-  const task = kind ? kind !== '实验课' : !!event.properties.taskKind
+  const task = kind ? !['实验课', '考试'].includes(kind) : !!event.properties.taskKind
   const when = kind ? courseTaskTime(event, kind) : task ? new Date(event.endTime) : new Date(event.startTime)
   const status = kind ? courseTaskStatus(event, kind, now) : completed ? '已完成' : +event.endTime < +now ? (task ? '已逾期' : '已结束') : +event.startTime <= +now ? (task ? '即将截止' : '进行中') : ''
 
@@ -445,13 +448,14 @@ function TodoItem({ event, now, selected, onSelect, onDoubleClick, onTogglePin, 
         <div className="h-0.5 bg-accent-500 mx-3 rounded pointer-events-none" />
       )}
       <article data-todo-event={event.id} data-completed={completed} onClick={onSelect} onDoubleClick={onDoubleClick}
-        className={`todo-card ${selected ? 'is-selected' : ''} ${completed ? 'is-completed' : ''}`}>
+        className={`todo-card ${kind === '考试' && !completed ? 'todo-exam-card' : ''} ${selected ? 'is-selected' : ''} ${completed ? 'is-completed' : ''}`}>
         <div className="flex items-start gap-2">
-          <button type="button" role="checkbox" disabled={kind === '实验课'} aria-checked={completed} aria-label={`${kind === '实验验收' ? '验收' : task ? '提交' : '完成'}：${event.name}`} title={kind === '实验课' ? '上课状态按时间自动更新' : completed ? '标记为待完成' : kind === '实验验收' ? '标记为已验收' : task ? '标记为已提交' : '标记为已完成'}
-            onDoubleClick={e => e.stopPropagation()} onClick={e => { e.stopPropagation(); const current = useEventStore.getState().events.get(event.id); if (current) useEventStore.getState().updateEvent(event.id, { properties: completionProperties(current, !completed) }) }}
+          <button type="button" role="checkbox" aria-checked={completed} aria-label={`${kind === '实验验收' ? '验收' : task ? '提交' : '完成'}：${event.name}`} title={completed ? '标记为待完成' : kind === '实验验收' ? '标记为已验收' : task ? '标记为已提交' : '标记为已完成'}
+            onDoubleClick={e => e.stopPropagation()} onClick={e => { e.stopPropagation(); const current = useEventStore.getState().events.get(event.id); if (current) useEventStore.getState().updateEvent(event.id, { properties: completionProperties(current, !completed, new Date(), kind === '实验课' || kind === '考试') }) }}
             className="todo-check shrink-0"><span className={`flex h-5 w-5 items-center justify-center rounded-full border-2 ${completed ? 'border-indigo-500 bg-indigo-500 text-white' : 'border-slate-300 dark:border-slate-500'}`}>{completed && <Check size={13} strokeWidth={3} />}</span></button>
           <div className="min-w-0 flex-1 py-1.5">
-            {kind && <span className="mb-1 flex items-center gap-1.5 text-xs text-indigo-600 dark:text-indigo-300"><CourseTaskIcon kind={kind} size={14} />{kind}</span>}
+            {kind && <span className="mb-1 flex items-center gap-1.5 text-xs text-indigo-600 dark:text-indigo-300"><CourseTaskIcon kind={kind} size={14} />{kind}{sequence ? ` · 第 ${sequence} 次` : ''}</span>}
+            {kind === '考试' && !completed && +event.endTime >= +now && +event.startTime - +now <= 7 * 86400000 && <p className="mb-1 text-sm font-bold text-rose-600">{+event.startTime <= +now ? '考试正在进行' : `距考试 ${Math.ceil((+event.startTime - +now) / 3600000)} 小时`}</p>}
             <p className={`break-words text-sm font-medium leading-5 ${completed ? 'text-slate-400 line-through' : 'text-slate-800 dark:text-slate-100'}`}>{event.name}</p>
             <p className={`mt-1 flex flex-wrap items-center gap-x-1.5 gap-y-1 text-xs ${status === '已逾期' ? 'text-rose-600 dark:text-rose-400' : 'text-slate-500 dark:text-slate-400'}`}><Clock size={12} aria-hidden="true" /><span>{fmtDate(when)} {fmtTime(when)}{task ? ' 截止' : ` – ${fmtDate(new Date(event.endTime)) !== fmtDate(when) ? fmtDate(new Date(event.endTime)) + ' ' : ''}${fmtTime(new Date(event.endTime))}`}</span></p>
             <div className="mt-2 flex flex-wrap items-center gap-1.5 text-[11px]"><span className="max-w-full truncate rounded-md bg-slate-100 px-1.5 py-0.5 text-slate-500 dark:bg-slate-700 dark:text-slate-300" title={chain?.name || type?.name}>{type?.emoji || '📌'} {chain?.name || type?.name || '独立事件'}</span>{status && <span className={`rounded-md px-1.5 py-0.5 ${completed ? 'bg-emerald-50 text-emerald-600 dark:bg-emerald-950 dark:text-emerald-400' : status === '已逾期' ? 'bg-rose-50 text-rose-600 dark:bg-rose-950 dark:text-rose-400' : 'bg-slate-100 text-slate-500 dark:bg-slate-700 dark:text-slate-300'}`}>{status}</span>}</div>

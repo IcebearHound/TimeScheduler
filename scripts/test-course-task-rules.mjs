@@ -1,0 +1,127 @@
+import assert from 'node:assert/strict'
+import { createServer } from 'node:http'
+import { readFile, mkdir } from 'node:fs/promises'
+import { resolve, extname } from 'node:path'
+import { chromium } from 'playwright'
+const output = resolve('test-results/course-task-rules'); await mkdir(output, { recursive: true })
+const server = createServer(async (req, res) => {
+  try {
+    const path = new URL(req.url, 'http://localhost').pathname.replace(/^\/TimeScheduler\//, '') || 'index.html'
+    const target = resolve('dist', path), root = resolve('dist')
+    if (!target.startsWith(root + '/') && !target.startsWith(root + '\\')) throw Error('path')
+    res.setHeader('Content-Type', ({ '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css', '.svg': 'image/svg+xml' })[extname(target)] || 'application/octet-stream')
+    res.end(await readFile(target))
+  } catch { res.writeHead(404); res.end() }
+})
+await new Promise(r => server.listen(0, '127.0.0.1', r))
+const browser = await chromium.launch({ headless: true })
+let page
+try {
+  for (const width of [1440, 390, 320]) {
+    page = await browser.newPage({ viewport: { width, height: 900 }, hasTouch: width < 500 })
+    const errors = []; page.on('pageerror', e => errors.push(e.message))
+    await page.clock.install({ time: new Date('2026-09-21T08:00:00+08:00') })
+    await page.addInitScript(() => {
+      localStorage.setItem('hasSeenWelcomeGuide', 'true'); localStorage.setItem('notificationPromptSeen', 'true')
+      if (localStorage.getItem('eventStore')) return
+      const stamp = new Date().toISOString(), chain = id => [id, { id, name: id === 'c' ? '电路原理' : '备用课程', typeId: 'course', color: '#6366f1', defaultReminders: [], createdAt: stamp, updatedAt: stamp }]
+      localStorage.setItem('eventStore', JSON.stringify({ events: [], eventChains: [chain('c'), chain('other')], eventTypes: [['course', { id: 'course', name: '课程', emoji: '📚', category: 'course', color: '#6366f1' }]], semesterStartDate: stamp }))
+    })
+    await page.goto(`http://127.0.0.1:${server.address().port}/TimeScheduler/`)
+    if (width < 500) await page.getByRole('button', { name: '待办', exact: true }).click()
+    const sidebar = page.locator('[data-right-sidebar]')
+    const tab = name => sidebar.getByRole('button', { name, exact: true }).click()
+    await tab('实验作业')
+    const add = async kind => {
+      await page.getByRole('button', { name: '＋ 添加作业 / 实验', exact: true }).click()
+      await page.getByRole('menuitem', { name: '快捷添加', exact: true }).click()
+      await page.getByLabel('课程', { exact: true }).fill('电路原理')
+      await page.getByLabel('类别', { exact: true }).selectOption(kind)
+    }
+    const save = async () => { await page.getByRole('button', { name: '保存任务', exact: true }).click(); await page.getByText('已保存到事件链，可撤销', { exact: true }).waitFor() }
+    const stored = () => page.evaluate(() => JSON.parse(localStorage.getItem('eventStore')))
+    await add('实验课')
+    await page.getByLabel('名称', { exact: true }).fill('电路实验')
+    await page.getByLabel('上课开始时间', { exact: true }).fill('2026-09-07T14:00')
+    await page.getByLabel('上课结束时间', { exact: true }).fill('2026-09-07T16:00')
+    await page.getByLabel('新增验收截止时间', { exact: true }).fill('2026-09-14T14:00')
+    await page.getByLabel('新增报告截止时间', { exact: true }).fill('2026-09-15T23:59')
+    await page.getByRole('checkbox', { name: '每周重复', exact: true }).check()
+    await page.getByLabel('重复次数', { exact: true }).fill('6')
+    await page.getByRole('checkbox', { name: '该课程遇法定节假日自动跳过作业／实验', exact: true }).check()
+    await save()
+    let data = await stored(), events = data.events.map(([, e]) => e), types = new Map(data.eventTypes)
+    assert.equal(events.length, 18)
+    assert.ok(events.every(e => types.get(e.typeId).category === 'lab'))
+    const classes = events.filter(e => e.properties.taskKind === '实验课').sort((a, b) => +new Date(a.startTime) - +new Date(b.startTime))
+    const anchor = classes[2]
+    await page.getByRole('button', { name: '电路原理编号与跳过', exact: true }).click()
+    await page.getByRole('checkbox', { name: '自动编号', exact: true }).check()
+    await page.getByLabel('编号基准', { exact: true }).selectOption(anchor.id)
+    await page.getByLabel('这次是第几次', { exact: true }).fill('3')
+    await page.getByRole('button', { name: '保存编号与跳过规则', exact: true }).click()
+    await page.getByText('编号与跳过规则已保存，可撤销', { exact: true }).waitFor()
+    await page.getByLabel('灯珠显示天数').selectOption('30')
+    const lamp = id => page.locator(`table [data-task-lamp="${id}"]`)
+    assert.equal(await lamp(anchor.id).locator('sub').textContent(), '3')
+    assert.equal(await lamp(classes[4].id).getAttribute('data-status'), '已跳过')
+    assert.equal(await lamp(classes[5].id).locator('sub').textContent(), '5')
+    if (width < 500) await lamp(anchor.id).tap(); else await lamp(anchor.id).click()
+    await page.clock.runFor(600)
+    assert.equal(await lamp(anchor.id).getAttribute('data-completed'), 'true')
+    assert.equal(await lamp(anchor.id).locator('[data-lamp-color]').getAttribute('data-lamp-color'), 'completed')
+    if (width < 500) {
+      const box = await lamp(anchor.id).boundingBox()
+      assert.ok(box.width >= 48 && box.height >= 48, 'Mobile lamp needs a 48px touch target')
+      // Chromium's native tap counter uses wall time, independent of page.clock.
+      await new Promise(resolve => setTimeout(resolve, 650))
+      await lamp(anchor.id).tap(); await page.clock.runFor(100); await lamp(anchor.id).tap()
+    } else await lamp(anchor.id).dblclick()
+    await page.clock.runFor(600)
+    await page.getByLabel('所属事件链', { exact: true }).waitFor()
+    assert.equal((await stored()).events.find(([id]) => id === anchor.id)[1].properties.completed, 'true', 'Double click must not toggle')
+    await page.getByRole('button', { name: '取消编辑', exact: true }).click()
+    await lamp(anchor.id).click({ button: 'right' }); await page.clock.runFor(600)
+    assert.equal((await stored()).events.find(([id]) => id === anchor.id)[1].properties.completed, 'true', 'Right click must not toggle')
+    await page.getByRole('button', { name: '取消编辑', exact: true }).click()
+    await page.getByLabel('电路原理任务类型', { exact: true }).selectOption('作业')
+    await page.getByText('该行已改为作业，可撤销', { exact: true }).waitFor()
+    assert.ok((await stored()).events.every(([, e]) => e.properties.taskKind === '作业'))
+    await page.getByLabel('电路原理任务类型', { exact: true }).selectOption('实验')
+    await page.getByText('该行已改为实验，可撤销', { exact: true }).waitFor()
+    assert.equal((await stored()).events.filter(([, e]) => e.properties.taskKind === '实验报告').length, 6)
+    await add('作业'); await page.getByLabel('名称', { exact: true }).fill('电路作业')
+    await page.getByLabel('作业截止时间', { exact: true }).fill('2026-09-21T23:59'); await save()
+    data = await stored(); const homework = data.events.map(([, e]) => e).find(e => e.name === '电路作业')
+    assert.equal(new Map(data.eventTypes).get(homework.typeId).category, 'homework')
+    assert.equal(await page.locator('tbody [data-assignment-course]').count(), 1)
+    assert.equal(await lamp(homework.id).locator('[data-course-task-icon="作业"]').count(), 1)
+    await add('考试'); await page.getByLabel('名称', { exact: true }).fill('电路期中考试')
+    await page.getByLabel('考试开始时间', { exact: true }).fill('2026-09-22T09:00')
+    await page.getByLabel('考试结束时间', { exact: true }).fill('2026-09-22T11:00'); await save()
+    await page.getByLabel('近期考试提醒', { exact: true }).waitFor()
+    await page.screenshot({ path: resolve(output, `panel-${width}.png`) })
+    await lamp(homework.id).click({ button: 'right' })
+    await page.getByLabel('所属事件链', { exact: true }).selectOption('other'); await save()
+    assert.equal((await stored()).events.find(([id]) => id === homework.id)[1].chainId, 'other')
+    await tab('TODO')
+    assert.equal(await page.locator(`[data-todo-event="${classes[4].id}"]`).count(), 0, 'Skipped class must not be in TODO')
+    assert.equal(await page.locator('.todo-exam-card').count(), 1)
+    await page.getByRole('button', { name: '定位：电路作业', exact: true }).click()
+    await page.getByLabel('详情所属事件链').selectOption('c'); await page.clock.runFor(700)
+    assert.equal((await stored()).events.find(([id]) => id === homework.id)[1].chainId, 'c')
+    await page.screenshot({ path: resolve(output, `details-${width}.png`) })
+    await page.reload()
+    if (width < 500) await page.getByRole('button', { name: '待办', exact: true }).click()
+    await tab('实验作业')
+    assert.equal(await lamp(anchor.id).getAttribute('data-completed'), 'true')
+    assert.equal(await lamp(anchor.id).locator('sub').textContent(), '3')
+    assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true)
+    assert.deepEqual(errors, [])
+    await page.close()
+  }
+  console.log('PASS: repeating bundles, default types, backward/forward numbering, holidays, click/double/right click, row conversion, exam alert, both detail chain editors, mobile taps and reload persistence')
+} catch (error) {
+  if (page && !page.isClosed()) { console.error(await page.locator('[role="alert"], [role="status"]').allTextContents()); await page.screenshot({ path: resolve(output, 'failure.png') }) }
+  throw error
+} finally { await browser.close(); await new Promise(r => server.close(r)) }

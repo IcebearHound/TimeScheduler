@@ -1,10 +1,12 @@
 import { aiPresets } from '../src/integrations/aiPresets'
+import { calendarRoute, CalendarEnv } from './calendar'
+export { CalendarFeedObject } from './calendar'
 import { aiConfigSchema, proposeActions, proposeAgent } from '../src/integrations/ai'
 import { attachmentsSchema } from '../src/integrations/attachments'
 import { webPagesSchema } from '../src/integrations/agentArtifacts'
 import { projectActions, validateSnapshot } from '../src/integrations/contracts'
-/** Stateless OAuth, AI and restricted repository relay. No credential persistence. */
-export interface Env {
+/** OAuth, AI and restricted repository relay; calendar feeds use isolated Durable Objects. */
+export interface Env extends CalendarEnv {
   APP_URL: string
   AUTH_STATE_SECRET: string
   GITHUB_CLIENT_ID?: string
@@ -61,6 +63,7 @@ async function body(request: Request) {
 }
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
+    if (new URL(request.url).pathname.startsWith('/calendar/')) return calendarRoute(request, env)
     const headers = new Headers({ 'Cache-Control': 'no-store', 'Referrer-Policy': 'no-referrer', 'X-Content-Type-Options': 'nosniff', 'Content-Type': 'application/json; charset=utf-8' })
     const json = (data: unknown, status = 200) => new Response(JSON.stringify(data), { status, headers })
     try {

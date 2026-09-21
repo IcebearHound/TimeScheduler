@@ -2,6 +2,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { captureArchive, installArchive, applyActions } from '../src/integrations/archive'
 import { snapshotRevision } from '../src/integrations/contracts'
+import { configureCourseTaskRulesActions, createCourseTaskActions, setCourseRowCategoryActions } from '../src/integrations/courseTasks'
 import useEventStore from '../src/stores/eventStore'
 import useEventGroupStore from '../src/stores/eventGroupStore'
 
@@ -26,4 +27,19 @@ test('archive replacement restores semester and groups on undo; failed batches d
   const stable = captureArchive(); failWrites = true
   assert.throws(() => installArchive(initial), /回滚/)
   assert.deepEqual(captureArchive(), stable); failWrites = false
+})
+
+test('task rules and row conversion persist and undo as separate whole transactions', async () => {
+  installArchive({ ...initial, eventChains: [{ id: 'c', name: '实验课程', typeId: 'course', color: '#123456', defaultReminders: [], createdAt: date, updatedAt: date }] })
+  const save = async (actions: Parameters<typeof applyActions>[0]) => applyActions(actions, await snapshotRevision(captureArchive()))
+  await save(createCourseTaskActions(captureArchive(), { courseId: 'c', name: '报告', kind: '实验报告', endTime: '2026-09-21T23:59:00+08:00' }))
+  const before = captureArchive()
+  await save(configureCourseTaskRulesActions(before, 'c', { labAnchor: { eventId: before.events[0].id, number: 3 }, skipHolidays: true }))
+  const numbered = captureArchive()
+  assert.equal(numbered.eventChains[0].taskRules?.labAnchor?.number, 3)
+  await save(setCourseRowCategoryActions(numbered, 'c', '作业'))
+  assert.equal(captureArchive().events[0].properties.taskKind, '作业')
+  useEventStore.getState().undo(); assert.deepEqual(captureArchive(), numbered)
+  useEventStore.getState().undo(); assert.deepEqual(captureArchive(), before)
+  useEventStore.getState().redo(); assert.deepEqual(captureArchive(), numbered)
 })

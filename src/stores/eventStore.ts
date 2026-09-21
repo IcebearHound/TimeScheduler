@@ -9,6 +9,7 @@ import { getConflictingEvents } from '../utils/eventUtils'
 import { executeCreateRule, executeModifyRule } from '../utils/batchRuleUtils'
 import useEventGroupStore from './eventGroupStore'
 import { debugLog } from '../utils/debugStore'
+import { ensureDefaultTaskTypes } from '../utils/defaultTaskTypes'
 
 interface HistoryEntry {
   semesterStartDate: Date
@@ -277,11 +278,20 @@ const useEventStore = create<EventStore>()(
           }))
           const filtered: Record<string, string> = {}
           for (const [key, val] of Object.entries(merged.properties || {})) {
-            if (validFields.has(key) || key === 'notes') {
+            if (validFields.has(key) || !['location', 'teacher', 'courseCode', 'examForm', 'supervisor', 'labTeacher', 'labContent'].includes(key)) {
               filtered[key] = val as string
             }
           }
           merged.properties = filtered as any
+          if (event.properties.taskKind) {
+            const oldCategory = get().eventTypes.get(event.typeId)?.category
+            if (newType.category !== oldCategory) {
+              if (newType.category === 'homework') merged.properties.taskKind = '作业'
+              else if (newType.category === 'exam') merged.properties.taskKind = '考试'
+              else if (newType.category === 'lab') merged.properties.taskKind = '实验课'
+              else delete merged.properties.taskKind
+            }
+          }
         }
       }
 
@@ -688,7 +698,7 @@ const useEventStore = create<EventStore>()(
         set({
           events: new Map((p.events || []).map(deserEvent)),
           eventChains: new Map((p.eventChains || []).map(deserChain)),
-          eventTypes: new Map(patchedTypes),
+          eventTypes: new Map(ensureDefaultTaskTypes(patchedTypes.map(([, t]: [string, EventType]) => t)).map(t => [t.id, t])),
           semesterStartDate: p.semesterStartDate ? new Date(p.semesterStartDate) : (() => {
             const now = new Date()
             const day = now.getDay()
@@ -708,7 +718,7 @@ const useEventStore = create<EventStore>()(
         { id: 'type-exam', name: '考试', emoji: '📝', category: 'exam' as const, color: '#EF4444', propertyFields: [{ name: '地点', icon: 'MapPin' }, { name: '考试形式', icon: 'BookOpen' }, { name: '监考老师', icon: 'User' }] },
         { id: 'type-lab', name: '实验', emoji: '🔬', category: 'lab' as const, color: '#10B981', propertyFields: [{ name: '地点', icon: 'MapPin' }, { name: '实验指导老师', icon: 'User' }, { name: '实验内容', icon: 'BookOpen' }] },
       ]
-      set({ eventTypes: new Map(defaultTypes.map(t => [t.id, t])) })
+      set({ eventTypes: new Map(ensureDefaultTaskTypes(defaultTypes).map(t => [t.id, t])) })
       get().save()
     },
 
