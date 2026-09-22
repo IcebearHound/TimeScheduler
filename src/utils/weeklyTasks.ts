@@ -14,7 +14,7 @@ export function createWeeklyTaskActions(snapshot: Snapshot, inputs: CourseTaskIn
     for (const input of inputs) {
       const group = input.labGroupId
       if (group && !groups.has(group)) groups.set(group, n === 0 ? group : newId())
-      const actions = createCourseTaskActions(working, { ...input, endTime: shift(input.endTime, n * intervalWeeks * 7), ...(input.startTime ? { startTime: shift(input.startTime, n * intervalWeeks * 7) } : {}), ...(group ? { labGroupId: groups.get(group) } : {}) })
+      const actions = createCourseTaskActions(working, { ...input, number: n === 0 ? input.number : undefined, endTime: shift(input.endTime, n * intervalWeeks * 7), ...(input.startTime ? { startTime: shift(input.startTime, n * intervalWeeks * 7) } : {}), ...(group ? { labGroupId: groups.get(group) } : {}) })
       working = projectActions(working, actions, newId)
       result.push(...actions)
     }

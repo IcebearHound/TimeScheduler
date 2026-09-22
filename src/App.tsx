@@ -193,8 +193,12 @@ export default function App() {
 
   useEffect(() => {
     if (!initialized) return
-    const u1 = useEventStore.subscribe(() => useEventStore.getState().save())
-    const u2 = useEventGroupStore.subscribe(() => useEventGroupStore.getState().save())
+    const u1 = useEventStore.subscribe((next, prev) => {
+      if (next.events !== prev.events || next.eventChains !== prev.eventChains || next.eventTypes !== prev.eventTypes || next.semesterStartDate !== prev.semesterStartDate) next.save()
+    })
+    const u2 = useEventGroupStore.subscribe((next, prev) => {
+      if (next.groups !== prev.groups || next.groupOrder !== prev.groupOrder || next.activeGroupId !== prev.activeGroupId) next.save()
+    })
     return () => { u1(); u2() }
   }, [initialized])
 

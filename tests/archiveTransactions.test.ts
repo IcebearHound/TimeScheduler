@@ -11,6 +11,34 @@ let failWrites = false
 Object.defineProperty(globalThis, 'localStorage', { configurable: true, value: { getItem: (key: string) => storage.get(key) ?? null, setItem: (key: string, value: string) => { if (failWrites) throw new Error('quota'); storage.set(key, value) }, removeItem: (key: string) => storage.delete(key) } })
 const date = '2026-09-15T00:00:00.000Z'
 const initial = { version: 1, semesterStartDate: date, events: [], eventChains: [], eventTypes: [{ id: 'course', name: '课程', emoji: '📚', category: 'course', color: '#123456' }], groups: [{ id: 'g', name: '默认', emoji: '📁', eventIds: [], eventChainIds: [], createdAt: date, updatedAt: date }], groupOrder: ['g'], activeGroupId: 'g' }
+
+test('fast completion preserves unrelated references, supports undo and rolls back storage failure', async () => {
+  installArchive({ ...initial, eventChains: [{ id: 'c', name: '课程', typeId: 'course', color: '#123456', defaultReminders: [], createdAt: date, updatedAt: date }] })
+  const before = captureArchive()
+  await applyActions([
+    ...createCourseTaskActions(before, { courseId: 'c', name: '作业', kind: '作业', endTime: '2026-09-21T23:59:00+08:00', notes: '保留备注' }),
+    ...createCourseTaskActions(before, { courseId: 'c', name: '实验', kind: '实验课', startTime: '2026-09-21T14:00:00+08:00', endTime: '2026-09-21T16:00:00+08:00' }),
+  ], await snapshotRevision(before))
+  const original = useEventStore.getState(), [homework, lab] = [...original.events.values()], groups = useEventGroupStore.getState().groups
+  original.setCourseTaskCompleted(homework.id, true)
+  const updated = useEventStore.getState()
+  assert.equal(updated.eventChains, original.eventChains)
+  assert.equal(updated.eventTypes, original.eventTypes)
+  assert.equal(updated.events.get(lab.id), lab)
+  assert.equal(useEventGroupStore.getState().groups, groups)
+  assert.equal(updated.events.get(homework.id)!.properties.notes, '保留备注')
+  assert.equal(updated.events.get(homework.id)!.properties.completed, 'true')
+  assert.equal(updated.undoStack.length, original.undoStack.length + 1)
+  updated.undo(); assert.equal(useEventStore.getState().events.get(homework.id)!.properties.completed, 'false')
+  useEventStore.getState().redo(); assert.equal(useEventStore.getState().events.get(homework.id)!.properties.completed, 'true')
+  const stable = useEventStore.getState(), saved = storage.get('eventStore')
+  failWrites = true
+  try { assert.throws(() => stable.setCourseTaskCompleted(homework.id, false), /未修改/) } finally { failWrites = false }
+  assert.equal(useEventStore.getState(), stable)
+  assert.equal(storage.get('eventStore'), saved)
+  stable.setCourseTaskCompleted(lab.id, false)
+  assert.equal(useEventStore.getState().events.get(lab.id)!.properties.classCompletionOverride, 'true')
+})
 test('archive replacement restores semester and groups on undo; failed batches do not partially save', async () => {
   installArchive(initial)
   const before = captureArchive()

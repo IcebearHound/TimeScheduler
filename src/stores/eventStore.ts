@@ -10,6 +10,7 @@ import { executeCreateRule, executeModifyRule } from '../utils/batchRuleUtils'
 import useEventGroupStore from './eventGroupStore'
 import { debugLog } from '../utils/debugStore'
 import { ensureDefaultTaskTypes } from '../utils/defaultTaskTypes'
+import { completionProperties, courseTaskKind } from '../utils/courseTasks'
 
 interface HistoryEntry {
   semesterStartDate: Date
@@ -68,6 +69,7 @@ interface EventStore {
 
   addEvent: (event: Omit<Event, 'id' | 'createdAt' | 'updatedAt'>) => Event
   updateEvent: (id: string, updates: Partial<Event>) => void
+  setCourseTaskCompleted: (id: string, completed: boolean) => void
   deleteEvent: (id: string) => void
   deleteEvents: (ids: string[]) => void
   getEvent: (id: string) => Event | undefined
@@ -132,13 +134,7 @@ const useEventStore = create<EventStore>()(
     events: new Map(),
     eventChains: new Map(),
     eventTypes: new Map(),
-    semesterStartDate: (() => {
-      const now = new Date()
-      const day = now.getDay()
-      const diff = now.getDate() - day + 1
-      const mon = new Date(now.getFullYear(), now.getMonth(), diff)
-      return mon
-    })(),
+    semesterStartDate: new Date(2026, 7, 31),
 
     clipboardEvent: null,
     clipboardAction: null,
@@ -253,6 +249,21 @@ const useEventStore = create<EventStore>()(
       set((s) => ({ events: new Map(s.events).set(event.id, event) }))
       get().save()
       return event
+    },
+
+    setCourseTaskCompleted: (id, completed) => {
+      const s = get(), event = s.events.get(id)
+      if (!event) throw new Error('该任务已删除')
+      const kind = courseTaskKind(event, [...s.eventTypes.values()])
+      if (!kind) throw new Error('该事件已不再是课程任务')
+      const manual = kind === '实验课' || kind === '考试'
+      if (event.properties.completed === String(completed) && (!manual || event.properties.classCompletionOverride === 'true')) return
+      const now = new Date(), events = new Map(s.events).set(id, { ...event, properties: completionProperties(event, completed, now, manual), updatedAt: now })
+      // Persist before publishing, so failed storage writes leave both history and state untouched.
+      try { localStorage.setItem('eventStore', JSON.stringify({ events: [...events], eventChains: [...s.eventChains], eventTypes: [...s.eventTypes], semesterStartDate: s.semesterStartDate.toISOString() })) }
+      catch { throw new Error('无法保存到浏览器存档（空间不足或存储被禁用），完成状态未修改') }
+      s.pushHistory('切换课程任务完成状态', [{ type: 'event', id, name: event.name }])
+      set({ events })
     },
 
     updateEvent: (id, updates) => {
@@ -699,12 +710,7 @@ const useEventStore = create<EventStore>()(
           events: new Map((p.events || []).map(deserEvent)),
           eventChains: new Map((p.eventChains || []).map(deserChain)),
           eventTypes: new Map(ensureDefaultTaskTypes(patchedTypes.map(([, t]: [string, EventType]) => t)).map(t => [t.id, t])),
-          semesterStartDate: p.semesterStartDate ? new Date(p.semesterStartDate) : (() => {
-            const now = new Date()
-            const day = now.getDay()
-            const diff = now.getDate() - day + 1
-            return new Date(now.getFullYear(), now.getMonth(), diff)
-          })(),
+          semesterStartDate: p.semesterStartDate ? new Date(p.semesterStartDate) : new Date(2026, 7, 31),
         })
         get().save()
       } catch {

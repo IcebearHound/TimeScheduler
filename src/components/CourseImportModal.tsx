@@ -14,7 +14,7 @@ export default function CourseImportModal() {
   const setIsOpen = useUIStore((s) => s.setIsImportDialogOpen)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
-  const [semesterDate, setSemesterDate] = useState('2026-03-02')
+  const [semesterDate, setSemesterDate] = useState('2026-08-31')
 
   const [loading, setLoading] = useState(false)
   const [resultMsg, setResultMsg] = useState<{ type: 'success' | 'error' | 'warning'; text: string } | null>(null)

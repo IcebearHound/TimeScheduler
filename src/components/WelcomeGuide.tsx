@@ -79,7 +79,7 @@ const CARDS: CardData[] = [
     icon: <Upload className="w-5 h-5" />,
     title: '课程导入',
     content: '三步向导从山东大学教务系统导入课程表.xls文件，自动解析课表生成事件链和全部课程事件。支持20周排课，多节连排自动合并。',
-    detail: '三步向导从山东大学教务系统导入课表：①从教务网站（bkzhjx.wh.sdu.edu.cn）下载 .xls 课表文件 ②设置学期开始日期（默认为下一个周一）③选择文件自动解析。支持20周排课，多节连排自动合并，备注提醒自动展示，解析结果即时反馈。',
+    detail: '三步向导从山东大学教务系统导入课表：①从教务网站（bkzhjx.wh.sdu.edu.cn）下载 .xls 课表文件 ②设置学期开始日期（默认为2026年8月31日，周一）③选择文件自动解析。支持20周排课，多节连排自动合并，备注提醒自动展示，解析结果即时反馈。',
     animation: (
       <div className="flex flex-col items-center gap-2 w-full">
         <div className="animate-file-drop text-2xl">📄</div>

@@ -33,7 +33,7 @@ export const snapshotSchema = z.object({
 }).strict()
 export type Snapshot = z.infer<typeof snapshotSchema>
 export const actionSchema = z.discriminatedUnion('op', [
-  z.object({ op: z.literal('create_event'), event: eventInputSchema }).strict(),
+  z.object({ op: z.literal('create_event'), id: id.optional(), event: eventInputSchema }).strict(),
   z.object({ op: z.literal('update_event'), id, changes: eventInputSchema.partial() }).strict(),
   z.object({ op: z.literal('delete_event'), id }).strict(),
   z.object({ op: z.literal('create_chain'), id, chain: z.object(chainFields).strict() }).strict(),
@@ -75,7 +75,9 @@ export function projectActions(input: Snapshot, actions: unknown, newId: () => s
       if (!chain) throw new Error('课程事件链不存在')
       chain.taskRules = a.rules; chain.updatedAt = now
     } else if (a.op === 'create_event') {
-      const e = { ...a.event, id: newId(), createdAt: now, updatedAt: now }
+      const eventId = a.id || newId()
+      if (s.events.some(e => e.id === eventId)) throw new Error('事件 ID 已存在')
+      const e = { ...a.event, id: eventId, createdAt: now, updatedAt: now }
       s.events.push(e); group.eventIds.push(e.id)
     } else {
       const i = s.events.findIndex(e => e.id === a.id)

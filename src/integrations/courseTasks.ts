@@ -12,6 +12,7 @@ const details = {
 export const courseTaskInputSchema = z.object({
   courseId: id, name: z.string().trim().min(1).max(500), kind: z.enum(courseTaskKinds),
   startTime: date.optional(), endTime: date,
+  number: z.number().int().min(0).max(100000).optional(),
   labGroupId: id.optional(), ...details,
 }).strict()
 export const labInputSchema = z.object({
@@ -24,7 +25,7 @@ export const courseTaskChangesSchema = z.object({
   name: z.string().trim().min(1).max(500).optional(), courseId: id.optional(), startTime: date.optional(), endTime: date.optional(), ...details,
 }).strict().refine(v => Object.keys(v).length > 0, '至少提供一个修改字段')
 export const courseTaskQuerySchema = z.object({
-  courseId: id.optional(), kind: z.enum(courseTaskKinds).optional(),
+  courseId: id.optional(), typeId: id.optional(), kind: z.enum(courseTaskKinds).optional(),
   status: z.enum(['all', 'pending', 'completed', 'overdue']).default('all'),
   from: date.optional(), to: date.optional(),
 }).strict()
@@ -56,13 +57,19 @@ export function createCourseTaskActions(snapshot: Snapshot, raw: CourseTaskInput
   const startTime = scheduled ? input.startTime! : new Date(+new Date(input.endTime) - 30 * 60000).toISOString()
   if (+new Date(startTime) >= +new Date(input.endTime)) throw new Error('结束时间必须晚于开始时间')
   if (input.labGroupId && snapshot.events.some(e => e.chainId === input.courseId && e.properties.labGroupId === input.labGroupId && courseTaskKind(e, snapshot.eventTypes) === input.kind)) throw new Error('同一次实验已存在此类事项，请修改已有事项')
-  return [{ op: 'create_event', event: {
+  const eventId = input.number !== undefined ? crypto.randomUUID() : undefined
+  const actions: Action[] = [{ op: 'create_event', ...(eventId ? { id: eventId } : {}), event: {
     name: input.name, chainId: chain.id,
     typeId: snapshot.eventTypes.find(t => t.category === (input.kind === '作业' ? 'homework' : input.kind === '考试' ? 'exam' : 'lab'))!.id,
     startTime, endTime: input.endTime, reminders: input.kind === '考试' && !chain.defaultReminders.length ? [{ id: crypto.randomUUID(), time: '1d', enabled: true, notified: false }, { id: crypto.randomUUID(), time: '2h', enabled: true, notified: false }] : chain.defaultReminders,
     properties: { ...taskProperties(input), taskKind: input.kind, completed: 'false', ...(input.labGroupId ? { labGroupId: input.labGroupId } : {}) },
     isHighlight: input.kind === '考试', pinned: false, priority: input.kind === '考试' ? 3 : 1,
   } }]
+  if (eventId) {
+    const key = input.kind === '作业' ? 'homeworkAnchor' : input.kind === '考试' ? 'examAnchor' : 'labAnchor'
+    actions.push({ op: 'set_course_task_rules', id: chain.id, rules: { ...chain.taskRules, [key]: { eventId, number: input.number! } } })
+  }
+  return actions
 }
 
 /** One undoable transaction; existing scheduled classes can acquire deadlines without duplication. */
@@ -145,9 +152,33 @@ export function setCourseTaskKindActions(snapshot: Snapshot, eventId: string, ne
 }
 /** Changes only the row's course tasks, preserving times, details and effective completion. */
 export function setCourseRowCategoryActions(snapshot: Snapshot, courseId: string, category: CourseTaskCategory, now = new Date()): Action[] {
-  z.enum(['作业', '实验', '考试']).parse(category)
   if (!snapshot.eventChains.some(c => c.id === courseId)) throw new Error('课程事件链不存在')
   const tasks = snapshot.events.filter(e => e.chainId === courseId && courseTaskKind(e, snapshot.eventTypes))
+  return setTaskCategoryActions(snapshot, tasks, category, now)
+}
+/** A panel row contains tasks with the same event type, across all chains. */
+export function setCourseTypeCategoryActions(snapshot: Snapshot, typeId: string, category: CourseTaskCategory, now = new Date()): Action[] {
+  if (!snapshot.eventTypes.some(t => t.id === typeId)) throw new Error('事件类型不存在')
+  const tasks = snapshot.events.filter(e => e.typeId === typeId && courseTaskKind(e, snapshot.eventTypes))
+  return setTaskCategoryActions(snapshot, tasks, category, now)
+}
+/** Change only the intersection of one course chain and one event type. */
+export function setCourseTaskRowTypeActions(snapshot: Snapshot, courseId: string, sourceTypeId: string, targetTypeId: string, now = new Date()): Action[] {
+  if (!snapshot.eventChains.some(c => c.id === courseId)) throw new Error('课程事件链不存在')
+  const target = snapshot.eventTypes.find(t => t.id === targetTypeId)
+  if (!target || !snapshot.eventTypes.some(t => t.id === sourceTypeId)) throw new Error('事件类型不存在')
+  if (sourceTypeId === targetTypeId) return []
+  const tasks = snapshot.events.filter(e => e.chainId === courseId && e.typeId === sourceTypeId && courseTaskKind(e, snapshot.eventTypes))
+  const category = target.category === 'lab' ? '实验' : target.category === 'homework' ? '作业' : target.category === 'exam' ? '考试' : undefined
+  const conversions = category ? setTaskCategoryActions(snapshot, tasks, category, now) : []
+  if (tasks.length > 200) throw new Error('该行超过 200 项任务，请分批修改')
+  return tasks.map(event => {
+    const conversion = conversions.find(a => a.op === 'update_event' && a.id === event.id)
+    return { op: 'update_event', id: event.id, changes: { ...(conversion?.op === 'update_event' ? conversion.changes : { properties: { ...event.properties, taskKind: courseTaskKind(event, snapshot.eventTypes)! } }), typeId: target.id } }
+  })
+}
+function setTaskCategoryActions(snapshot: Snapshot, tasks: Snapshot['events'], category: CourseTaskCategory, now: Date): Action[] {
+  z.enum(['作业', '实验', '考试']).parse(category)
   const actions: Action[] = []
   for (const event of tasks) {
     const kind = courseTaskKind(event, snapshot.eventTypes)!
@@ -186,8 +217,8 @@ export function listCourseTasks(snapshot: Snapshot, raw: z.input<typeof courseTa
   return sortedCourseTasks(snapshot.events, snapshot.eventTypes).map(e => {
     const kind = courseTaskKind(e, snapshot.eventTypes)!, when = courseTaskTime(e, kind)
     const entry = schedule.entries.get(e.id), status = entry?.skipped ? '已跳过' : courseTaskStatus(e, kind, now), completed = courseTaskCompleted(e, kind, now)
-    return { id: e.id, courseId: e.chainId, courseName: snapshot.eventChains.find(c => c.id === e.chainId)?.name || '', name: e.name, kind, when: when.toISOString(), startTime: e.startTime, endTime: e.endTime, status, completed, sequence: entry?.sequence ?? null, skipped: entry?.skipped ?? false, skipReason: entry?.reason ?? null, scheduleWarnings: schedule.warnings.get(e.chainId) || [], labGroupId: e.properties.labGroupId || null, completedAt: e.properties.completedAt || null, submissionUrl: e.properties.submissionUrl || '', submissionMethod: e.properties.submissionMethod || '', taskContent: e.properties.taskContent || '', notes: e.properties.notes || '' }
-  }).filter(e => (!query.courseId || e.courseId === query.courseId) && (!query.kind || e.kind === query.kind) &&
+    return { id: e.id, typeId: e.typeId, typeName: snapshot.eventTypes.find(t => t.id === e.typeId)?.name || '', courseId: e.chainId, courseName: snapshot.eventChains.find(c => c.id === e.chainId)?.name || '', name: e.name, kind, when: when.toISOString(), startTime: e.startTime, endTime: e.endTime, status, completed, sequence: entry?.sequence ?? null, skipped: entry?.skipped ?? false, skipReason: entry?.reason ?? null, scheduleWarnings: schedule.warnings.get(e.chainId) || [], labGroupId: e.properties.labGroupId || null, completedAt: e.properties.completedAt || null, submissionUrl: e.properties.submissionUrl || '', submissionMethod: e.properties.submissionMethod || '', taskContent: e.properties.taskContent || '', notes: e.properties.notes || '' }
+  }).filter(e => (!query.courseId || e.courseId === query.courseId) && (!query.typeId || e.typeId === query.typeId) && (!query.kind || e.kind === query.kind) &&
     (!query.from || +new Date(e.when) >= +new Date(query.from)) && (!query.to || +new Date(e.when) <= +new Date(query.to)) &&
     (query.status === 'all' || !e.skipped && (query.status === 'overdue' ? e.status === '已逾期' : e.completed === (query.status === 'completed'))))
 }

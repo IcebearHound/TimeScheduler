@@ -107,7 +107,10 @@ try {
   const addTask = async (page, name) => {
     if (await page.getByRole('dialog').count()) await page.getByRole('button', { name: '关闭工作台' }).click()
     await page.getByRole('button', { name: '课程作业 / 实验', exact: true }).click()
-    await page.getByLabel('课程', { exact: true }).fill('高等数学')
+    const courseOptions = await page.getByLabel('课程', { exact: true }).locator('option').evaluateAll(options => options.map(o => ({ id: o.value, name: o.textContent })))
+    const mathCourse = courseOptions.find(o => o.name === '高等数学')
+    await page.getByLabel('课程', { exact: true }).selectOption(mathCourse?.id || '__new_course__')
+    if (!mathCourse) await page.getByLabel('新课程名称', { exact: true }).fill('高等数学')
     await page.getByLabel('名称', { exact: true }).fill(name)
     await page.getByLabel('验收截止时间').fill('2026-10-18T23:59')
     await page.getByRole('button', { name: '保存任务', exact: true }).click()

@@ -233,7 +233,7 @@ const useUIStore = create<UIStore>()(
     draggedEventId: undefined,
     setDraggedEvent: (id) => set({ draggedEventId: id }),
 
-    semesterStartDate: new Date(2026, 2, 2),
+    semesterStartDate: new Date(2026, 7, 31),
     setSemesterStartDate: (date) => set({ semesterStartDate: date }),
 
     todoHighlightDays: 30,

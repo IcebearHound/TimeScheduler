@@ -7,7 +7,9 @@ import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js'
 import { ArchiveBridge } from '../server/bridge'
 import { registerCourseTaskTools } from '../server/courseTaskTools'
 import { Snapshot, projectActions } from '../src/integrations/contracts'
-import { createCourseTaskActions, createLabActions, listCourseTasks, setCourseTaskStatusActions, updateCourseTaskActions } from '../src/integrations/courseTasks'
+import { createCourseTaskActions, createLabActions, listCourseTasks, setCourseTaskStatusActions, updateCourseTaskActions, setCourseTypeCategoryActions, setCourseTaskRowTypeActions } from '../src/integrations/courseTasks'
+import { detectTaskNumbers } from '../src/utils/taskNumberDetection'
+import { createWeeklyTaskActions } from '../src/utils/weeklyTasks'
 import { courseTaskKind } from '../src/utils/courseTasks'
 import { assignmentActions, readAssignmentWorkbook } from '../src/utils/assignmentTable'
 
@@ -51,6 +53,80 @@ test('global chronology uses actual class start or deadline across courses, pins
   assert.equal(listCourseTasks(s, { kind: '实验课' }, new Date('2026-09-18T00:00:00Z'))[0].status, '已结束')
   assert.deepEqual(listCourseTasks(s, { from: rows[2].when, to: rows[2].when }, now).map(e => e.id), [rows[2].id])
   assert.throws(() => listCourseTasks(s, { from: '2027-01-01T00:00:00Z', to: stamp }), /起始时间/)
+})
+
+test('event-type rows query and change all matching chains without affecting other types', () => {
+  let s = fixture()
+  s.eventChains.push({ ...s.eventChains[0], id: 'second', name: '另一门课程' })
+  s.eventTypes.push({ ...s.eventTypes[1], id: 'other-lab' }) // Same name, different type ID.
+  s = project(s, createLabActions(s, lab))
+  s = project(s, createLabActions(s, { ...lab, courseId: 'second' }))
+  s = project(s, createCourseTaskActions(s, { courseId: 'course', name: '同链作业', kind: '作业', endTime: lab.reportDeadline }))
+  s.events.push({ ...s.events[0], id: 'other-type', typeId: 'other-lab', properties: { taskKind: '实验课', notes: '保留' } })
+  s.events.push({ ...s.events[0], id: 'lecture', typeId: 'course-type', properties: {} })
+  const matching = listCourseTasks(s, { typeId: 'lab-type' }, now)
+  assert.equal(matching.length, 6)
+  assert.equal(new Set(matching.map(e => e.courseId)).size, 2)
+  assert.ok(matching.every(e => e.typeId === 'lab-type' && e.typeName === '实验'))
+  assert.equal(listCourseTasks(s, { typeId: 'lab-type', courseId: 'second' }, now).length, 3)
+  const changed = project(s, setCourseTypeCategoryActions(s, 'lab-type', '作业', now))
+  for (const before of s.events) {
+    const after = changed.events.find(e => e.id === before.id)!
+    if (before.typeId !== 'lab-type') assert.deepEqual(after, before)
+    else {
+      assert.equal(after.properties.taskKind, '作业')
+      assert.equal(after.chainId, before.chainId)
+      assert.equal(after.startTime, before.startTime)
+      assert.equal(after.endTime, before.endTime)
+    }
+  }
+  assert.equal(listCourseTasks(changed, { typeId: 'lab-type' }, now).length, 0)
+  assert.equal(listCourseTasks(changed, { typeId: changed.events[0].typeId }, now).length, 7)
+  assert.deepEqual(setCourseTypeCategoryActions(s, 'course-type', '作业'), [], 'Normal lectures must be excluded')
+  assert.throws(() => setCourseTypeCategoryActions(s, 'missing', '作业'), /事件类型不存在/)
+  const rowChanged = project(s, setCourseTaskRowTypeActions(s, 'second', 'lab-type', 'other-lab', now))
+  for (const before of s.events) {
+    const after = rowChanged.events.find(e => e.id === before.id)!
+    if (before.chainId !== 'second' || before.typeId !== 'lab-type') assert.deepEqual(after, before)
+    else { assert.equal(after.typeId, 'other-lab'); assert.deepEqual(after.properties, before.properties) }
+  }
+})
+
+test('new recurring tasks anchor at zero with stable IDs and continue numbering across weeks', () => {
+  const initial = fixture()
+  const actions = createWeeklyTaskActions(initial, [
+    { courseId: 'course', name: '带编号实验', kind: '实验课', startTime: lab.startTime, endTime: lab.endTime, labGroupId: 'group', number: 0 },
+    { courseId: 'course', name: '带编号实验', kind: '实验报告', endTime: lab.reportDeadline, labGroupId: 'group' },
+  ], { count: 3, intervalWeeks: 1 })
+  const preview = project(initial, actions), applied = project(initial, actions)
+  assert.equal(preview.eventChains[0].taskRules?.labAnchor?.eventId, applied.eventChains[0].taskRules?.labAnchor?.eventId)
+  const rows = listCourseTasks(applied)
+  assert.deepEqual(rows.filter(e => e.kind === '实验课').map(e => e.sequence), [0, 1, 2])
+  assert.deepEqual(rows.filter(e => e.kind === '实验报告').map(e => e.sequence), [0, 1, 2])
+  assert.throws(() => project(applied, actions), /ID 已存在/)
+})
+
+test('table numbering is suggested conservatively and only applied after confirmation', () => {
+  const sheet = XLSX.utils.aoa_to_sheet([
+    ['课程', '名称', '截止日期', '编号'],
+    ['电路原理', '第零次作业', '2026-09-20', ''],
+    ['电路原理', '作业一', '2026-09-21', ''],
+    ['电路原理', '实验（二十三）', '2026-09-22', ''],
+    ['电路原理', '2026-09-23练习', '2026-09-23', ''],
+    ['电路原理', '作业2026-09-24', '2026-09-24', ''],
+    ['电路原理', '未命名练习', '2026-09-25', 0],
+    ['电路原理', '第3次作业', '2026-09-26', 5],
+  ])
+  const rows = readAssignmentWorkbook({ SheetNames: ['任务'], Sheets: { 任务: sheet } })
+  assert.deepEqual(detectTaskNumbers(rows).map(s => [s.row, s.number]), [[0, 0], [1, 1], [2, 23], [5, 0], [6, 5]])
+  const initial = fixture(), subset = rows.slice(0, 2)
+  assert.ok(assignmentActions(initial, subset).every(a => a.op !== 'set_course_task_rules'), 'Detection alone must not assign numbers')
+  const confirmed = subset.map((row, i) => ({ ...row, confirmedNumber: i }))
+  const actions = assignmentActions(initial, confirmed), applied = project(initial, actions)
+  assert.deepEqual(listCourseTasks(applied).map(t => t.sequence), [0, 1])
+  assert.deepEqual(listCourseTasks(project(applied, assignmentActions(applied, confirmed))).map(t => t.sequence), [0, 1], 'Reimport updates existing tasks without duplicating them')
+  assert.throws(() => assignmentActions(initial, [{ ...confirmed[0] }, { ...confirmed[1], confirmedNumber: 5 }]), /不一致/)
+  assert.equal(initial.events.length, 0)
 })
 
 test('legacy bare labs and legacy deadlines remain distinct; homework works with a course type', () => {
@@ -122,11 +198,13 @@ test('MCP course tools expose schemas and require fresh revision plus browser ac
     return JSON.parse((result.content as { text: string }[])[0].text)
   }
   try {
-    assert.equal((await client.listTools()).tools.length, 8)
+    assert.equal((await client.listTools()).tools.length, 9)
     assert.equal((await client.callTool({ name: 'list_course_tasks', arguments: {} })).isError, true)
     let snapshot = fixture()
     await bridge.heartbeat('browser', snapshot)
     const initial = await read()
+    assert.ok(initial.types.some((t: { id: string }) => t.id === 'lab-type'))
+    assert.equal((await client.callTool({ name: 'set_course_row_category', arguments: { revision: initial.revision, typeId: 'lab-type', courseId: 'course', category: '作业' } })).isError, true, 'Ambiguous mutation scopes must be rejected')
     const pending = client.callTool({ name: 'create_lab', arguments: { revision: initial.revision, lab } })
     let command: Awaited<ReturnType<typeof bridge.heartbeat>>['command'] = null
     for (let n = 0; n < 50 && !command; n++) { await new Promise(r => setTimeout(r, 5)); command = (await bridge.heartbeat('browser', snapshot)).command }

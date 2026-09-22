@@ -8,8 +8,9 @@ const holidays = new Map<string, string>()
 for (const [month, start, end, name] of [[1, 1, 3, '元旦'], [2, 15, 23, '春节'], [4, 4, 6, '清明节'], [5, 1, 5, '劳动节'], [6, 19, 21, '端午节'], [9, 25, 27, '中秋节'], [10, 1, 7, '国庆节']] as const) {
   for (let d = start; d <= end; d++) holidays.set(`2026-${String(month).padStart(2, '0')}-${String(d).padStart(2, '0')}`, name)
 }
+const calendarDayFormatter = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Shanghai', year: 'numeric', month: '2-digit', day: '2-digit' })
 export function taskCalendarDay(date: Date | string) {
-  const parts = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Shanghai', year: 'numeric', month: '2-digit', day: '2-digit' }).formatToParts(new Date(date))
+  const parts = calendarDayFormatter.formatToParts(new Date(date))
   return ['year', 'month', 'day'].map(type => parts.find(p => p.type === type)!.value).join('-')
 }
 type ScheduleEvent = { id: string; chainId: string; typeId: string; startTime: string | Date; endTime: string | Date; properties: Record<string, string | undefined> }
@@ -17,13 +18,21 @@ type ScheduleType = Pick<EventType, 'id' | 'category'>
 export interface TaskScheduleEntry { sequence?: number; skipped: boolean; reason?: string }
 export function buildCourseTaskSchedule(events: readonly ScheduleEvent[], types: readonly ScheduleType[], chains: readonly { id: string; taskRules?: CourseTaskRules }[]) {
   const entries = new Map<string, TaskScheduleEntry>(), warnings = new Map<string, string[]>()
+  const byChain = new Map<string, ScheduleEvent[]>()
+  const kinds = new Map(events.map(e => [e.id, courseTaskKind(e, types)]))
+  for (const event of events) {
+    if (!kinds.get(event.id)) continue
+    let bucket = byChain.get(event.chainId)
+    if (!bucket) { bucket = []; byChain.set(event.chainId, bucket) }
+    bucket.push(event)
+  }
   for (const chain of chains) {
     const rules = chain.taskRules || {}, rowWarnings: string[] = []
     for (const category of ['作业', '实验', '考试'] as const) {
       const groups = new Map<string, ScheduleEvent[]>()
-      for (const e of events) {
-        const kind = courseTaskKind(e, types)
-        if (e.chainId !== chain.id || !kind || courseTaskCategory(kind) !== category) continue
+      for (const e of byChain.get(chain.id) || []) {
+        const kind = kinds.get(e.id)!
+        if (courseTaskCategory(kind) !== category) continue
         const key = category === '实验' && e.properties.labGroupId ? `group:${e.properties.labGroupId}` : `event:${e.id}`
         groups.set(key, [...(groups.get(key) || []), e])
       }
@@ -37,13 +46,14 @@ export function buildCourseTaskSchedule(events: readonly ScheduleEvent[], types:
         return { items, when, representative, skipped: !!reason, reason }
       }).sort((a, b) => +a.when - +b.when || a.representative.id.localeCompare(b.representative.id))
       const anchor = category === '作业' ? rules.homeworkAnchor : category === '考试' ? rules.examAnchor : rules.labAnchor
-      const active = occurrences.filter(o => !o.skipped)
       const anchorOccurrence = anchor ? occurrences.findIndex(o => o.items.some(e => e.id === anchor.eventId)) : -1
       // A skipped anchor keeps its position: the next active occurrence takes its number.
       const anchorIndex = anchorOccurrence < 0 ? -1 : occurrences.slice(0, anchorOccurrence).filter(o => !o.skipped).length
       if (anchor && anchorIndex < 0) rowWarnings.push(`${category}编号基准不存在，请重新设置`)
+      let activeIndex = 0
       for (const occurrence of occurrences) {
-        const number = anchor && anchorIndex >= 0 && !occurrence.skipped ? anchor.number + active.indexOf(occurrence) - anchorIndex : undefined
+        const number = anchor && anchorIndex >= 0 && !occurrence.skipped ? anchor.number + activeIndex - anchorIndex : undefined
+        if (!occurrence.skipped) activeIndex++
         for (const e of occurrence.items) entries.set(e.id, { sequence: number !== undefined && number >= 0 ? number : undefined, skipped: occurrence.skipped, reason: occurrence.reason })
       }
     }

@@ -1,13 +1,15 @@
 import * as XLSX from 'xlsx'
-import { Action, Snapshot } from '../integrations/contracts'
-import { courseTaskKind, courseTaskKinds } from './courseTasks'
-import { createCourseTaskActions, updateCourseTaskActions } from '../integrations/courseTasks'
+import { Action, Snapshot, projectActions } from '../integrations/contracts'
+import { courseTaskCategory, courseTaskKind, courseTaskKinds } from './courseTasks'
+import { createCourseTaskActions, setCourseTaskNumberActions, updateCourseTaskActions } from '../integrations/courseTasks'
+import { buildCourseTaskSchedule } from './courseTaskSchedule'
 
-export interface AssignmentRow { course: string; name: string; deadline: string; kind: string; link: string; submission: string; content: string; notes: string; startTime?: string; labGroupId?: string }
-const aliases: Record<keyof AssignmentRow, string[]> = {
+export interface AssignmentRow { course: string; name: string; deadline: string; kind: string; link: string; submission: string; content: string; notes: string; startTime?: string; labGroupId?: string; numberText?: string; confirmedNumber?: number }
+const aliases: Record<Exclude<keyof AssignmentRow, 'confirmedNumber'>, string[]> = {
   course: ['课程', '课程名称', 'course'], name: ['名称', '作业名称', '实验名称', '任务', 'name'], deadline: ['截止日期', '截止时间', '验收截止日期', 'deadline'],
   kind: ['类别', '类型', 'kind'], link: ['提交链接', '链接', 'url', 'link'], submission: ['提交方式', 'submission'], content: ['内容', '作业内容', '实验内容', 'content'], notes: ['备注', 'notes'],
   startTime: ['开始时间', '上课时间', 'starttime'], labGroupId: ['实验关联编号', 'labgroupid'],
+  numberText: ['编号', '序号', '次数', '第几次', '实验次数', '作业次数', 'number', 'sequence'],
 }
 export function safeSubmissionLink(value: string): string {
   if (!value.trim()) return ''
@@ -51,6 +53,7 @@ export function localDateTime(date: Date) { return new Date(+date - date.getTime
 /** Reimporting the same course + task updates it, including link-only spreadsheets. */
 export function assignmentActions(snapshot: Snapshot, rows: AssignmentRow[]): Action[] {
   const actions: Action[] = [], chains = [...snapshot.eventChains], seen = new Set<string>()
+  const numbers: { id: string; number: number; name: string }[] = []
   for (const row of rows) {
     const normalizedKind = row.kind === '实验' ? '实验验收' : row.kind
     const key = `${row.course}\u0000${row.name}\u0000${normalizedKind}`
@@ -77,8 +80,31 @@ export function assignmentActions(snapshot: Snapshot, rows: AssignmentRow[]): Ac
     if (!courseTaskKinds.includes(kind as typeof courseTaskKinds[number])) throw new Error(`${row.name}：类别应为实验课、实验验收、实验报告、作业或考试`)
     const detail = Object.fromEntries(Object.entries({ submissionUrl: safeSubmissionLink(row.link), submissionMethod: row.submission, taskContent: row.content, notes: row.notes }).filter(([, value]) => value))
     const startTime = row.startTime ? new Date(row.startTime).toISOString() : undefined
+    let eventId = previous?.id
     if (previous) actions.push(...updateCourseTaskActions(snapshot, previous.id, { ...detail, endTime: deadline.toISOString(), ...(startTime ? { startTime } : {}) }))
-    else actions.push(...createCourseTaskActions({ ...snapshot, eventChains: chains }, { ...detail, courseId: chain.id, name: row.name, kind: kind as typeof courseTaskKinds[number], endTime: deadline.toISOString(), ...(startTime ? { startTime } : {}), ...(row.labGroupId ? { labGroupId: row.labGroupId } : {}) }))
+    else {
+      const created = createCourseTaskActions({ ...snapshot, eventChains: chains }, { ...detail, courseId: chain.id, name: row.name, kind: kind as typeof courseTaskKinds[number], endTime: deadline.toISOString(), ...(startTime ? { startTime } : {}), ...(row.labGroupId ? { labGroupId: row.labGroupId } : {}) })
+      if (row.confirmedNumber !== undefined && created[0].op === 'create_event') { eventId = crypto.randomUUID(); created[0].id = eventId }
+      actions.push(...created)
+    }
+    if (row.confirmedNumber !== undefined) numbers.push({ id: eventId!, number: row.confirmedNumber, name: row.name })
+  }
+  if (numbers.length) {
+    let planned = projectActions(snapshot, actions, () => crypto.randomUUID())
+    const anchored = new Set<string>()
+    for (const item of numbers) {
+      if (!Number.isInteger(item.number) || item.number < 0 || item.number > 100000) throw new Error(`${item.name}：编号须为 0–100000 的整数`)
+      const event = planned.events.find(e => e.id === item.id)!
+      const key = JSON.stringify([event.chainId, courseTaskCategory(courseTaskKind(event, planned.eventTypes)!)])
+      if (anchored.has(key)) continue
+      const changes = setCourseTaskNumberActions(planned, item.id, item.number)
+      actions.push(...changes); planned = projectActions(planned, changes, () => crypto.randomUUID()); anchored.add(key)
+    }
+    const schedule = buildCourseTaskSchedule(planned.events, planned.eventTypes, planned.eventChains)
+    for (const item of numbers) {
+      const entry = schedule.entries.get(item.id)
+      if (!entry?.skipped && entry?.sequence !== item.number) throw new Error(`${item.name}：编号 ${item.number} 与时间顺序或跳过规则不一致，请调整编号或取消勾选；同组实验请填写相同实验关联编号`)
+    }
   }
   return actions
 }
