@@ -102,6 +102,47 @@ export function setCourseTaskStatusActions(snapshot: Snapshot, eventId: string, 
   const event = requireTask(snapshot, eventId)
   return [{ op: 'update_event', id: eventId, changes: { properties: completionProperties(event, completed, now, ['实验课', '考试'].includes(courseTaskKind(event, snapshot.eventTypes)!)) } }]
 }
+export function setCourseTaskNumberActions(snapshot: Snapshot, eventId: string, number: number | null): Action[] {
+  const event = requireTask(snapshot, eventId), category = courseTaskCategory(courseTaskKind(event, snapshot.eventTypes)!)
+  const rules = { ...snapshot.eventChains.find(c => c.id === event.chainId)?.taskRules }
+  const key = category === '实验' ? 'labAnchor' : category === '作业' ? 'homeworkAnchor' : 'examAnchor'
+  if (number === null) delete rules[key]; else rules[key] = { eventId, number }
+  // A previous row conversion may have left an anchor in its old category.
+  for (const [name, expected] of [['labAnchor', '实验'], ['homeworkAnchor', '作业'], ['examAnchor', '考试']] as const) {
+    const anchor = rules[name], task = anchor && snapshot.events.find(e => e.id === anchor.eventId && e.chainId === event.chainId)
+    const kind = task && courseTaskKind(task, snapshot.eventTypes)
+    if (anchor && (!kind || courseTaskCategory(kind) !== expected)) delete rules[name]
+  }
+  return configureCourseTaskRulesActions(snapshot, event.chainId, rules)
+}
+/** Skip one occurrence (including its linked lab milestones), never every task on that date. */
+export function setCourseTaskSkipActions(snapshot: Snapshot, eventId: string, skipped: boolean): Action[] {
+  const event = requireTask(snapshot, eventId), lab = courseTaskCategory(courseTaskKind(event, snapshot.eventTypes)!) === '实验'
+  const group = snapshot.events.filter(e => e.id === eventId || lab && event.properties.labGroupId && e.chainId === event.chainId && e.properties.labGroupId === event.properties.labGroupId && courseTaskCategory(courseTaskKind(e, snapshot.eventTypes) || '作业') === '实验')
+  if (group.length > 200) throw new Error('同组实验超过 200 项，请分批修改')
+  return group.map(e => ({ op: 'update_event', id: e.id, changes: { properties: { ...e.properties, taskSkipOverride: skipped ? 'skip' : 'keep' } } }))
+}
+export function setCourseTaskKindActions(snapshot: Snapshot, eventId: string, nextKind: typeof courseTaskKinds[number], now = new Date()): Action[] {
+  z.enum(courseTaskKinds).parse(nextKind)
+  const event = requireTask(snapshot, eventId), kind = courseTaskKind(event, snapshot.eventTypes)!
+  if (kind === nextKind) return []
+  const category = courseTaskCategory(nextKind), types = validateSnapshot(snapshot).eventTypes
+  if (category === '实验' && event.properties.labGroupId && snapshot.events.some(e => e.id !== event.id && e.chainId === event.chainId && e.properties.labGroupId === event.properties.labGroupId && courseTaskKind(e, types) === nextKind)) throw new Error('同组实验已有该类型事项，请在详情中修改对应任务')
+  const actions: Action[] = [{ op: 'update_event', id: eventId, changes: {
+    typeId: types.find(t => t.category === (category === '作业' ? 'homework' : category === '考试' ? 'exam' : 'lab'))!.id,
+    properties: { ...event.properties, taskKind: nextKind, completed: String(courseTaskCompleted(event, kind, now)), ...(['实验课', '考试'].includes(nextKind) ? { classCompletionOverride: 'true' } : {}) },
+  } }]
+  if (courseTaskCategory(kind) !== category) {
+    const key = kind === '作业' ? 'homeworkAnchor' : kind === '考试' ? 'examAnchor' : 'labAnchor'
+    const rules = { ...snapshot.eventChains.find(c => c.id === event.chainId)?.taskRules }
+    if (rules[key]?.eventId === eventId) {
+      const sibling = snapshot.events.find(e => e.id !== eventId && e.chainId === event.chainId && event.properties.labGroupId && e.properties.labGroupId === event.properties.labGroupId && courseTaskCategory(courseTaskKind(e, types) || '作业') === courseTaskCategory(kind))
+      if (sibling) rules[key] = { ...rules[key]!, eventId: sibling.id }; else delete rules[key]
+      actions.push({ op: 'set_course_task_rules', id: event.chainId, rules })
+    }
+  }
+  return actions
+}
 /** Changes only the row's course tasks, preserving times, details and effective completion. */
 export function setCourseRowCategoryActions(snapshot: Snapshot, courseId: string, category: CourseTaskCategory, now = new Date()): Action[] {
   z.enum(['作业', '实验', '考试']).parse(category)

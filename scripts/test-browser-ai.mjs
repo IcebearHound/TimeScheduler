@@ -47,7 +47,7 @@ try {
     })
     const openAI = async () => {
       if (await page.getByLabel('发送给 Agent').isVisible()) return
-      await page.getByRole('button', { name: width < 500 ? '日程 Agent' : 'AI / MCP', exact: true }).click()
+      await page.getByRole('button', { name: width < 500 ? '日程 Agent' : 'Agent', exact: true }).click()
     }
     const count = () => page.evaluate(() => JSON.parse(localStorage.getItem('eventStore'))?.events.length || 0)
     await page.goto(`http://127.0.0.1:${server.address().port}/TimeScheduler/`)
@@ -55,7 +55,10 @@ try {
     assert.ok(!(await page.locator('body').innerText()).includes('npm'))
     for (const preset of ['deepseek', 'anthropic', 'gemini']) {
       await page.waitForFunction(() => document.querySelector('[aria-label="API 配置"]')?.disabled === false)
-      if (!await page.getByLabel('配置名称', { exact: true }).isVisible()) await page.getByRole('button', { name: 'API 配置', exact: true }).click()
+      if (!await page.getByLabel('配置名称', { exact: true }).isVisible()) {
+        await page.getByRole('button', { name: '选择模型与 API', exact: true }).click()
+        await page.getByRole('button', { name: '管理 API 配置', exact: true }).click()
+      }
       await page.getByRole('button', { name: '＋ 添加 API Key', exact: true }).click()
       await page.getByLabel('AI 服务商').selectOption(preset)
       await page.getByLabel('API Key', { exact: true }).fill('synthetic-api-key')
@@ -90,16 +93,19 @@ try {
       assert.equal(await count(), before)
     }
     responseMode = 'slow'
+    const userMessagesBeforeCancel = await page.evaluate(() => JSON.parse(localStorage.getItem('time-scheduler-agent-history-v1')).threads.flatMap(t => t.messages).filter(m => m.role === 'user').length)
     await page.getByRole('button', { name: '发送', exact: true }).click()
     await page.getByRole('button', { name: '取消请求', exact: true }).click()
     await page.getByText('请求已取消或超时', { exact: true }).waitFor()
+    assert.equal(await page.evaluate(() => JSON.parse(localStorage.getItem('time-scheduler-agent-history-v1')).threads.flatMap(t => t.messages).filter(m => m.role === 'user').length), userMessagesBeforeCancel + 1, 'Stopping generation must not submit the form again')
     responseMode = 'ok'
     await page.getByRole('button', { name: '发送', exact: true }).click()
     await page.getByText('即将应用 1 项操作', { exact: true }).waitFor()
     await page.getByRole('button', { name: '取消预览', exact: true }).click()
-    await page.getByRole('button', { name: 'API 配置', exact: true }).click()
+    await page.getByRole('button', { name: '选择模型与 API', exact: true }).click()
+    await page.getByRole('button', { name: '管理 API 配置', exact: true }).click()
     for (let remaining = 3; remaining > 0; remaining--) { await page.getByRole('button', { name: '删除', exact: true }).first().click(); await page.waitForFunction(n => [...document.querySelectorAll('button')].filter(b => b.textContent === '删除').length === n, remaining - 1) }
-    await page.getByRole('button', { name: 'API 配置', exact: true }).click()
+    await page.getByRole('button', { name: '关闭 API 配置', exact: true }).click()
     assert.equal(await page.getByRole('button', { name: '发送', exact: true }).isDisabled(), true)
     await page.screenshot({ path: resolve(output, `ai-${width}.png`) })
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true)

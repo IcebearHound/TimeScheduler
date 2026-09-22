@@ -1,7 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { projectActions, Snapshot, validateSnapshot } from '../src/integrations/contracts'
-import { createCourseTaskActions, listCourseTasks, configureCourseTaskRulesActions, setCourseRowCategoryActions, updateCourseTaskActions } from '../src/integrations/courseTasks'
+import { createCourseTaskActions, listCourseTasks, configureCourseTaskRulesActions, setCourseRowCategoryActions, setCourseTaskNumberActions, setCourseTaskKindActions, setCourseTaskSkipActions, updateCourseTaskActions } from '../src/integrations/courseTasks'
 import { createWeeklyTaskActions } from '../src/utils/weeklyTasks'
 import { buildCourseTaskSchedule } from '../src/utils/courseTaskSchedule'
 const stamp = '2026-09-01T00:00:00Z'
@@ -53,12 +53,61 @@ test('row category changes preserve completion and times and restore lab subtype
 })
 test('invalid anchors and recurrence bounds are rejected without mutation', () => {
   const s = apply(initial(), createWeeklyTaskActions(initial(), [lab], { count: 5, intervalWeeks: 1 }))
-  assert.throws(() => configureCourseTaskRulesActions(s, 'c', { labAnchor: { eventId: s.events[3].id, number: 1 } }), /至少/)
+  assert.throws(() => configureCourseTaskRulesActions(s, 'c', { labAnchor: { eventId: s.events[3].id, number: -1 } }))
   assert.throws(() => configureCourseTaskRulesActions(s, 'c', { labAnchor: { eventId: 'missing', number: 3 } }), /基准/)
   assert.throws(() => configureCourseTaskRulesActions(s, 'c', { extraSkipDates: ['2026-02-30'] }))
   assert.throws(() => createWeeklyTaskActions(s, [lab], { count: 53, intervalWeeks: 1 }))
   assert.equal(s.eventChains[0].taskRules, undefined)
   assert.equal(buildCourseTaskSchedule(s.events, s.eventTypes, s.eventChains).entries.size, 5)
+})
+
+test('zero anchors leave negative predecessors unnumbered and keep linked labs and independent homework numbering', () => {
+  let s = apply(initial(), createWeeklyTaskActions(initial(), [lab, { ...lab, kind: '实验报告', startTime: undefined }], { count: 5, intervalWeeks: 1 }))
+  s = apply(s, createCourseTaskActions(s, { courseId: 'c', name: '作业', kind: '作业', endTime: lab.endTime }))
+  s = apply(s, setCourseTaskNumberActions(s, s.events[4].id, 0))
+  s = apply(s, setCourseTaskNumberActions(s, s.events[10].id, 0))
+  const rows = listCourseTasks(s)
+  assert.deepEqual(rows.filter(e => e.kind === '实验课').map(e => e.sequence), [null, null, 0, 1, 2])
+  assert.deepEqual(rows.filter(e => e.kind === '实验报告').map(e => e.sequence), [null, null, 0, 1, 2])
+  assert.equal(rows.find(e => e.kind === '作业')!.sequence, 0)
+  assert.deepEqual(rows[0].scheduleWarnings, [])
+  s = apply(s, setCourseTaskNumberActions(s, s.events[4].id, null))
+  assert.equal(listCourseTasks(s).find(e => e.kind === '作业')!.sequence, 0)
+  assert.ok(listCourseTasks(s).filter(e => e.kind === '实验课').every(e => e.sequence === null))
+})
+
+test('quick skipping affects only one occurrence and a skipped anchor resumes without losing numbering', () => {
+  let s = apply(initial(), createWeeklyTaskActions(initial(), [lab, { ...lab, kind: '实验报告', startTime: undefined }], { count: 3, intervalWeeks: 1 }))
+  s = apply(s, createCourseTaskActions(s, { courseId: 'c', name: '同日作业', kind: '作业', endTime: lab.endTime }))
+  const id = s.events[0].id
+  s = apply(s, setCourseTaskNumberActions(s, id, 0))
+  s = apply(s, setCourseTaskSkipActions(s, id, true))
+  let rows = listCourseTasks(s)
+  assert.equal(rows.filter(e => e.skipped).length, 2)
+  assert.equal(rows.find(e => e.kind === '作业')!.skipped, false)
+  assert.deepEqual(rows.filter(e => e.kind === '实验课').map(e => e.sequence), [null, 0, 1])
+  assert.deepEqual(rows[0].scheduleWarnings, [])
+  s = apply(s, configureCourseTaskRulesActions(s, 'c', { ...s.eventChains[0].taskRules, extraSkipDates: ['2026-09-07'] }))
+  s = apply(s, setCourseTaskSkipActions(s, id, false))
+  rows = listCourseTasks(s)
+  assert.deepEqual(rows.filter(e => e.kind === '实验课').map(e => e.sequence), [0, 1, 2])
+  assert.equal(rows.find(e => e.kind === '作业')!.skipped, true)
+})
+
+test('quick type changes preserve times and completion, transfer lab anchors and reject duplicate milestones', () => {
+  let s = apply(initial(), createWeeklyTaskActions(initial(), [lab, { ...lab, kind: '实验报告', startTime: undefined }], { count: 1, intervalWeeks: 1 }))
+  const id = s.events[0].id, original = structuredClone(s.events[0])
+  s = apply(s, setCourseTaskNumberActions(s, id, 0))
+  assert.throws(() => setCourseTaskKindActions(s, id, '实验报告'), /已有/)
+  s = apply(s, setCourseTaskKindActions(s, id, '作业', new Date('2026-09-08T00:00:00Z')))
+  assert.equal(s.events[0].properties.completed, 'true')
+  assert.equal(s.events[0].startTime, original.startTime)
+  assert.equal(s.events[0].endTime, original.endTime)
+  assert.equal(s.eventChains[0].taskRules!.labAnchor!.eventId, s.events[1].id)
+  assert.equal(listCourseTasks(s).find(e => e.kind === '实验报告')!.sequence, 0)
+  s = apply(s, setCourseTaskKindActions(s, id, '考试'))
+  assert.equal(s.events[0].properties.classCompletionOverride, 'true')
+  assert.equal(s.events[1].properties.taskKind, '实验报告')
 })
 test('old archives gain homework type and type-only homework/exam events appear in the shared list', () => {
   let s = initial()

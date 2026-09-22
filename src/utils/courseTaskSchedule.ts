@@ -31,18 +31,20 @@ export function buildCourseTaskSchedule(events: readonly ScheduleEvent[], types:
         const representative = items.find(e => courseTaskKind(e, types) === '实验课') || [...items].sort((a, b) => +courseTaskTime(a, courseTaskKind(a, types)!) - +courseTaskTime(b, courseTaskKind(b, types)!))[0]
         const when = courseTaskTime(representative, courseTaskKind(representative, types)!), day = taskCalendarDay(when)
         const holiday = rules.skipHolidays && category !== '考试' ? holidays.get(day) : undefined
-        const reason = rules.keepDates?.includes(day) ? undefined : rules.extraSkipDates?.includes(day) ? '手动跳过' : holiday
+        const override = items.find(e => e.properties.taskSkipOverride === 'skip' || e.properties.taskSkipOverride === 'keep')?.properties.taskSkipOverride
+        const reason = override === 'keep' ? undefined : override === 'skip' ? '手动跳过' : rules.keepDates?.includes(day) ? undefined : rules.extraSkipDates?.includes(day) ? '手动跳过' : holiday
         if (rules.skipHolidays && !holidayYears.includes(+day.slice(0, 4))) rowWarnings.push(`${day.slice(0, 4)} 年节假日未内置，请手动填写跳过日期`)
         return { items, when, representative, skipped: !!reason, reason }
       }).sort((a, b) => +a.when - +b.when || a.representative.id.localeCompare(b.representative.id))
       const anchor = category === '作业' ? rules.homeworkAnchor : category === '考试' ? rules.examAnchor : rules.labAnchor
       const active = occurrences.filter(o => !o.skipped)
-      const anchorIndex = anchor ? active.findIndex(o => o.items.some(e => e.id === anchor.eventId)) : -1
-      if (anchor && anchorIndex < 0) rowWarnings.push(`${category}编号基准不存在或已跳过，请重新设置`)
-      if (anchor && anchorIndex >= anchor.number) rowWarnings.push(`${category}基准之前有 ${anchorIndex} 次任务，请将基准编号设为至少 ${anchorIndex + 1}`)
+      const anchorOccurrence = anchor ? occurrences.findIndex(o => o.items.some(e => e.id === anchor.eventId)) : -1
+      // A skipped anchor keeps its position: the next active occurrence takes its number.
+      const anchorIndex = anchorOccurrence < 0 ? -1 : occurrences.slice(0, anchorOccurrence).filter(o => !o.skipped).length
+      if (anchor && anchorIndex < 0) rowWarnings.push(`${category}编号基准不存在，请重新设置`)
       for (const occurrence of occurrences) {
         const number = anchor && anchorIndex >= 0 && !occurrence.skipped ? anchor.number + active.indexOf(occurrence) - anchorIndex : undefined
-        for (const e of occurrence.items) entries.set(e.id, { sequence: number && number > 0 ? number : undefined, skipped: occurrence.skipped, reason: occurrence.reason })
+        for (const e of occurrence.items) entries.set(e.id, { sequence: number !== undefined && number >= 0 ? number : undefined, skipped: occurrence.skipped, reason: occurrence.reason })
       }
     }
     if (rowWarnings.length) warnings.set(chain.id, [...new Set(rowWarnings)])

@@ -3,6 +3,24 @@ import assert from 'node:assert/strict'
 import { agentHistoryKey, createAgentHistoryStore } from '../src/stores/agentHistoryStore'
 const memory = () => { const data = new Map<string, string>(); return { getItem: (key: string) => data.get(key) ?? null, setItem: (key: string, value: string) => { data.set(key, value) } } }
 
+test('new conversation reuses the empty active thread without writing or resetting its selections', () => {
+  const storage = memory(); let writes = 0
+  const store = createAgentHistoryStore({ getItem: storage.getItem, setItem: (key, value) => { writes++; storage.setItem(key, value) } })
+  const first = store.getState().activeId
+  store.getState().updateThread(first, { profileId: 'saved-profile', model: 'saved-model', draft: '   ' })
+  const before = writes
+  for (let i = 0; i < 3; i++) assert.equal(store.getState().createThread(), first)
+  assert.equal(writes, before)
+  assert.equal(store.getState().threads.length, 1)
+  assert.equal(store.getState().threads[0].model, 'saved-model')
+  store.getState().updateThread(first, { draft: '尚未发送的安排' })
+  const second = store.getState().createThread()
+  assert.notEqual(second, first)
+  assert.equal(store.getState().threads.find(t => t.id === first)!.draft, '尚未发送的安排')
+  assert.equal(store.getState().createThread(), second)
+  assert.equal(createAgentHistoryStore(storage).getState().threads.length, 2)
+})
+
 test('history restores conversations, drafts and model selections with isolated message context', () => {
   const storage = memory(), store = createAgentHistoryStore(storage), first = store.getState().activeId
   store.getState().append(first, { role: 'user', text: '下周实验安排' })

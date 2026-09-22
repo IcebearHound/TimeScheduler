@@ -8,6 +8,7 @@ import AssignmentPanel from './AssignmentPanel'
 
 export default function RightSidebar() {
   const agentOpen = useUIStore(s => s.isAgentOpen)
+  const agentDock = useUIStore(s => s.agentDock)
   const tab = useUIStore(s => s.rightPanelTab)
   const expanded = useUIStore(s => s.rightPanelExpanded)
   const selected = useUIStore(s => s.selectedEventId)
@@ -40,14 +41,15 @@ export default function RightSidebar() {
         <button className="sidebar-tab" aria-pressed={agentOpen} onClick={() => open('ai')}><Sparkles size={16} aria-hidden="true" />Agent</button>
         {selected && <button className="sidebar-tab" aria-pressed={tab === 'details'} onClick={() => open('details')}><Info size={16} aria-hidden="true" />详情</button>}
       </nav>
-      <button ref={expandButton} className="sidebar-panel-action" aria-label={expanded ? '退出全屏' : '全屏放大'} onClick={() => setExpanded(!expanded)}>{expanded ? <Minimize2 size={17} /> : <Maximize2 size={17} />}</button>
-      {!isMobile && <button className="sidebar-panel-action" aria-label="收起详情面板" onClick={() => useUIStore.getState().setIsRightPanelOpen(false)}><PanelRightClose size={17} /></button>}
+      {!(agentOpen && agentDock === 'right' && !isMobile) && <button ref={expandButton} className="sidebar-panel-action" aria-label={expanded ? '退出全屏' : '全屏放大'} onClick={() => setExpanded(!expanded)}>{expanded ? <Minimize2 size={17} /> : <Maximize2 size={17} />}</button>}
+      {!isMobile && <button className="sidebar-panel-action" aria-label="收起详情面板" onClick={() => { useUIStore.getState().setIsRightPanelOpen(false); if (agentDock === 'right') useUIStore.getState().setIsAgentOpen(false) }}><PanelRightClose size={17} /></button>}
     </div>
-    <div className="min-h-0 flex-1 overflow-hidden">
+    <div className="min-h-0 flex-1 overflow-hidden" data-agent-dock-slot="right">
+      <div className="h-full" style={{ visibility: agentOpen && agentDock === 'right' && !isMobile ? 'hidden' : undefined }}>
       {tab === 'todo' && <div className="h-full overflow-y-auto"><TodoView embedded /></div>}
       {tab === 'assignments' && <div className="assignment-scroll h-full overflow-y-auto p-3"><AssignmentPanel /></div>}
       {tab === 'details' && <RightPanel />}
-
+      </div>
     </div>
   </div>
 }

@@ -9,7 +9,8 @@ import { applyActions, captureArchive } from '../integrations/archive'
 import { Action, snapshotRevision } from '../integrations/contracts'
 import { AssignmentRow, assignmentActions, localDateTime, readAssignmentWorkbook, safeSubmissionLink } from '../utils/assignmentTable'
 import { CourseTaskKind, courseTaskCategory, courseTaskCompleted, courseTaskKind, courseTaskKinds, courseTaskStatus, courseTaskTime, nextLabClass, sortedCourseTasks } from '../utils/courseTasks'
-import { CourseTaskInput, configureCourseTaskRulesActions, createCourseTaskActions, setCourseRowCategoryActions, setCourseTaskStatusActions, updateCourseTaskActions } from '../integrations/courseTasks'
+import { CourseTaskInput, configureCourseTaskRulesActions, createCourseTaskActions, setCourseRowCategoryActions, setCourseTaskStatusActions, setCourseTaskNumberActions, setCourseTaskKindActions, setCourseTaskSkipActions, updateCourseTaskActions } from '../integrations/courseTasks'
+import type { TaskQuickChange } from './CourseTaskQuickMenu'
 import CourseTaskIcon from './CourseTaskIcon'
 import CourseTaskRulesPanel from './CourseTaskRulesPanel'
 import { buildCourseTaskSchedule } from '../utils/courseTaskSchedule'
@@ -28,6 +29,16 @@ export default function AssignmentPanel() {
   const [skipHoliday, setSkipHoliday] = useState(false)
   const transaction = useRef(Promise.resolve())
   const enqueue = (job: () => Promise<void>) => { transaction.current = transaction.current.then(() => run(job)) }
+  const quickChange = (id: string, change: TaskQuickChange) => {
+    const result = transaction.current.then(async () => {
+      const current = captureArchive()
+      const actions = 'number' in change ? setCourseTaskNumberActions(current, id, change.number) : 'kind' in change ? setCourseTaskKindActions(current, id, change.kind) : 'skipped' in change ? setCourseTaskSkipActions(current, id, change.skipped) : setCourseTaskStatusActions(current, id, change.completed)
+      if (actions.length) await applyActions(actions, await snapshotRevision(current))
+      setMessage('快捷调整已保存，可撤销')
+    })
+    transaction.current = result.catch(() => {})
+    return result
+  }
   const scheduled = ['实验课', '考试'].includes(form.kind)
   const editor = useRef<HTMLFormElement>(null)
   const taskTypes = useMemo(() => [...types.values()], [types])
@@ -49,7 +60,7 @@ export default function AssignmentPanel() {
     <div className="relative flex items-center justify-between gap-2"><h3 className="text-sm font-semibold">作业 / 实验</h3><button type="button" aria-expanded={menu} className="workspace-button" onClick={() => setMenu(!menu)}>＋ 添加作业 / 实验</button>
       {menu && <><button aria-label="关闭添加任务菜单" data-dismiss-layer className="fixed inset-0 z-40" onClick={() => setMenu(false)} /><div role="menu" className="absolute right-0 top-full z-50 mt-1 rounded-xl border bg-white p-2 shadow-xl dark:border-slate-700 dark:bg-slate-800"><button role="menuitem" className="workspace-button block w-full" onClick={() => startNew()}>快捷添加</button><button role="menuitem" className="workspace-button mt-1 block w-full" onClick={() => { setMode('table'); setMenu(false) }}>从表格获取</button></div></>}
     </div>
-    <div onDoubleClick={e => { if (!(e.target as HTMLElement).closest('button, input, select, textarea, summary, a')) { window.getSelection()?.removeAllRanges(); useUIStore.getState().setRightPanelExpanded(!useUIStore.getState().rightPanelExpanded) } }}><p className="hidden text-[10px] text-slate-400 md:block">双击面板空白处可全屏放大；也可使用右上角放大按钮。</p><AssignmentTimeline courses={courses} tasks={tasks} types={taskTypes} onEdit={edit} onRules={setRulesCourseId} onToggle={event => enqueue(async () => { const current = captureArchive(), e = current.events.find(e => e.id === event.id); if (!e) throw new Error('该任务已删除'); await applyActions(setCourseTaskStatusActions(current, e.id, !courseTaskCompleted(e, courseTaskKind(e, current.eventTypes)!, new Date())), await snapshotRevision(current)); setMessage('已更新完成状态，可撤销') })} onCategoryChange={(id, category) => enqueue(async () => { const current = captureArchive(), actions = setCourseRowCategoryActions(current, id, category); if (actions.length) await applyActions(actions, await snapshotRevision(current)); setMessage(`该行已改为${category}，可撤销`) })} /></div>
+    <div onDoubleClick={e => { if (!(e.target as HTMLElement).closest('button, input, select, textarea, summary, a')) { window.getSelection()?.removeAllRanges(); useUIStore.getState().setRightPanelExpanded(!useUIStore.getState().rightPanelExpanded) } }}><p className="hidden text-[10px] text-slate-400 md:block">双击面板空白处可全屏放大；也可使用右上角放大按钮。</p><AssignmentTimeline courses={courses} tasks={tasks} types={taskTypes} onEdit={edit} onRules={setRulesCourseId} onQuickChange={quickChange} onToggle={event => enqueue(async () => { const current = captureArchive(), e = current.events.find(e => e.id === event.id); if (!e) throw new Error('该任务已删除'); await applyActions(setCourseTaskStatusActions(current, e.id, !courseTaskCompleted(e, courseTaskKind(e, current.eventTypes)!, new Date())), await snapshotRevision(current)); setMessage('已更新完成状态，可撤销') })} onCategoryChange={(id, category) => enqueue(async () => { const current = captureArchive(), actions = setCourseRowCategoryActions(current, id, category); if (actions.length) await applyActions(actions, await snapshotRevision(current)); setMessage(`该行已改为${category}，可撤销`) })} /></div>
     {rulesCourseId && chains.get(rulesCourseId) && <CourseTaskRulesPanel key={rulesCourseId} course={chains.get(rulesCourseId)!} tasks={tasks.filter(e => e.chainId === rulesCourseId)} types={taskTypes} onClose={() => setRulesCourseId(null)} onSave={async rules => { const current = captureArchive(); await applyActions(configureCourseTaskRulesActions(current, rulesCourseId, rules), await snapshotRevision(current)); setMessage('编号与跳过规则已保存，可撤销') }} />}
     <details className="space-y-3"><summary className="cursor-pointer text-sm font-medium">全部课程任务 · {tasks.length} 项（含历史与远期）</summary>
     <div className="space-y-3" aria-label="课程任务线路">

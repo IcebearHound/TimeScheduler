@@ -132,19 +132,28 @@ export default function TodoView({ embedded = false, onNavigate }: { embedded?: 
   const allTodoEvents = useMemo(() => {
     const seen = new Set<string>()
     const result: Event[] = []
-    for (const e of [...courseEvents, ...pinnedEvents, ...highlightEvents, ...upcomingEvents]) {
+    for (const e of [...pinnedEvents, ...highlightEvents, ...upcomingEvents]) {
       if (!seen.has(e.id)) { seen.add(e.id); result.push(e) }
     }
     return result
-  }, [courseEvents, pinnedEvents, highlightEvents, upcomingEvents])
+  }, [pinnedEvents, highlightEvents, upcomingEvents])
 
-  const completedCount = allTodoEvents.filter(isCompleted).length
+  // Count today and the next six local calendar days; deadlines use endTime.
+  const courseStatsEnd = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 7)
+  const weeklyCourseEvents = courseEvents.filter(event => {
+    const time = courseTaskTime(event, courseTaskKind(event, types)!)
+    return time >= todayStart && time < courseStatsEnd
+  })
+  const statistics = [
+    { key: 'events', name: '事件', scope: '当前清单', events: allTodoEvents },
+    { key: 'course', name: '课程任务', scope: '近 7 天（含今天）', events: weeklyCourseEvents },
+  ].map(item => ({ ...item, completed: item.events.filter(isCompleted).length }))
   const visible = (items: Event[]) => items.filter(e => filter === 'all' || isCompleted(e) === (filter === 'completed'))
   const sections = [
-    { key: 'course', name: '课程任务 · 按时间排序', icon: ListTodo, events: visible(courseEvents), empty: '添加实验课、验收、报告或作业后在此显示。', tone: 'text-indigo-500' },
     { key: 'pinned', name: '置顶', icon: Pin, events: visible(pinnedEvents), empty: '把常用事项置顶，随时查看。', tone: 'text-indigo-500' },
     { key: 'highlight', name: '重点事项', icon: Star, events: visible(highlightEvents), empty: '标记星号，让重要安排更醒目。', tone: 'text-amber-500' },
     { key: 'upcoming', name: '近期安排', icon: Clock, events: visible(upcomingEvents), empty: '当前范围内暂无安排。', tone: 'text-sky-500' },
+    { key: 'course', name: '课程任务 · 按时间排序', icon: ListTodo, events: visible(courseEvents), empty: '添加实验课、验收、报告、作业或考试后在此显示。', tone: 'text-indigo-500' },
   ]
 
   function handleReorder() {
@@ -303,7 +312,7 @@ export default function TodoView({ embedded = false, onNavigate }: { embedded?: 
                     className="w-full px-2 py-1 text-xs border border-slate-200 dark:border-slate-700 rounded-lg bg-white dark:bg-slate-700 text-slate-900 dark:text-white focus:outline-none focus:ring-1 focus:ring-accent-500/40" />
                 </div>
                 <div className="border-t border-slate-200/60 dark:border-slate-600/60 pt-3">
-                  <p className="mb-2 text-xs text-slate-500">课程任务始终显示全部日期，包含逾期事项；以下范围和来源仅影响其他安排。</p>
+                  <p className="mb-2 text-xs text-slate-500">课程任务列在清单底部，显示全部日期（含逾期），仅统计今天起 7 天内的任务；时间范围和来源设置仅影响其他事件。</p>
                   <p className="text-[10px] text-slate-400 mb-1.5">Todo 来源</p>
                   <div className="space-y-1.5 max-h-32 overflow-y-auto">
                     <div>
@@ -336,17 +345,21 @@ export default function TodoView({ embedded = false, onNavigate }: { embedded?: 
       </div>
 
       <div className="shrink-0 space-y-3 px-3 py-3">
-        <div className="rounded-xl border border-indigo-100 bg-white p-3 dark:border-slate-700 dark:bg-slate-800">
-          <div className="flex items-baseline justify-between gap-2"><p className="text-xs text-slate-500">清单进度</p><span className="text-xs text-slate-500">已完成 {completedCount} / {allTodoEvents.length}</span></div>
-          <p className="mt-1 text-sm text-slate-600 dark:text-slate-300"><strong className="mr-1 text-2xl font-semibold tabular-nums text-slate-900 dark:text-white">{allTodoEvents.length - completedCount}</strong> 项待完成</p>
-          <div role="progressbar" aria-label="清单完成进度" aria-valuemin={0} aria-valuemax={allTodoEvents.length || 1} aria-valuenow={completedCount} className="mt-3 h-1.5 overflow-hidden rounded-full bg-slate-100 dark:bg-slate-700"><div className="h-full rounded-full bg-indigo-500 transition-all" style={{ width: `${allTodoEvents.length ? completedCount / allTodoEvents.length * 100 : 0}%` }} /></div>
+        <div className="grid grid-cols-2 gap-2">
+          {statistics.map(item => <div key={item.key} data-todo-stats={item.key} className="min-w-0 rounded-xl border border-indigo-100 bg-white p-2.5 dark:border-slate-700 dark:bg-slate-800">
+            <p className="text-xs font-semibold text-slate-700 dark:text-slate-200">{item.name}</p>
+            <p className="mt-1 text-[10px] text-slate-500">{item.scope}</p>
+            <p className="mt-1 text-xs text-slate-500"><strong className="mr-1 text-2xl font-semibold tabular-nums text-slate-900 dark:text-white">{item.events.length - item.completed}</strong>待完成</p>
+            <p className="mt-1 text-[10px] tabular-nums text-slate-500">已完成 {item.completed} / 共 {item.events.length} 项</p>
+            <div role="progressbar" aria-label={`${item.name}完成进度`} aria-valuemin={0} aria-valuemax={item.events.length || 1} aria-valuenow={item.completed} className="mt-2 h-1.5 overflow-hidden rounded-full bg-slate-100 dark:bg-slate-700"><div className="h-full rounded-full bg-indigo-500 transition-all" style={{ width: `${item.events.length ? item.completed / item.events.length * 100 : 0}%` }} /></div>
+          </div>)}
         </div>
         <div role="group" aria-label="筛选待办状态" className="flex rounded-xl bg-slate-100 p-1 dark:bg-slate-800">
-          {([{ id: 'all', name: '全部', count: allTodoEvents.length }, { id: 'pending', name: '待完成', count: allTodoEvents.length - completedCount }, { id: 'completed', name: '已完成', count: completedCount }] as const).map(item => <button key={item.id} aria-pressed={filter === item.id} onClick={() => { setFilter(item.id); setShowAll(false) }} className={`min-h-10 min-w-0 flex-1 rounded-lg px-1 text-xs font-medium transition-colors ${filter === item.id ? 'bg-white text-indigo-600 shadow-sm dark:bg-slate-700 dark:text-indigo-300' : 'text-slate-500 hover:text-slate-800 dark:text-slate-400'}`}>{item.name} <span className="tabular-nums opacity-70">{item.count}</span></button>)}
+          {([{ id: 'all', name: '全部' }, { id: 'pending', name: '待完成' }, { id: 'completed', name: '已完成' }] as const).map(item => <button key={item.id} aria-pressed={filter === item.id} onClick={() => { setFilter(item.id); setShowAll(false) }} className={`min-h-10 min-w-0 flex-1 rounded-lg px-1 text-xs font-medium transition-colors ${filter === item.id ? 'bg-white text-indigo-600 shadow-sm dark:bg-slate-700 dark:text-indigo-300' : 'text-slate-500 hover:text-slate-800 dark:text-slate-400'}`}>{item.name}</button>)}
         </div>
       </div>
       <div className={`${embedded ? '' : 'min-h-0 flex-1 overflow-y-auto'} space-y-3 px-3 pb-4`}>
-        {allTodoEvents.length === 0 && <div className="rounded-xl border border-dashed border-slate-200 p-6 text-center dark:border-slate-700"><ListTodo size={28} className="mx-auto mb-3 text-indigo-400" /><p className="text-sm font-medium">清单里还没有安排</p><p className="mt-2 text-xs leading-relaxed text-slate-500">在日程中添加事件，或在设置里调整显示范围与来源。</p></div>}
+        {allTodoEvents.length === 0 && courseEvents.length === 0 && <div className="rounded-xl border border-dashed border-slate-200 p-6 text-center dark:border-slate-700"><ListTodo size={28} className="mx-auto mb-3 text-indigo-400" /><p className="text-sm font-medium">清单里还没有安排</p><p className="mt-2 text-xs leading-relaxed text-slate-500">在日程中添加事件，或在设置里调整显示范围与来源。</p></div>}
         {sections.map(section => <section key={section.key} data-todo-section={section.key}
           onDragOver={e => { e.preventDefault(); e.stopPropagation() }}
           onDrop={e => {
@@ -356,7 +369,7 @@ export default function TodoView({ embedded = false, onNavigate }: { embedded?: 
             handleDragEnd()
           }}>
           <button aria-expanded={!collapsedSections.has(section.key)} onClick={() => toggleSection(section.key)} className="flex min-h-11 w-full items-center gap-2 rounded-lg text-left text-xs font-semibold text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800">
-            <section.icon size={15} className={section.tone} /><span>{section.name}</span><span className="rounded-md bg-slate-100 px-1.5 py-0.5 tabular-nums text-slate-500 dark:bg-slate-800">{section.events.length}</span>
+            <section.icon size={15} className={section.tone} /><span>{section.name}</span><span className="shrink-0 rounded-md bg-slate-100 px-1.5 py-0.5 tabular-nums text-slate-500 dark:bg-slate-800">{section.key === 'course' ? `近 7 天 ${visible(weeklyCourseEvents).length}` : section.events.length}</span>
             {collapsedSections.has(section.key) ? <ChevronRight size={14} className="ml-auto" /> : <ChevronDown size={14} className="ml-auto" />}
           </button>
           {!collapsedSections.has(section.key) && <div className="space-y-2">
@@ -454,7 +467,7 @@ function TodoItem({ event, now, sequence, selected, onSelect, onDoubleClick, onT
             onDoubleClick={e => e.stopPropagation()} onClick={e => { e.stopPropagation(); const current = useEventStore.getState().events.get(event.id); if (current) useEventStore.getState().updateEvent(event.id, { properties: completionProperties(current, !completed, new Date(), kind === '实验课' || kind === '考试') }) }}
             className="todo-check shrink-0"><span className={`flex h-5 w-5 items-center justify-center rounded-full border-2 ${completed ? 'border-indigo-500 bg-indigo-500 text-white' : 'border-slate-300 dark:border-slate-500'}`}>{completed && <Check size={13} strokeWidth={3} />}</span></button>
           <div className="min-w-0 flex-1 py-1.5">
-            {kind && <span className="mb-1 flex items-center gap-1.5 text-xs text-indigo-600 dark:text-indigo-300"><CourseTaskIcon kind={kind} size={14} />{kind}{sequence ? ` · 第 ${sequence} 次` : ''}</span>}
+            {kind && <span className="mb-1 flex items-center gap-1.5 text-xs text-indigo-600 dark:text-indigo-300"><CourseTaskIcon kind={kind} size={12} />{kind}{sequence !== undefined ? ` · 第 ${sequence} 次` : ''}</span>}
             {kind === '考试' && !completed && +event.endTime >= +now && +event.startTime - +now <= 7 * 86400000 && <p className="mb-1 text-sm font-bold text-rose-600">{+event.startTime <= +now ? '考试正在进行' : `距考试 ${Math.ceil((+event.startTime - +now) / 3600000)} 小时`}</p>}
             <p className={`break-words text-sm font-medium leading-5 ${completed ? 'text-slate-400 line-through' : 'text-slate-800 dark:text-slate-100'}`}>{event.name}</p>
             <p className={`mt-1 flex flex-wrap items-center gap-x-1.5 gap-y-1 text-xs ${status === '已逾期' ? 'text-rose-600 dark:text-rose-400' : 'text-slate-500 dark:text-slate-400'}`}><Clock size={12} aria-hidden="true" /><span>{fmtDate(when)} {fmtTime(when)}{task ? ' 截止' : ` – ${fmtDate(new Date(event.endTime)) !== fmtDate(when) ? fmtDate(new Date(event.endTime)) + ' ' : ''}${fmtTime(new Date(event.endTime))}`}</span></p>

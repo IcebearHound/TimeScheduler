@@ -20,7 +20,7 @@ const batchRule = z.object({
   modifyUpdates: z.object({ name: text.optional(), description: text.optional(), startTimeOffset: z.number().optional(), endTimeOffset: z.number().optional() }).optional(),
 })
 const calendarDate = z.string().date()
-const taskAnchor = z.object({ eventId: id, number: z.number().int().min(1).max(100000) }).strict()
+const taskAnchor = z.object({ eventId: id, number: z.number().int().min(0).max(100000) }).strict()
 export const taskRulesSchema = z.object({ homeworkAnchor: taskAnchor.optional(), labAnchor: taskAnchor.optional(), examAnchor: taskAnchor.optional(), skipHolidays: z.boolean().optional(), extraSkipDates: z.array(calendarDate).max(1000).optional(), keepDates: z.array(calendarDate).max(1000).optional() }).strict()
 const chainFields = { name: z.string().trim().min(1).max(500), description: text.optional(), typeId: id, color: z.string().max(100), defaultReminders: z.array(reminder), batchRules: z.array(batchRule).optional(), includeInTodo: z.boolean().optional(), taskRules: taskRulesSchema.optional() }
 export const snapshotSchema = z.object({

@@ -8,6 +8,8 @@ import { EventConflict } from '../types/event'
 import { DialogConfig } from '../components/DialogModal'
 
 interface UIStore {
+  agentDock: 'left' | 'right' | 'floating'
+  setAgentDock: (dock: 'left' | 'right' | 'floating') => void
   isAgentOpen: boolean
   setIsAgentOpen: (open: boolean) => void
   isSettingsOpen: boolean
@@ -133,10 +135,13 @@ function applyTheme(mode: 'light' | 'dark' | 'system') {
 }
 
 const initialTheme = getSavedTheme()
+const savedAgentDock = () => { try { const value = localStorage.getItem('agent-dock'); if (value === 'left' || value === 'floating') return value } catch {} return 'right' }
 
 const useUIStore = create<UIStore>()(
   subscribeWithSelector((set) => ({
     isAgentOpen: false,
+    agentDock: savedAgentDock(),
+    setAgentDock: dock => { try { localStorage.setItem('agent-dock', dock) } catch {}; set({ agentDock: dock, rightPanelExpanded: false }) },
     setIsAgentOpen: open => set({ isAgentOpen: open }),
     isSettingsOpen: false,
     setIsSettingsOpen: (open) => set({ isSettingsOpen: open }),
@@ -174,7 +179,7 @@ const useUIStore = create<UIStore>()(
     isRightPanelOpen: true,
     setIsRightPanelOpen: (open) => set(s => ({ isRightPanelOpen: open, rightPanelExpanded: open && s.rightPanelExpanded })),
     rightPanelTab: 'todo',
-    openRightPanelTab: (tab) => set(tab === 'ai' ? { isAgentOpen: true } : { rightPanelTab: tab, isRightPanelOpen: true }),
+    openRightPanelTab: (tab) => set(s => tab === 'ai' ? { isAgentOpen: true, rightPanelExpanded: false } : { rightPanelTab: tab, isRightPanelOpen: true, ...(s.agentDock === 'right' ? { isAgentOpen: false } : {}) }),
     rightPanelExpanded: false,
     setRightPanelExpanded: (expanded) => set({ rightPanelExpanded: expanded }),
 

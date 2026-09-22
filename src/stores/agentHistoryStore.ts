@@ -39,7 +39,11 @@ export function createAgentHistoryStore(storage: Pick<Storage, 'getItem' | 'setI
       } catch { set({ storageError: '历史记录保存失败，可能存储空间已满。当前内容仍在页面中，请删除不需要的对话后重试。' }) }
     }
     return { threads, activeId, storageError,
-      createThread: () => { const thread = freshThread(); commit({ threads: [thread, ...get().threads], activeId: thread.id }); return thread.id },
+      createThread: () => {
+        const current = get().threads.find(t => t.id === get().activeId)
+        if (current && !current.messages.length && !current.draft.trim()) return current.id
+        const thread = freshThread(); commit({ threads: [thread, ...get().threads], activeId: thread.id }); return thread.id
+      },
       selectThread: id => { if (get().threads.some(t => t.id === id)) commit({ activeId: id }) },
       deleteThread: id => { let remaining = get().threads.filter(t => t.id !== id); if (!remaining.length) remaining = [freshThread()]; commit({ threads: remaining, activeId: get().activeId === id ? remaining[0].id : get().activeId }) },
       renameThread: (id, title) => { if (title.trim()) commit({ threads: get().threads.map(t => t.id === id ? { ...t, title: title.trim().slice(0, 80) } : t) }) },
