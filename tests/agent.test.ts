@@ -1,3 +1,4 @@
+import { extractAgentChoices } from '../src/integrations/agentChoices'
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { agentSystemPrompt, parseAgentReply, proposeAgent } from '../src/integrations/ai'
@@ -72,4 +73,18 @@ test('relay forwards validated attachments and rejects invalid attachment types 
   assert.equal((await send([{ kind: 'text', name: '任务.txt', text: '周一晚实验课' }])).status, 200)
   assert.equal((await send([{ kind: 'image', name: '图片.svg', mimeType: 'image/svg+xml', data: 'aGVsbG8=' }])).status, 400)
   assert.equal(calls, 1)
+})
+
+
+test('structured clarification choices survive validation and cannot accompany an edit', () => {
+  const choices = ['事件链1中的事件12', '计算机图形学', '其他课程']
+  assert.deepEqual(parseAgentReply({ intent: 'clarify', message: '请选择课程', question: '你指哪一项？', choices }, snapshot).choices, choices)
+  assert.throws(() => parseAgentReply({ intent: 'edit', message: '修改', choices, actions: [action] }, snapshot))
+})
+
+
+test('numbered clarification text becomes options without converting ordinary lists', () => {
+  assert.deepEqual(extractAgentChoices('你指的是哪一项？①事件12；②计算机图形学；③其他。'), { text: '你指的是哪一项？', choices: ['事件12', '计算机图形学', '其他'] })
+  assert.deepEqual(extractAgentChoices('请选择：\n1. 课程A\n2. 课程B').choices, ['课程A', '课程B'])
+  assert.equal(extractAgentChoices('课程列表\n1. 课程A\n2. 课程B').choices.length, 0)
 })

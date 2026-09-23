@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { agentChoicesSchema } from './agentChoices'
 import { actionsSchema, Snapshot } from './contracts'
 import { AgentAttachment, attachmentsSchema } from './attachments'
 import { AgentWebPage, generatedFileSchema, webPagesSchema } from './agentArtifacts'
@@ -45,12 +46,13 @@ export const agentReplySchema = z.object({
   intent: z.enum(['query', 'clarify', 'edit', 'import']),
   message: z.string().min(1).max(12000),
   question: z.string().max(2000).optional(),
+  choices: agentChoicesSchema.optional(),
   eventIds: z.array(z.string()).max(200).default([]),
   actions: z.array(actionsSchema.element).max(200).default([]),
   files: z.array(generatedFileSchema).max(3).optional(),
 }).superRefine((reply, ctx) => {
   if (reply.intent !== 'edit' && reply.actions.length) ctx.addIssue({ code: 'custom', message: '查询或追问不能包含修改操作' })
-  if (reply.intent === 'edit' && (!reply.actions.length || reply.question)) ctx.addIssue({ code: 'custom', message: '请先澄清修改要求，再生成操作' })
+  if (reply.intent === 'edit' && (!reply.actions.length || reply.question || reply.choices?.length)) ctx.addIssue({ code: 'custom', message: '请先澄清修改要求，再生成操作' })
 })
 export type AgentReply = z.infer<typeof agentReplySchema>
 export function parseAgentReply(input: unknown, snapshot: Snapshot): AgentReply {
@@ -60,6 +62,7 @@ export function parseAgentReply(input: unknown, snapshot: Snapshot): AgentReply 
 }
 export function agentSystemPrompt() {
   return `你是 TimeScheduler 的日程 Agent。当前 UTC 时间：${new Date().toISOString()}。用户消息包含当地时间及时区，按该时区理解今天、明天等日期。仅输出 JSON：{"intent":"query|clarify|edit|import","message":"中文回复","question":"可选追问","eventIds":[],"actions":[]}。
+选项交互：需要用户选择时，在顶层 choices 返回字符串数组（最多20项），question 只写问题，message 只写背景，不要在正文重复编号选项。每项写清可识别的课程或事件，界面会渲染单选项并始终允许自行填写和补充说明。不要要求用户输入选项编号。无选项时省略 choices。
 查询：只读当前 archive 中的事件与事件链。请求模糊时先按合理范围给出结果，在 message 说明实际范围，eventIds 返回匹配事件，再用 question 询问是否缩小范围。没有结果如实告知。绝不以查询为由创建或修改事件。
 创建、编辑或删除：结合 conversation 中之前的指令与回答理解本次任务。先检索 archive，再判断是否确有歧义。信息充分时直接 intent=edit，生成可供用户确认的操作预览，在 message 简述匹配条件、实际数量及采用的默认处理；不要在预览前重复确认已明确的信息，确认前不能声称已完成。
 匹配范围：课程名称（可匹配明确的简称，如“机器学习”对应“机器学习（双语）”）、星期、时段、日期范围等条件必须同时满足。不能因同一课程还有其他星期或时段的安排，就要求用户重选。按用户当地时区换算事件开始时间后判断星期和时段，不能按 UTC 钟面或错误的文字标签判断：默认上午为 06:00–12:00（不含12:00），下午为12:00–18:00（不含18:00），晚上为18:00–24:00；10:10–12:00 属于上午，16:10–18:00 属于下午，19:00–20:50 属于晚上。用户明确给出的时间范围优先。

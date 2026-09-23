@@ -71,3 +71,20 @@ test('task rules and row conversion persist and undo as separate whole transacti
   useEventStore.getState().undo(); assert.deepEqual(captureArchive(), before)
   useEventStore.getState().redo(); assert.deepEqual(captureArchive(), numbered)
 })
+
+
+test('deletion tolerates unrelated archive changes but rejects changed targets', async () => {
+  const event = { id: 'delete-target', name: '待删除', startTime: date, endTime: '2026-09-15T01:00:00.000Z', chainId: '', typeId: 'course', properties: {}, reminders: [], isHighlight: false, priority: 0, createdAt: date, updatedAt: date }
+  installArchive({ ...initial, events: [event] })
+  const preview = captureArchive(), revision = await snapshotRevision(preview)
+  installArchive({ ...preview, semesterStartDate: '2027-01-01T00:00:00.000Z' })
+  await applyActions([{ op: 'delete_event', id: event.id }], revision, preview)
+  assert.equal(captureArchive().events.length, 0)
+  assert.equal(JSON.parse(storage.get('eventStore')!).events.length, 0)
+  assert.equal(captureArchive().semesterStartDate, '2027-01-01T00:00:00.000Z')
+  useEventStore.getState().undo()
+  assert.equal(captureArchive().events[0].id, event.id)
+  installArchive({ ...preview, events: [{ ...event, name: '已改名' }] })
+  await assert.rejects(() => applyActions([{ op: 'delete_event', id: event.id }], revision, preview), /尚未应用/)
+  assert.equal(captureArchive().events[0].name, '已改名')
+})

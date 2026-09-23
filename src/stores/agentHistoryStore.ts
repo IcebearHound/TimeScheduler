@@ -1,8 +1,9 @@
 import { create } from 'zustand'
 import { z } from 'zod'
+import { agentChoicesSchema } from '../integrations/agentChoices'
 import { generatedFileSchema } from '../integrations/agentArtifacts'
 
-const messageSchema = z.object({ role: z.enum(['user', 'assistant']), text: z.string(), ids: z.array(z.string()).optional(), files: z.array(z.string()).optional(), generatedFiles: z.array(generatedFileSchema).optional() })
+const messageSchema = z.object({ role: z.enum(['user', 'assistant']), text: z.string(), choices: agentChoicesSchema.optional(), ids: z.array(z.string()).optional(), files: z.array(z.string()).optional(), generatedFiles: z.array(generatedFileSchema).optional() })
 const threadSchema = z.object({ id: z.string(), title: z.string(), createdAt: z.string(), updatedAt: z.string(), messages: z.array(messageSchema), draft: z.string(), profileId: z.string().optional(), model: z.string().optional() })
 const historySchema = z.object({ version: z.literal(1), activeId: z.string(), threads: z.array(threadSchema) })
 export type AgentMessage = z.infer<typeof messageSchema>

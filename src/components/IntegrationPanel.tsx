@@ -2,11 +2,14 @@ import { aiModelSuggestions } from '../integrations/aiPresets'
 import { useEffect, useRef, useState } from 'react'
 import { create } from 'zustand'
 import useAgentHistory, { AgentMessage } from '../stores/agentHistoryStore'
+import AgentChoices from './AgentChoices'
+import { extractAgentChoices } from '../integrations/agentChoices'
 import AISettings from './AISettings'
 import AgentHistoryPanel from './AgentHistoryPanel'
 import useDismissiblePanel from '../utils/useDismissiblePanel'
 import { applyActions, captureArchive } from '../integrations/archive'
 import { AgentReply } from '../integrations/ai'
+import { Snapshot } from '../integrations/contracts'
 import { AIProfiles, loadAIProfiles, requestBrowserAgent, saveAIProfiles } from '../integrations/browserAI'
 import useUIStore from '../stores/uiStore'
 import useLayoutStore from '../stores/layoutStore'
@@ -18,7 +21,7 @@ import { AgentWebPage } from '../integrations/agentArtifacts'
 import { messageLinks, readAgentWebPage, publicWebUrl } from '../utils/agentWeb'
 import { downloadAgentFile } from '../utils/agentDownloads'
 
-const useConversation = create<{ models: Record<string, { defaultModel: string; chosenModel: string }>; attachments: AgentAttachment[]; webPages: AgentWebPage[]; proposal: (AgentReply & { revision: string }) | null }>(() => ({ models: {}, attachments: [], webPages: [], proposal: null }))
+const useConversation = create<{ models: Record<string, { defaultModel: string; chosenModel: string }>; attachments: AgentAttachment[]; webPages: AgentWebPage[]; proposal: (AgentReply & { revision: string; snapshot: Snapshot }) | null }>(() => ({ models: {}, attachments: [], webPages: [], proposal: null }))
 export default function IntegrationPanel() {
   const { proposal, attachments, webPages } = useConversation()
   const history = useAgentHistory()
@@ -80,11 +83,12 @@ export default function IntegrationPanel() {
     } catch (e) { if (alive.current) setError(e instanceof Error ? e.message : '文件读取失败') }
     finally { if (alive.current) setReading(false) }
   }
-  const send = async () => {
+  const send = async (answer?: string) => {
+    const prompt = answer ?? instruction
     const profile = configs.profiles.find(p => p.id === configs.activeId) || configs.profiles[0]
     if (!profile) { configure(); return }
-    if ((!instruction.trim() && !attachments.length) || busy || reading || loading || !model.trim()) return
-    const text = instruction.trim() || '请先概述附件内容，再询问我希望如何处理。', history = messages.slice(-12).map(({ generatedFiles, ...m }) => ({ ...m, ...(generatedFiles?.length ? { generatedFileNames: generatedFiles.map(f => f.name) } : {}) }))
+    if ((!prompt.trim() && !attachments.length) || busy || reading || loading || !model.trim()) return
+    const text = prompt.trim() || '请先概述附件内容，再询问我希望如何处理。', history = messages.slice(-12).map(({ generatedFiles, ...m }) => ({ ...m, ...(generatedFiles?.length ? { generatedFileNames: generatedFiles.map(f => f.name) } : {}) }))
     const links = messageLinks(text)
     if (links.length > 3) { setError('每次最多读取 3 个网页链接，请分批发送'); return }
     setInstruction(''); setBusy(true); setError(''); useConversation.setState({ proposal: null }); append({ role: 'user', text, files: attachments.map(a => a.name) })
@@ -99,10 +103,23 @@ export default function IntegrationPanel() {
         useConversation.setState({ webPages: pages })
       }
       setRequestStage('Agent 正在处理…')
-      const result = await requestBrowserAgent({ ...profile, model }, JSON.stringify({ timezone: Intl.DateTimeFormat().resolvedOptions().timeZone, localTime: new Date().toString(), conversation: history, instruction: text }), captureArchive(), request.signal, attachments, pages)
+      const snapshot = captureArchive()
+      const result = await requestBrowserAgent({ ...profile, model }, JSON.stringify({ timezone: Intl.DateTimeFormat().resolvedOptions().timeZone, localTime: new Date().toString(), conversation: history, instruction: text }), snapshot, request.signal, attachments, pages)
       if (!alive.current || request.signal.aborted) return
-      append({ role: 'assistant', text: result.message + (result.question ? '\n\n' + result.question : ''), ids: result.eventIds, generatedFiles: result.files })
-      if (result.intent === 'edit') useConversation.setState({ proposal: result })
+      const reply = extractAgentChoices(result.message + (result.question ? '\n\n' + result.question : ''), result.choices)
+      append({ role: 'assistant', text: reply.text, choices: reply.choices, ids: result.eventIds, generatedFiles: result.files })
+      if (result.intent === 'edit') {
+        useConversation.setState({ proposal: { ...result, snapshot } })
+        const archive = captureArchive()
+        const action = result.actions.find(a => a.op !== 'create_chain')
+        const target = action?.op === 'update_event' || action?.op === 'delete_event'
+          ? archive.events.find(e => e.id === action.id)
+          : action?.op === 'set_course_task_rules' ? archive.events.find(e => e.chainId === action.id) : undefined
+        // Keep the confirmation panel open, including on mobile.
+        if (target) navigateToEvent(target.id)
+        else if (action?.op === 'create_event') useUIStore.getState().setCurrentDate(new Date(action.event.startTime))
+        else if (result.eventIds[0]) navigateToEvent(result.eventIds[0])
+      }
       if (result.intent === 'query' && result.eventIds.length) jump(result.eventIds[0])
       if (result.intent === 'import') useUIStore.getState().setIsImportDialogOpen(true)
     } catch (e) { if (alive.current) { setError(e instanceof Error ? e.message : '请求失败'); setInstruction(text) } }
@@ -118,11 +135,11 @@ export default function IntegrationPanel() {
     {historyOpen && <AgentHistoryPanel threads={history.threads} activeId={active.id} onSelect={switchThread} onRename={history.renameThread} onClose={() => setHistoryOpen(false)} onDelete={id => { history.deleteThread(id); if (id === active.id) useConversation.setState({ attachments: [], webPages: [], proposal: null }) }} />}
     <div className={(historyOpen ? "hidden " : "") + "min-h-0 flex-1 space-y-3 overflow-y-auto p-3"} aria-label="Agent 对话" aria-live="polite">
       {!messages.length && <div className="space-y-3 rounded-xl bg-slate-50 p-3 text-sm dark:bg-slate-800"><p>查询日程、安排事件，或导入课程表。</p><p className="text-xs text-slate-500">查询先给结果再追问；创建或编辑缺少关键信息时会先询问。修改经预览确认后写入，可撤销。</p></div>}
-      {messages.map((m, i) => <div key={i} className={`rounded-xl p-3 text-sm ${m.role === 'user' ? 'ml-5 bg-indigo-50 dark:bg-indigo-950' : 'mr-2 bg-slate-50 dark:bg-slate-800'}`}><p className="mb-1 text-xs text-slate-400">{m.role === 'user' ? '你' : 'Agent'}</p><p className="whitespace-pre-wrap break-words">{m.text}</p>{m.files?.map((name, index) => <span key={index} className="mt-2 flex items-center gap-1 text-xs text-slate-500"><FileText size={13} className="shrink-0" /><span className="break-all">{name}</span></span>)}{m.generatedFiles?.map((file, index) => <button key={index} className="workspace-button mt-2 flex w-full items-center gap-2 text-left" onClick={() => { try { downloadAgentFile(file) } catch { setError('文件生成失败，请让 Agent 重新生成') } }}><Download size={16} className="shrink-0" /><span className="min-w-0 break-all">下载 {file.name}</span></button>)}{m.ids?.map(id => <button key={id} className="workspace-button mt-2 w-full text-left" onClick={() => jump(id)}>定位：{captureArchive().events.find(e => e.id === id)?.name || '事件已删除'}</button>)}</div>)}
+      {messages.map((m, i) => <div key={i} className={`rounded-xl p-3 text-sm ${m.role === 'user' ? 'ml-5 bg-indigo-50 dark:bg-indigo-950' : 'mr-2 bg-slate-50 dark:bg-slate-800'}`}><p className="mb-1 text-xs text-slate-400">{m.role === 'user' ? '你' : 'Agent'}</p><p className="whitespace-pre-wrap break-words">{m.text}</p>{m.role === 'assistant' && !!m.choices?.length && <AgentChoices key={`${active.id}-${i}`} choices={m.choices} disabled={busy || reading || loading || i !== messages.length - 1} onReply={text => void send(text)} />}{m.files?.map((name, index) => <span key={index} className="mt-2 flex items-center gap-1 text-xs text-slate-500"><FileText size={13} className="shrink-0" /><span className="break-all">{name}</span></span>)}{m.generatedFiles?.map((file, index) => <button key={index} className="workspace-button mt-2 flex w-full items-center gap-2 text-left" onClick={() => { try { downloadAgentFile(file) } catch { setError('文件生成失败，请让 Agent 重新生成') } }}><Download size={16} className="shrink-0" /><span className="min-w-0 break-all">下载 {file.name}</span></button>)}{m.ids?.map(id => <button key={id} className="workspace-button mt-2 w-full text-left" onClick={() => jump(id)}>定位：{captureArchive().events.find(e => e.id === id)?.name || '事件已删除'}</button>)}</div>)}
       {proposal && <div className="space-y-2 rounded-xl border p-3 dark:border-slate-700"><h4 className="text-sm font-semibold">即将应用 {proposal.actions.length} 项操作</h4>{proposal.actions.map((a, i) => <details key={i} className="text-xs"><summary className="cursor-pointer py-1">{a.op === 'create_event' ? `新增：${a.event.name}` : a.op === 'create_chain' ? `新建事件链：${a.chain.name}` : a.op === 'set_course_task_rules' ? `编号与跳过规则：${captureArchive().eventChains.find(c => c.id === a.id)?.name || a.id}` : `${a.op === 'delete_event' ? '删除' : '修改'}：${captureArchive().events.find(e => e.id === a.id)?.name || a.id}`}</summary><pre className="whitespace-pre-wrap break-all">{JSON.stringify(a, null, 2)}</pre></details>)}<div className="flex flex-wrap gap-2"><button disabled={busy} className="workspace-button primary" onClick={async () => {
         setBusy(true); setError('')
         try {
-          const before = captureArchive(), result = await applyActions(proposal.actions, proposal.revision)
+          const before = captureArchive(), result = await applyActions(proposal.actions, proposal.revision, proposal.snapshot)
           const target = result.snapshot.events.find(e => !before.events.some(v => v.id === e.id)) || result.snapshot.events.find(e => proposal.actions.some(a => a.op === 'update_event' && a.id === e.id))
           useConversation.setState({ proposal: null }); append({ role: 'assistant', text: '已应用到日程，可整体撤销。', ids: target ? [target.id] : [] }); if (target) jump(target.id)
         } catch (e) { setError(e instanceof Error ? e.message : '应用失败') } finally { setBusy(false) }

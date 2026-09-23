@@ -29,9 +29,10 @@ try {
       payloads.push({ ...input, model: body.model, authorization: route.request().headers().authorization })
       const action = { op: 'create_event', event: { name: 'Agent 实验', startTime: '2026-10-15T10:00:00+08:00', endTime: '2026-10-15T11:00:00+08:00', chainId: '', typeId: input.archive.eventTypes[0].id, reminders: [], properties: { taskKind: '实验' }, isHighlight: false, priority: 0 } }
       const result = mode === 'edit' ? { intent: 'edit', message: '请确认这项实验安排。', actions: [action] }
+        : mode === 'delete' ? { intent: 'edit', message: '请确认删除实验。', actions: [{ op: 'delete_event', id: input.archive.events.find(e => e.name === 'Agent 实验').id }] }
         : mode === 'query' ? { intent: 'query', message: '找到这项实验，已定位。', question: '需要查看其他课程吗？', eventIds: [input.archive.events.find(e => e.name === 'Agent 实验').id] }
         : mode === 'import' ? { intent: 'import', message: '打开课程表导入。' }
-        : { intent: 'clarify', message: '实验安排在哪一天、几点？' }
+        : { intent: 'clarify', message: '实验安排在哪一天、几点？', choices: ['10月15日上午10到11点', '其他时间'] }
       await route.fulfill({ json: { choices: [{ message: { content: JSON.stringify(result) } }] } })
     })
     await page.goto(`http://127.0.0.1:${server.address().port}/TimeScheduler/`)
@@ -82,15 +83,18 @@ try {
     assert.equal(payloads.at(-1).model, 'deepseek-reasoner')
     assert.ok(payloads.at(-1).authorization.includes('synthetic-key-one'))
     mode = 'edit'
-    await page.getByLabel('发送给 Agent').fill('10月15日上午10到11点')
-    await page.getByRole('button', { name: '发送', exact: true }).click()
+    await page.getByRole('radio', { name: '10月15日上午10到11点', exact: true }).check()
+    await page.getByLabel('补充说明', { exact: true }).fill('按这个时间安排')
+    await page.getByRole('button', { name: '提交回答', exact: true }).click()
     await page.getByText('即将应用 1 项操作', { exact: true }).waitFor()
     assert.ok(JSON.parse(payloads.at(-1).instruction).conversation.some(m => m.text === '添加实验'))
     assert.equal(await count(), before)
+    assert.ok(JSON.parse(payloads.at(-1).instruction).instruction.includes('补充：按这个时间安排'))
+    assert.ok((await page.locator('body').innerText()).includes(mobile ? '10月15日' : '10/15'), 'Creation preview navigates to the planned date')
     await page.getByRole('button', { name: '确认应用到存档', exact: true }).click()
     await page.waitForFunction(n => JSON.parse(localStorage.getItem('eventStore')).events.length === n + 1, before)
     await openAgent()
-    await page.getByText('已应用到日程，可整体撤销。', { exact: true }).waitFor()
+    await page.getByText('已应用到日程，可整体撤销。', { exact: true }).last().waitFor()
     await page.waitForFunction(() => document.querySelector('[aria-label="当前模型"]').value === 'deepseek-reasoner')
     mode = 'query'
     await page.getByLabel('发送给 Agent').fill('查实验')
@@ -99,6 +103,14 @@ try {
     if (mobile) { await page.locator('[data-agent-window]').waitFor({ state: 'hidden' }); await openAgent() }
     await page.getByText('找到这项实验，已定位。', { exact: false }).waitFor()
     assert.equal(await count(), before + 1)
+    mode = 'delete'
+    await page.getByLabel('发送给 Agent').fill('删除实验')
+    await page.getByRole('button', { name: '发送', exact: true }).click()
+    await page.getByText('即将应用 1 项操作', { exact: true }).waitFor()
+    assert.ok(await page.getByLabel('发送给 Agent').isVisible(), 'Preview must keep Agent open')
+    await page.getByRole('button', { name: '确认应用到存档', exact: true }).click()
+    await page.waitForFunction(n => JSON.parse(localStorage.getItem('eventStore')).events.length === n, before)
+    assert.equal(await page.getByRole('alert').count(), 0)
     mode = 'import'
     await page.getByLabel('发送给 Agent').fill('导入课程表')
     await page.getByRole('button', { name: '发送', exact: true }).click()
@@ -127,7 +139,7 @@ try {
     await page.screenshot({ path: resolve(output, 'history-' + width + '.png') })
     await row.getByRole('button', { name: '打开对话：实验计划', exact: true }).click()
     assert.equal(await page.getByLabel('发送给 Agent').inputValue(), '第一段未发送草稿')
-    await page.getByText('已应用到日程，可整体撤销。', { exact: true }).waitFor()
+    await page.getByText('已应用到日程，可整体撤销。', { exact: true }).last().waitFor()
     await page.getByRole('button', { name: '最小化 Agent', exact: true }).click()
     assert.equal(await windowBox.isVisible(), false)
     await page.getByRole('button', { name: '恢复 Agent', exact: true }).click()

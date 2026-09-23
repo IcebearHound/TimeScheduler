@@ -1,7 +1,7 @@
 import useEventStore from '../stores/eventStore'
 import useEventGroupStore from '../stores/eventGroupStore'
 import { Event, EventChain, EventGroup, EventType } from '../types/event'
-import { projectActions, Snapshot, snapshotRevision, validateSnapshot } from './contracts'
+import { actionsSchema, projectActions, Snapshot, snapshotRevision, validateSnapshot } from './contracts'
 
 export function captureArchive(): Snapshot {
   const e = useEventStore.getState(), g = useEventGroupStore.getState()
@@ -29,9 +29,21 @@ export function installArchive(input: unknown, label = '恢复同步存档') {
   }
 }
 
-export async function applyActions(actions: unknown, expectedRevision: string) {
+export async function applyActions(actions: unknown, expectedRevision: string, previewSnapshot?: Snapshot) {
   const before = captureArchive(), serialized = JSON.stringify(before)
-  if (await snapshotRevision(before) !== expectedRevision || JSON.stringify(captureArchive()) !== serialized) throw new Error('存档已变化，请重新读取或生成预览')
+  const revision = await snapshotRevision(before)
+  if (revision !== expectedRevision) {
+    const checked = actionsSchema.parse(actions)
+    // Unrelated archive edits must not invalidate an unchanged deletion target.
+    // Never rebase edits/creates or silently delete a target changed since preview.
+    const unchangedDeletion = previewSnapshot && await snapshotRevision(previewSnapshot) === expectedRevision && checked.every(action => {
+      if (action.op !== 'delete_event') return false
+      const original = previewSnapshot.events.find(e => e.id === action.id)
+      return original && JSON.stringify(original) === JSON.stringify(before.events.find(e => e.id === action.id))
+    })
+    if (!unchangedDeletion) throw new Error('存档已变化，请重新生成预览；本次尚未应用任何修改')
+  }
+  if (JSON.stringify(captureArchive()) !== serialized) throw new Error('存档正在变化，请再次确认；本次尚未应用任何修改')
   const after = projectActions(before, actions, () => crypto.randomUUID())
   installArchive(after, '批量应用事件操作')
   return { snapshot: after, revision: await snapshotRevision(after) }
