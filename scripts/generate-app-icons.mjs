@@ -11,13 +11,16 @@ try {
     ['apple-touch-icon', 180, 0.10],
     ['icon-192', 192, 0.10],
     ['icon-512', 512, 0.10],
+    ['icon-desktop-192', 192, 0.10],
+    ['icon-desktop-512', 512, 0.10],
     // Keep the whole calendar within Android's central safe circle.
     ['icon-maskable-512', 512, 0.22],
     ['favicon', 32, 0],
   ]) {
     const page = await browser.newPage({ viewport: { width: size, height: size }, deviceScaleFactor: 1 })
-    await page.setContent(`<html><style>html,body{margin:0;width:100%;height:100%;background:${name === 'favicon' ? 'transparent' : '#eff6ff'}}body{box-sizing:border-box;padding:${size * padding}px}svg{width:100%;height:100%;display:block}</style><body>${svg}</body></html>`)
-    const png = await page.screenshot({ omitBackground: name === 'favicon' })
+    const transparent = name === 'favicon' || name.startsWith('icon-desktop-')
+    await page.setContent(`<html><style>html,body{margin:0;width:100%;height:100%;background:${transparent ? 'transparent' : '#eff6ff'}}body{box-sizing:border-box;padding:${size * padding}px}svg{width:100%;height:100%;display:block}</style><body>${svg}</body></html>`)
+    const png = await page.screenshot({ omitBackground: transparent })
     if (name === 'favicon') {
       // ICO supports PNG image payloads on modern Windows and desktop browsers.
       const header = Buffer.alloc(22)

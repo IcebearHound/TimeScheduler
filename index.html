@@ -6,6 +6,12 @@
     <link rel="icon" type="image/svg+xml" href="%BASE_URL%favicon.svg" />
     <link rel="apple-touch-icon" sizes="180x180" href="%BASE_URL%icons/apple-touch-icon.png" />
     <link rel="manifest" href="%BASE_URL%manifest.webmanifest" />
+    <script>
+      // iPadOS may identify as a Mac; window width does not identify the platform.
+      const mobileAppIcons = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent)
+        || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)
+      if (mobileAppIcons) document.querySelector('link[rel="manifest"]').href = '%BASE_URL%manifest-mobile.webmanifest'
+    </script>
     <meta name="theme-color" content="#2563eb" />
     <meta name="application-name" content="时间规划器" />
     <meta name="apple-mobile-web-app-title" content="时间规划器" />
