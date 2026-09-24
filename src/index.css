@@ -651,6 +651,19 @@ html[data-layout="desktop"] .app-right-panel.is-expanded { position: fixed; inse
 .agent-window { @apply fixed flex-col overflow-hidden rounded-2xl border border-indigo-200 bg-white text-slate-800 shadow-2xl outline-none dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200; z-index: 48; box-shadow: 0 16px 64px rgb(15 23 42 / .24); }
 .agent-window { container-type: inline-size; }
 .agent-window.is-docked { border-radius: 0; border: 0; box-shadow: none; }
+.agent-resize-handle { position: absolute; z-index: 60; touch-action: none; user-select: none; }
+.agent-resize-n, .agent-resize-s { left: 12px; right: 12px; height: 6px; cursor: ns-resize; }
+.agent-resize-n { top: 0; }
+.agent-resize-s { bottom: 0; }
+.agent-resize-e, .agent-resize-w { top: 12px; bottom: 12px; width: 6px; cursor: ew-resize; }
+.agent-resize-e { right: 0; }
+.agent-resize-w { left: 0; }
+.agent-resize-ne, .agent-resize-nw, .agent-resize-se, .agent-resize-sw { width: 12px; height: 12px; }
+.agent-resize-ne { top: 0; right: 0; cursor: nesw-resize; }
+.agent-resize-nw { top: 0; left: 0; cursor: nwse-resize; }
+.agent-resize-se { bottom: 0; right: 0; cursor: nwse-resize; }
+.agent-resize-sw { bottom: 0; left: 0; cursor: nesw-resize; }
+.agent-resize-se::after { content: ''; position: absolute; right: 3px; bottom: 3px; width: 6px; height: 6px; border-right: 2px solid #94a3b8; border-bottom: 2px solid #94a3b8; }
 .has-docked-agent { transition: none; }
 .has-docked-agent .sidebar-resize-handle { z-index: 49; }
 @container (max-width: 420px) {
