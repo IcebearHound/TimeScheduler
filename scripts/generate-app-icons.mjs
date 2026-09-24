@@ -11,6 +11,7 @@ try {
     ['apple-touch-icon', 180, 0.10],
     ['icon-192', 192, 0.10],
     ['icon-512', 512, 0.10],
+    ['icon-desktop-180', 180, 0.10],
     ['icon-desktop-192', 192, 0.10],
     ['icon-desktop-512', 512, 0.10],
     // Keep the whole calendar within Android's central safe circle.
