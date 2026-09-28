@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import { ensureDefaultTaskTypes } from '../utils/defaultTaskTypes'
+import { ensureDefaultTaskTypes, migrateLegacyReports } from '../utils/defaultTaskTypes'
 
 const text = z.string().max(20000)
 const id = z.string().min(1).max(200)
@@ -21,13 +21,15 @@ const batchRule = z.object({
 })
 const calendarDate = z.string().date()
 const taskAnchor = z.object({ eventId: id, number: z.number().int().min(0).max(100000) }).strict()
-export const taskRulesSchema = z.object({ homeworkAnchor: taskAnchor.optional(), labAnchor: taskAnchor.optional(), examAnchor: taskAnchor.optional(), skipHolidays: z.boolean().optional(), extraSkipDates: z.array(calendarDate).max(1000).optional(), keepDates: z.array(calendarDate).max(1000).optional() }).strict()
+const progressNumber = z.number().int().min(0).max(100000).nullable().optional()
+export const completedProgressSchema = z.object({ acceptance: progressNumber, report: progressNumber, homework: progressNumber }).strict()
+export const taskRulesSchema = z.object({ completedProgress: completedProgressSchema.optional(), homeworkAnchor: taskAnchor.optional(), labAnchor: taskAnchor.optional(), examAnchor: taskAnchor.optional(), skipHolidays: z.boolean().optional(), extraSkipDates: z.array(calendarDate).max(1000).optional(), keepDates: z.array(calendarDate).max(1000).optional() }).strict()
 const chainFields = { name: z.string().trim().min(1).max(500), description: text.optional(), typeId: id, color: z.string().max(100), defaultReminders: z.array(reminder), batchRules: z.array(batchRule).optional(), includeInTodo: z.boolean().optional(), taskRules: taskRulesSchema.optional() }
 export const snapshotSchema = z.object({
   version: z.literal(1), semesterStartDate: date,
   events: z.array(z.object({ ...eventFields, id, createdAt: date, updatedAt: date })).max(100000),
   eventChains: z.array(z.object({ ...chainFields, id, createdAt: date, updatedAt: date })).max(20000),
-  eventTypes: z.array(z.object({ id, name: text, emoji: text, category: z.enum(['course', 'exam', 'lab', 'homework', 'custom']), parentId: id.optional(), color: text, propertyFields: z.array(z.object({ name: text, icon: text.optional() })).optional() })),
+  eventTypes: z.array(z.object({ id, name: text, emoji: text, category: z.enum(['course', 'exam', 'lab', 'lab_report', 'homework', 'custom']), parentId: id.optional(), color: text, propertyFields: z.array(z.object({ name: text, icon: text.optional() })).optional() })),
   groups: z.array(z.object({ id, name: text, emoji: text, eventChainIds: z.array(id), eventIds: z.array(id), description: text.optional(), includeInTodo: z.boolean().optional(), createdAt: date, updatedAt: date })),
   groupOrder: z.array(id), activeGroupId: z.string().max(200),
 }).strict()
@@ -44,7 +46,9 @@ export type Action = z.infer<typeof actionSchema>
 
 export function validateSnapshot(input: unknown): Snapshot {
   const s = snapshotSchema.parse(input)
+  const originalTypes = s.eventTypes
   s.eventTypes = ensureDefaultTaskTypes(s.eventTypes)
+  s.events = migrateLegacyReports(s.events, originalTypes, s.eventTypes)
   const unique = (items: { id: string }[]) => {
     const keys = new Set(items.map(x => x.id))
     if (keys.size !== items.length) throw new Error('存档包含重复 ID')

@@ -14,9 +14,10 @@ import type { TaskQuickChange } from './CourseTaskQuickMenu'
 import CourseTaskIcon from './CourseTaskIcon'
 import CourseTaskRulesPanel from './CourseTaskRulesPanel'
 import { buildCourseTaskSchedule } from '../utils/courseTaskSchedule'
-import { createWeeklyTaskActions } from '../utils/weeklyTasks'
+import { createWeeklyLabActions, createWeeklyTaskActions } from '../utils/weeklyTasks'
 import { detectTaskNumbers, TaskNumberSuggestion } from '../utils/taskNumberDetection'
 import TaskNumberImportPanel from './TaskNumberImportPanel'
+import { calculateReportDeadline, ReportDeadlineRule } from '../utils/reportDeadline'
 
 const empty: AssignmentRow = { course: '', name: '', deadline: '', kind: '作业', link: '', submission: '', content: '', notes: '' }
 export default function AssignmentPanel() {
@@ -30,6 +31,9 @@ export default function AssignmentPanel() {
   const [busy, setBusy] = useState(false)
   const [showAllCourses, setShowAllCourses] = useState(false)
   const [acceptance, setAcceptance] = useState(''), [report, setReport] = useState('')
+  const [addReport, setAddReport] = useState(false)
+  const [reportMode, setReportMode] = useState<'manual' | 'after_days' | 'weekday'>('after_days')
+  const [reportDays, setReportDays] = useState(7), [reportWeekday, setReportWeekday] = useState(0), [reportTime, setReportTime] = useState('23:59')
   const [rulesCourseId, setRulesCourseId] = useState<string | null>(null)
   const [weekly, setWeekly] = useState(false), [repeatCount, setRepeatCount] = useState(16), [intervalWeeks, setIntervalWeeks] = useState(1)
   const [skipHoliday, setSkipHoliday] = useState(false)
@@ -57,11 +61,19 @@ export default function AssignmentPanel() {
     const sameName = [...chains.values()].filter(c => c.name.trim() === chain.name.trim())
     return { id: chain.id, label: sameName.length > 1 ? `${chain.name} · ${types.get(chain.typeId)?.name || '课程'}（同名 ${sameName.findIndex(c => c.id === chain.id) + 1}）` : chain.name }
   })
-  const edit = (e: Event) => { setEditing(e.id); setAcceptance(''); setReport(''); setForm({ course: e.chainId, name: e.name, startTime: localDateTime(new Date(e.startTime)), deadline: localDateTime(new Date(e.endTime)), kind: courseTaskKind(e, taskTypes)!, labGroupId: e.properties.labGroupId, link: e.properties.submissionUrl || '', submission: e.properties.submissionMethod || '', content: e.properties.taskContent || '', notes: e.properties.notes || '' }); revealEditor() }
-  const startNew = (course = '') => { const row = tasks.filter(e => e.chainId === course); const category = row.length ? courseTaskCategory(courseTaskKind(row[0], taskTypes)!) : '作业'; setEditing(null); setCreatingCourse(false); setInitialNumber(''); setForm({ ...empty, course, kind: category === '实验' ? '实验课' : category }); setAcceptance(''); setReport(''); setWeekly(false); setSkipHoliday(false); revealEditor() }
+  const edit = (e: Event) => { setEditing(e.id); setAcceptance(''); setReport(''); setAddReport(false); setForm({ course: e.chainId, name: e.name, startTime: localDateTime(new Date(e.startTime)), deadline: localDateTime(new Date(e.endTime)), kind: courseTaskKind(e, taskTypes)!, labGroupId: e.properties.labGroupId, link: e.properties.submissionUrl || '', submission: e.properties.submissionMethod || '', content: e.properties.taskContent || '', notes: e.properties.notes || '' }); revealEditor() }
+  const startNew = (course = '') => { const row = tasks.filter(e => e.chainId === course); const category = row.length ? courseTaskCategory(courseTaskKind(row[0], taskTypes)!) : '作业'; setEditing(null); setCreatingCourse(false); setInitialNumber(''); setForm({ ...empty, course, kind: category === '实验' ? '实验课' : category }); setAcceptance(''); setReport(''); setAddReport(false); setWeekly(false); setSkipHoliday(false); revealEditor() }
   const related = form.labGroupId ? tasks.filter(e => e.properties.labGroupId === form.labGroupId && e.id !== editing && e.chainId === events.get(editing || '')?.chainId) : []
   const hasAcceptance = related.some(e => courseTaskKind(e, taskTypes) === '实验验收')
   const hasReport = related.some(e => courseTaskKind(e, taskTypes) === '实验报告')
+  const reportRule: ReportDeadlineRule | undefined = reportMode === 'manual' ? undefined : reportMode === 'after_days' ? { mode: 'after_days', days: reportDays, time: reportTime } : { mode: 'weekday', weekday: reportWeekday, time: reportTime }
+  let reportPreview = '', reportError = ''
+  if (form.kind === '实验课' && addReport && !hasReport) {
+    try {
+      reportPreview = reportRule ? calculateReportDeadline(new Date(form.deadline), reportRule) : new Date(report).toISOString()
+      if (+new Date(reportPreview) <= +new Date(form.deadline)) throw new Error('报告截止时间必须晚于实验结束时间')
+    } catch (error) { reportError = reportMode === 'manual' && !report ? '请选择报告截止时间' : error instanceof Error ? error.message : '请检查截止规则' }
+  }
   const run = async (job: () => Promise<void>) => { setBusy(true); setMessage(''); try { await job() } catch (e) { setMessage(e instanceof Error ? e.message : '操作失败') } finally { setBusy(false) } }
   const prepare = async (book: XLSX.WorkBook) => {
     const rows = readAssignmentWorkbook(book), snapshot = captureArchive()
@@ -103,9 +115,10 @@ export default function AssignmentPanel() {
     {mode === 'quick' && <AppPanel title={editing ? '修改任务详情' : '快捷添加作业 / 实验'} onClose={() => setMode(null)}><form ref={editor} className="assignment-form" onSubmit={event => { event.preventDefault(); void run(async () => {
       const snapshot = captureArchive(), revision = await snapshotRevision(snapshot)
       const group = form.labGroupId || (form.kind === '实验课' ? crypto.randomUUID() : undefined)
+      if (reportError) throw new Error(reportError)
       const extraRows: AssignmentRow[] = form.kind === '实验课' ? [
         ...(!hasAcceptance && acceptance ? [{ ...form, kind: '实验验收', deadline: acceptance, startTime: '', labGroupId: group }] : []),
-        ...(!hasReport && report ? [{ ...form, kind: '实验报告', deadline: report, startTime: '', labGroupId: group }] : []),
+        ...(!hasReport && addReport && reportPreview ? [{ ...form, kind: '实验报告', deadline: reportPreview, startTime: '', labGroupId: group }] : []),
       ] : []
       if (editing) {
         const e = events.get(editing); if (!e) throw new Error('该任务已删除')
@@ -131,7 +144,10 @@ export default function AssignmentPanel() {
         if (!chain) throw new Error('所选课程不存在或已删除，请重新选择课程')
         const context = { ...snapshot, eventChains: creatingCourse ? [...snapshot.eventChains, chain] : snapshot.eventChains }
         const inputs: CourseTaskInput[] = [{ ...form, labGroupId: group }, ...extraRows].map((row, index) => ({ courseId: chain.id, name: row.name, kind: row.kind as CourseTaskKind, ...(index === 0 && initialNumber !== '' ? { number: Number(initialNumber) } : {}), endTime: new Date(row.deadline).toISOString(), ...(['实验课', '考试'].includes(row.kind) ? { startTime: new Date(row.startTime!).toISOString() } : {}), ...(row.labGroupId ? { labGroupId: row.labGroupId } : {}), submissionUrl: row.link, submissionMethod: row.submission, taskContent: row.content, notes: row.notes }))
-        actions.push(...createWeeklyTaskActions(context, inputs, { count: weekly ? repeatCount : 1, intervalWeeks }))
+        const rule = { count: weekly ? repeatCount : 1, intervalWeeks }
+        if (form.kind === '实验课') {
+          actions.push(...createWeeklyLabActions(context, { courseId: chain.id, name: form.name, startTime: new Date(form.startTime!).toISOString(), endTime: new Date(form.deadline).toISOString(), ...(initialNumber !== '' ? { number: Number(initialNumber) } : {}), ...(acceptance ? { acceptanceDeadline: new Date(acceptance).toISOString() } : {}), ...(addReport ? reportRule ? { reportDeadlineRule: reportRule } : { reportDeadline: reportPreview } : {}), submissionUrl: form.link, submissionMethod: form.submission, taskContent: form.content, notes: form.notes }, rule))
+        } else actions.push(...createWeeklyTaskActions(context, inputs, rule))
         if (skipHoliday) { const planned = projectActions(snapshot, actions, () => crypto.randomUUID()); actions.push({ op: 'set_course_task_rules', id: chain.id, rules: { ...planned.eventChains.find(c => c.id === chain.id)?.taskRules, skipHolidays: true } }) }
         await applyActions(actions, revision)
       }
@@ -156,7 +172,18 @@ export default function AssignmentPanel() {
           const next = target && form.startTime ? nextLabClass([...events.values()], taskTypes, target.id, new Date(form.startTime), editing || undefined) : undefined
           if (next) { setAcceptance(localDateTime(new Date(next.startTime))); setMessage('已填入下次实验课的当前开始时间；调课后可手动修改') } else setMessage('没有找到下次实验课，请填写验收截止时间')
         }}>填入下次实验课时间</button></>}
-        {!hasReport && <label>新增报告截止时间<input type="datetime-local" className="workspace-input" value={report} onChange={e => setReport(e.target.value)} /></label>}
+        {!hasReport && <div className="space-y-3 rounded-xl bg-sky-50 p-3 dark:bg-sky-950/30">
+          <label className="flex min-h-11 items-center gap-2 font-medium"><input type="checkbox" checked={addReport} onChange={e => setAddReport(e.target.checked)} />同时添加实验报告截止时间</label>
+          {addReport && <>
+            <label className="block">报告截止规则<select aria-label="报告截止规则" className="workspace-input w-full" value={reportMode} onChange={e => setReportMode(e.target.value as typeof reportMode)}><option value="after_days">实验结束后若干天</option><option value="weekday">下一个指定星期</option><option value="manual">手动指定时间</option></select></label>
+            {reportMode === 'manual' ? <label className="block">新增报告截止时间<input required type="datetime-local" className="workspace-input w-full" value={report} onChange={e => setReport(e.target.value)} /></label> : <div className="grid grid-cols-2 gap-2">
+              {reportMode === 'after_days' ? <label>实验结束后天数<input required type="number" min={0} max={365} step={1} className="workspace-input w-full" value={reportDays} onChange={e => setReportDays(Number(e.target.value))} /></label> : <label>截止星期<select aria-label="截止星期" className="workspace-input w-full" value={reportWeekday} onChange={e => setReportWeekday(Number(e.target.value))}>{['日', '一', '二', '三', '四', '五', '六'].map((d, i) => <option key={i} value={i}>星期{d}</option>)}</select></label>}
+              <label>截止时刻<input required type="time" className="workspace-input w-full" value={reportTime} onChange={e => setReportTime(e.target.value)} /></label>
+            </div>}
+            <p aria-live="polite" className="text-xs text-sky-700 dark:text-sky-300">{reportError ? '请填写实验时间并检查截止规则' : `本次报告截止：${new Date(reportPreview).toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' })}（北京时间）`}</p>
+            <p className="text-xs text-slate-500">每周重复时逐次计算，实验报告单独成行，共用所属课程与实验编号，可独立标记提交。</p>
+          </>}
+        </div>}
       </div>}
       {related.length > 0 && <div className="assignment-form-wide"><p className="text-xs text-slate-500">同一次实验的其他事项</p>{related.map(e => <button type="button" key={e.id} className="workspace-button mr-1 mt-1" onClick={() => edit(e)}>{courseTaskKind(e, taskTypes)} · {courseTaskStatus(e, courseTaskKind(e, taskTypes)!, new Date())}</button>)}</div>}
       <label>提交方式<input className="workspace-input" placeholder="如：课堂提交 / 在线平台" value={form.submission} onChange={e => setForm({ ...form, submission: e.target.value })} /></label>

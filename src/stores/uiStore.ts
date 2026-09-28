@@ -39,8 +39,8 @@ interface UIStore {
   setIsLeftSidebarOpen: (open: boolean) => void
   isRightPanelOpen: boolean
   setIsRightPanelOpen: (open: boolean) => void
-  rightPanelTab: 'todo' | 'assignments' | 'details' | 'ai'
-  openRightPanelTab: (tab: 'todo' | 'assignments' | 'details' | 'ai') => void
+  rightPanelTab: 'todo' | 'assignments' | 'overview' | 'details' | 'ai'
+  openRightPanelTab: (tab: 'todo' | 'assignments' | 'overview' | 'details' | 'ai') => void
   rightPanelExpanded: boolean
   setRightPanelExpanded: (expanded: boolean) => void
 

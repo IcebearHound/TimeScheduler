@@ -68,7 +68,7 @@ export default function CourseTaskLamp({ event, kind, now, detail = false, sched
     onKeyDown={e => { if (e.key === 'ContextMenu' || e.key === 'F10' && e.shiftKey) { e.preventDefault(); cancel(); const box = e.currentTarget.getBoundingClientRect(); onMenu(event, { x: box.left, y: box.bottom }) } }}
     className={`flex min-h-11 w-full rounded-lg hover:bg-slate-100 focus-visible:outline-indigo-500 dark:hover:bg-slate-800 ${detail ? 'items-start gap-2 p-2 text-left text-xs' : 'items-center justify-center'}`}>
     <span data-lamp-color={schedule?.skipped ? 'skipped' : completed ? 'completed' : status === '已逾期' ? 'overdue' : ['今日截止', '进行中'].includes(status) ? 'today' : 'pending'} className={`relative inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full ring-1 ring-inset ${tone}`}>
-      <CourseTaskIcon kind={category === '实验' ? '实验课' : category} />
+      <CourseTaskIcon kind={kind === '实验报告' ? '实验报告' : category === '实验' ? '实验课' : category} />
       {(schedule?.sequence !== undefined || schedule?.skipped) && <sub data-task-sequence={schedule.sequence} className="absolute -bottom-1.5 -right-1.5 rounded bg-white px-0.5 text-[9px] font-semibold leading-3 shadow-sm dark:bg-slate-900">{schedule.skipped ? '跳' : schedule.sequence}</sub>}
     </span>
     {detail && <span className="min-w-0 break-words"><span className="block font-medium">{event.name}</span><span className="block text-slate-500">{kind} · {when.toLocaleString('zh-CN', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</span><span className="text-slate-500">{status}</span></span>}

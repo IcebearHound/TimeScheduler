@@ -1,6 +1,7 @@
 import { z } from 'zod'
-import { Action, Snapshot, taskRulesSchema, validateSnapshot } from './contracts'
+import { Action, Snapshot, projectActions, taskRulesSchema, validateSnapshot } from './contracts'
 import { buildCourseTaskSchedule } from '../utils/courseTaskSchedule'
+import { calculateReportDeadline, reportDeadlineRuleSchema } from '../utils/reportDeadline'
 import { completionProperties, courseTaskCategory, CourseTaskCategory, courseTaskCompleted, courseTaskKind, courseTaskKinds, courseTaskStatus, courseTaskTime, nextLabClass, sortedCourseTasks } from '../utils/courseTasks'
 
 const id = z.string().min(1).max(200)
@@ -19,6 +20,7 @@ export const labInputSchema = z.object({
   courseId: id, name: z.string().trim().min(1).max(500),
   existingClassId: id.optional(), startTime: date.optional(), endTime: date.optional(),
   acceptanceDeadline: date.optional(), acceptanceAtNextClass: z.boolean().optional(), reportDeadline: date.optional(),
+  reportDeadlineRule: reportDeadlineRuleSchema.optional(), number: z.number().int().min(0).max(100000).optional(),
   ...details,
 }).strict()
 export const courseTaskChangesSchema = z.object({
@@ -60,7 +62,7 @@ export function createCourseTaskActions(snapshot: Snapshot, raw: CourseTaskInput
   const eventId = input.number !== undefined ? crypto.randomUUID() : undefined
   const actions: Action[] = [{ op: 'create_event', ...(eventId ? { id: eventId } : {}), event: {
     name: input.name, chainId: chain.id,
-    typeId: snapshot.eventTypes.find(t => t.category === (input.kind === '作业' ? 'homework' : input.kind === '考试' ? 'exam' : 'lab'))!.id,
+    typeId: snapshot.eventTypes.find(t => t.category === (input.kind === '实验报告' ? 'lab_report' : input.kind === '作业' ? 'homework' : input.kind === '考试' ? 'exam' : 'lab'))!.id,
     startTime, endTime: input.endTime, reminders: input.kind === '考试' && !chain.defaultReminders.length ? [{ id: crypto.randomUUID(), time: '1d', enabled: true, notified: false }, { id: crypto.randomUUID(), time: '2h', enabled: true, notified: false }] : chain.defaultReminders,
     properties: { ...taskProperties(input), taskKind: input.kind, completed: 'false', ...(input.labGroupId ? { labGroupId: input.labGroupId } : {}) },
     isHighlight: input.kind === '考试', pinned: false, priority: input.kind === '考试' ? 3 : 1,
@@ -76,6 +78,7 @@ export function createCourseTaskActions(snapshot: Snapshot, raw: CourseTaskInput
 export function createLabActions(snapshot: Snapshot, raw: LabInput, newId: () => string = () => crypto.randomUUID()): Action[] {
   const input = labInputSchema.parse(raw)
   if (input.acceptanceDeadline && input.acceptanceAtNextClass) throw new Error('指定截止时间与下次实验课只能选择一种')
+  if (input.reportDeadline && input.reportDeadlineRule) throw new Error('报告截止时间与截止规则只能选择一种')
   const existing = input.existingClassId ? requireTask(snapshot, input.existingClassId) : undefined
   if (existing && (existing.chainId !== input.courseId || courseTaskKind(existing, snapshot.eventTypes) !== '实验课')) throw new Error('关联实验课必须属于同一课程')
   const startTime = existing?.startTime || input.startTime, endTime = existing?.endTime || input.endTime
@@ -83,14 +86,17 @@ export function createLabActions(snapshot: Snapshot, raw: LabInput, newId: () =>
   const group = existing?.properties.labGroupId || newId()
   const actions: Action[] = existing
     ? [{ op: 'update_event', id: existing.id, changes: { properties: { ...existing.properties, labGroupId: group } } }]
-    : createCourseTaskActions(snapshot, { ...taskProperties(input), courseId: input.courseId, name: input.name, kind: '实验课', startTime, endTime, labGroupId: group })
+    : createCourseTaskActions(snapshot, { ...taskProperties(input), courseId: input.courseId, name: input.name, kind: '实验课', startTime, endTime, labGroupId: group, number: input.number })
   let acceptance = input.acceptanceDeadline
   if (input.acceptanceAtNextClass) {
     const next = nextLabClass(snapshot.events, snapshot.eventTypes, input.courseId, new Date(startTime), existing?.id)
     if (!next) throw new Error('没有找到下次实验课，请指定验收截止时间')
     acceptance = next.startTime
   }
-  for (const [kind, deadline] of [['实验验收', acceptance], ['实验报告', input.reportDeadline]] as const) {
+  const report = input.reportDeadlineRule ? calculateReportDeadline(endTime, input.reportDeadlineRule) : input.reportDeadline
+  if (report && +new Date(report) <= +new Date(endTime)) throw new Error('报告截止时间必须晚于实验结束时间')
+  if (existing && input.number !== undefined) throw new Error('为已有实验编号请使用编号规则接口')
+  for (const [kind, deadline] of [['实验验收', acceptance], ['实验报告', report]] as const) {
     if (deadline) actions.push(...createCourseTaskActions(snapshot, { ...taskProperties(input), courseId: input.courseId, name: input.name, kind, endTime: deadline, labGroupId: group }))
   }
   return actions
@@ -136,7 +142,7 @@ export function setCourseTaskKindActions(snapshot: Snapshot, eventId: string, ne
   const category = courseTaskCategory(nextKind), types = validateSnapshot(snapshot).eventTypes
   if (category === '实验' && event.properties.labGroupId && snapshot.events.some(e => e.id !== event.id && e.chainId === event.chainId && e.properties.labGroupId === event.properties.labGroupId && courseTaskKind(e, types) === nextKind)) throw new Error('同组实验已有该类型事项，请在详情中修改对应任务')
   const actions: Action[] = [{ op: 'update_event', id: eventId, changes: {
-    typeId: types.find(t => t.category === (category === '作业' ? 'homework' : category === '考试' ? 'exam' : 'lab'))!.id,
+    typeId: types.find(t => t.category === (nextKind === '实验报告' ? 'lab_report' : category === '作业' ? 'homework' : category === '考试' ? 'exam' : 'lab'))!.id,
     properties: { ...event.properties, taskKind: nextKind, completed: String(courseTaskCompleted(event, kind, now)), ...(['实验课', '考试'].includes(nextKind) ? { classCompletionOverride: 'true' } : {}) },
   } }]
   if (courseTaskCategory(kind) !== category) {
@@ -169,6 +175,18 @@ export function setCourseTaskRowTypeActions(snapshot: Snapshot, courseId: string
   if (!target || !snapshot.eventTypes.some(t => t.id === sourceTypeId)) throw new Error('事件类型不存在')
   if (sourceTypeId === targetTypeId) return []
   const tasks = snapshot.events.filter(e => e.chainId === courseId && e.typeId === sourceTypeId && courseTaskKind(e, snapshot.eventTypes))
+  if (target.category === 'lab_report') {
+    const actions: Action[] = []
+    let working = snapshot
+    for (const task of tasks) {
+      const converted = setCourseTaskKindActions(working, task.id, '实验报告', now)
+      converted.push({ op: 'update_event', id: task.id, changes: { typeId: target.id } })
+      working = projectActions(working, converted, () => crypto.randomUUID())
+      actions.push(...converted)
+    }
+    if (actions.length > 200) throw new Error('该行超过 200 项操作，请分批修改')
+    return actions
+  }
   const category = target.category === 'lab' ? '实验' : target.category === 'homework' ? '作业' : target.category === 'exam' ? '考试' : undefined
   const conversions = category ? setTaskCategoryActions(snapshot, tasks, category, now) : []
   if (tasks.length > 200) throw new Error('该行超过 200 项任务，请分批修改')
@@ -186,7 +204,7 @@ function setTaskCategoryActions(snapshot: Snapshot, tasks: Snapshot['events'], c
     const previous = event.properties.labKindBeforeCategoryChange
     const nextKind = category === '作业' || category === '考试' ? category : previous && !['作业', '考试'].includes(previous) && courseTaskKinds.includes(previous as typeof courseTaskKinds[number]) ? previous : '实验验收'
     const taskTypes = validateSnapshot(snapshot).eventTypes
-    actions.push({ op: 'update_event', id: event.id, changes: { typeId: taskTypes.find(t => t.category === (category === '作业' ? 'homework' : category === '考试' ? 'exam' : 'lab'))!.id, properties: {
+    actions.push({ op: 'update_event', id: event.id, changes: { typeId: taskTypes.find(t => t.category === (nextKind === '实验报告' ? 'lab_report' : category === '作业' ? 'homework' : category === '考试' ? 'exam' : 'lab'))!.id, properties: {
       ...event.properties, taskKind: nextKind,
       ...(courseTaskCategory(kind) === '实验' ? { labKindBeforeCategoryChange: kind } : {}),
       completed: String(courseTaskCompleted(event, kind, now)),

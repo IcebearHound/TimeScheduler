@@ -6,10 +6,12 @@ import { Client } from '@modelcontextprotocol/sdk/client/index.js'
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js'
 import { ArchiveBridge } from '../server/bridge'
 import { registerCourseTaskTools } from '../server/courseTaskTools'
-import { Snapshot, projectActions } from '../src/integrations/contracts'
+import { Snapshot, projectActions, validateSnapshot } from '../src/integrations/contracts'
 import { createCourseTaskActions, createLabActions, listCourseTasks, setCourseTaskStatusActions, updateCourseTaskActions, setCourseTypeCategoryActions, setCourseTaskRowTypeActions } from '../src/integrations/courseTasks'
 import { detectTaskNumbers } from '../src/utils/taskNumberDetection'
-import { createWeeklyTaskActions } from '../src/utils/weeklyTasks'
+import { createWeeklyTaskActions, createWeeklyLabActions } from '../src/utils/weeklyTasks'
+import { calculateReportDeadline } from '../src/utils/reportDeadline'
+import { buildCourseOverview, sequenceLabel } from '../src/utils/courseOverview'
 import { courseTaskKind } from '../src/utils/courseTasks'
 import { assignmentActions, readAssignmentWorkbook } from '../src/utils/assignmentTable'
 
@@ -65,10 +67,10 @@ test('event-type rows query and change all matching chains without affecting oth
   s.events.push({ ...s.events[0], id: 'other-type', typeId: 'other-lab', properties: { taskKind: '实验课', notes: '保留' } })
   s.events.push({ ...s.events[0], id: 'lecture', typeId: 'course-type', properties: {} })
   const matching = listCourseTasks(s, { typeId: 'lab-type' }, now)
-  assert.equal(matching.length, 6)
+  assert.equal(matching.length, 4)
   assert.equal(new Set(matching.map(e => e.courseId)).size, 2)
   assert.ok(matching.every(e => e.typeId === 'lab-type' && e.typeName === '实验'))
-  assert.equal(listCourseTasks(s, { typeId: 'lab-type', courseId: 'second' }, now).length, 3)
+  assert.equal(listCourseTasks(s, { typeId: 'lab-type', courseId: 'second' }, now).length, 2)
   const changed = project(s, setCourseTypeCategoryActions(s, 'lab-type', '作业', now))
   for (const before of s.events) {
     const after = changed.events.find(e => e.id === before.id)!
@@ -81,7 +83,7 @@ test('event-type rows query and change all matching chains without affecting oth
     }
   }
   assert.equal(listCourseTasks(changed, { typeId: 'lab-type' }, now).length, 0)
-  assert.equal(listCourseTasks(changed, { typeId: changed.events[0].typeId }, now).length, 7)
+  assert.equal(listCourseTasks(changed, { typeId: changed.events[0].typeId }, now).length, 5)
   assert.deepEqual(setCourseTypeCategoryActions(s, 'course-type', '作业'), [], 'Normal lectures must be excluded')
   assert.throws(() => setCourseTypeCategoryActions(s, 'missing', '作业'), /事件类型不存在/)
   const rowChanged = project(s, setCourseTaskRowTypeActions(s, 'second', 'lab-type', 'other-lab', now))
@@ -198,14 +200,15 @@ test('MCP course tools expose schemas and require fresh revision plus browser ac
     return JSON.parse((result.content as { text: string }[])[0].text)
   }
   try {
-    assert.equal((await client.listTools()).tools.length, 9)
+    assert.equal((await client.listTools()).tools.length, 12)
     assert.equal((await client.callTool({ name: 'list_course_tasks', arguments: {} })).isError, true)
     let snapshot = fixture()
     await bridge.heartbeat('browser', snapshot)
     const initial = await read()
     assert.ok(initial.types.some((t: { id: string }) => t.id === 'lab-type'))
     assert.equal((await client.callTool({ name: 'set_course_row_category', arguments: { revision: initial.revision, typeId: 'lab-type', courseId: 'course', category: '作业' } })).isError, true, 'Ambiguous mutation scopes must be rejected')
-    const pending = client.callTool({ name: 'create_lab', arguments: { revision: initial.revision, lab } })
+    const { reportDeadline, ...labWithoutReport } = lab
+    const pending = client.callTool({ name: 'create_lab', arguments: { revision: initial.revision, lab: { ...labWithoutReport, reportDeadlineRule: { mode: 'after_days', days: 9, time: '23:59' } } } })
     let command: Awaited<ReturnType<typeof bridge.heartbeat>>['command'] = null
     for (let n = 0; n < 50 && !command; n++) { await new Promise(r => setTimeout(r, 5)); command = (await bridge.heartbeat('browser', snapshot)).command }
     assert.ok(command)
@@ -214,6 +217,8 @@ test('MCP course tools expose schemas and require fresh revision plus browser ac
     assert.ok(!(await pending).isError)
     const current = await read()
     assert.equal(current.tasks.length, 3)
+    assert.equal(current.tasks[2].typeId, 'type-lab-report')
+    assert.equal(+new Date(current.tasks[2].endTime), +new Date(reportDeadline))
     const accepted = client.callTool({ name: 'set_course_task_status', arguments: { revision: current.revision, id: current.tasks[1].id, completed: true } })
     command = null
     for (let n = 0; n < 50 && !command; n++) { await new Promise(r => setTimeout(r, 5)); command = (await bridge.heartbeat('browser', snapshot)).command }
@@ -224,6 +229,26 @@ test('MCP course tools expose schemas and require fresh revision plus browser ac
     const updated = await read()
     assert.equal(updated.tasks[1].completed, true)
     assert.equal(updated.tasks[2].completed, false)
+    const overview = await client.callTool({ name: 'get_course_overview', arguments: {} })
+    assert.ok(!overview.isError)
+    assert.equal(JSON.parse((overview.content as { text: string }[])[0].text).courses[0].items[0].latest.id, current.tasks[1].id)
+    const override = client.callTool({ name: 'set_course_overview_progress', arguments: { revision: updated.revision, courseId: 'course', progress: { acceptance: 2, report: 1, homework: 0 } } })
+    command = null
+    for (let n = 0; n < 50 && !command; n++) { await new Promise(r => setTimeout(r, 5)); command = (await bridge.heartbeat('browser', snapshot)).command }
+    assert.ok(command)
+    snapshot = project(snapshot, command.actions)
+    await bridge.acknowledge('browser', command.id, { snapshot })
+    assert.ok(!(await override).isError)
+    assert.equal(buildCourseOverview(snapshot.events, snapshot.eventTypes, snapshot.eventChains)[0].items[0].progress, '实验二')
+    const afterProgress = await read()
+    const repeated = client.callTool({ name: 'create_weekly_labs', arguments: { revision: afterProgress.revision, lab: { ...labWithoutReport, reportDeadlineRule: { mode: 'weekday', weekday: 0, time: '23:59' } }, rule: { count: 2, intervalWeeks: 1 } } })
+    command = null
+    for (let n = 0; n < 50 && !command; n++) { await new Promise(r => setTimeout(r, 5)); command = (await bridge.heartbeat('browser', snapshot)).command }
+    assert.ok(command)
+    snapshot = project(snapshot, command.actions)
+    await bridge.acknowledge('browser', command.id, { snapshot })
+    assert.ok(!(await repeated).isError)
+    assert.equal(snapshot.events.length, 9)
     const stale = await client.callTool({ name: 'set_course_task_status', arguments: { revision: initial.revision, id: current.tasks[1].id, completed: true } })
     assert.equal(stale.isError, true)
     const classStatus = await client.callTool({ name: 'set_course_task_status', arguments: { revision: updated.revision, id: 'missing', completed: true } })
@@ -231,4 +256,67 @@ test('MCP course tools expose schemas and require fresh revision plus browser ac
     const invalidDate = await client.callTool({ name: 'update_course_task', arguments: { revision: updated.revision, id: current.tasks[1].id, changes: { endTime: '2026-10-01' } } })
     assert.equal(invalidDate.isError, true)
   } finally { bridge.disconnect(); await client.close(); await server.close() }
+})
+
+
+test('report deadline rules use Beijing calendar days and strictly future weekdays', () => {
+  const end = '2026-09-21T08:00:00Z' // Monday 16:00 Beijing
+  assert.equal(calculateReportDeadline(end, { mode: 'after_days', days: 0, time: '23:59' }), '2026-09-21T15:59:00.000Z')
+  assert.equal(calculateReportDeadline(end, { mode: 'weekday', weekday: 1, time: '17:00' }), '2026-09-21T09:00:00.000Z')
+  assert.equal(calculateReportDeadline(end, { mode: 'weekday', weekday: 1, time: '16:00' }), '2026-09-28T08:00:00.000Z')
+  assert.equal(calculateReportDeadline(end, { mode: 'weekday', weekday: 0, time: '23:59' }), '2026-09-27T15:59:00.000Z')
+  assert.equal(calculateReportDeadline('2026-12-31T23:00:00+08:00', { mode: 'after_days', days: 1, time: '00:00' }), '2026-12-31T16:00:00.000Z')
+  assert.throws(() => calculateReportDeadline(end, { mode: 'after_days', days: 0, time: '15:00' }), /晚于/)
+  assert.throws(() => calculateReportDeadline(end, { mode: 'after_days', days: -1, time: '23:59' }))
+  assert.throws(() => calculateReportDeadline(end, { mode: 'weekday', weekday: 7, time: '23:59' }))
+  assert.throws(() => calculateReportDeadline(end, { mode: 'after_days', days: 1, time: '24:00' }))
+})
+
+test('weekly labs create independent report types/groups, opt in explicitly and reject conflicting rules', () => {
+  const { reportDeadline, ...base } = lab
+  const initial = fixture()
+  assert.equal(project(initial, createLabActions(initial, base)).events.length, 2)
+  const reportDeadlineRule = { mode: 'weekday' as const, weekday: 0, time: '23:59' }
+  const result = project(initial, createWeeklyLabActions(initial, { ...base, number: 0, reportDeadlineRule }, { count: 3, intervalWeeks: 2 }))
+  const reports = result.events.filter(e => e.properties.taskKind === '实验报告')
+  assert.deepEqual(reports.map(e => e.endTime), ['2026-09-20T15:59:00.000Z', '2026-10-04T15:59:00.000Z', '2026-10-18T15:59:00.000Z'])
+  assert.ok(reports.every(e => e.typeId === 'type-lab-report' && e.chainId === 'course'))
+  assert.equal(new Set(reports.map(e => e.properties.labGroupId)).size, 3)
+  assert.deepEqual(listCourseTasks(result, { kind: '实验报告' }).map(t => t.sequence), [0, 1, 2])
+  assert.equal(courseTaskKind({ ...reports[0], properties: {} }, result.eventTypes), '实验报告')
+  assert.throws(() => createLabActions(initial, { ...lab, reportDeadlineRule }), /只能选择一种/)
+  assert.throws(() => createLabActions(initial, { ...base, reportDeadline: base.endTime }), /晚于/)
+  assert.throws(() => createWeeklyLabActions(initial, { ...base, acceptanceAtNextClass: true }, { count: 2, intervalWeeks: 1 }), /指定首周/)
+  assert.throws(() => setCourseTaskRowTypeActions(result, 'course', 'lab-type', 'type-lab-report'), /已有/)
+  const legacy = structuredClone(result)
+  legacy.eventTypes = legacy.eventTypes.filter(t => t.category !== 'lab_report')
+  legacy.events = legacy.events.map(e => e.typeId === 'type-lab-report' ? { ...e, typeId: 'lab-type' } : e)
+  assert.deepEqual(validateSnapshot(legacy).events, result.events, 'Migration preserves IDs, dates, state and course association')
+  assert.deepEqual(validateSnapshot(result), result, 'Normalization is idempotent')
+})
+
+test('course overview separates completion milestones, excludes skipped tasks and supports reversible display overrides', () => {
+  let s = fixture()
+  s = project(s, createWeeklyLabActions(s, { ...lab, number: 1 }, { count: 3, intervalWeeks: 1 }))
+  s = project(s, createWeeklyTaskActions(s, [{ courseId: 'course', name: '作业', kind: '作业', endTime: lab.reportDeadline, number: 1 }], { count: 2, intervalWeeks: 1 }))
+  const byKind = (kind: string) => s.events.filter(e => e.properties.taskKind === kind)
+  byKind('实验验收')[1].properties.completed = 'true'
+  byKind('实验报告')[0].properties.completed = 'true'
+  byKind('作业')[0].properties.completed = 'true'
+  byKind('实验课')[2].properties.taskSkipOverride = 'skip'
+  const view = () => buildCourseOverview(s.events, s.eventTypes, s.eventChains, new Date('2026-09-30T00:00:00Z'))[0]
+  assert.deepEqual(view().items.map(i => i.progress), ['实验二', '实验一', '作业一'])
+  assert.equal(view().items[0].next?.id, byKind('实验验收')[0].id, 'Overdue is not hidden by a later completion')
+  assert.equal(view().items[0].overdue, true)
+  assert.equal(view().items[0].pendingCount, 1, 'Skipped occurrence excluded')
+  const before = structuredClone(s.events)
+  s = project(s, [{ op: 'set_course_task_rules', id: 'course', rules: { ...s.eventChains[0].taskRules, completedProgress: { acceptance: 0, report: null } } }])
+  assert.deepEqual(view().items.map(i => i.progress), ['实验零', '暂无完成', '作业一'])
+  assert.deepEqual(s.events, before)
+  delete s.eventChains[0].taskRules!.completedProgress
+  assert.equal(view().items[0].progress, '实验二')
+  delete s.eventChains[0].taskRules!.labAnchor
+  assert.match(view().items[0].progress, /未编号/)
+  assert.equal(sequenceLabel('实验', 12), '实验十二')
+  assert.throws(() => project(s, [{ op: 'set_course_task_rules', id: 'course', rules: { completedProgress: { report: -1 } } }]))
 })

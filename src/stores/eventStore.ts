@@ -9,7 +9,7 @@ import { getConflictingEvents } from '../utils/eventUtils'
 import { executeCreateRule, executeModifyRule } from '../utils/batchRuleUtils'
 import useEventGroupStore from './eventGroupStore'
 import { debugLog } from '../utils/debugStore'
-import { ensureDefaultTaskTypes } from '../utils/defaultTaskTypes'
+import { ensureDefaultTaskTypes, migrateLegacyReports } from '../utils/defaultTaskTypes'
 import { completionProperties, courseTaskKind } from '../utils/courseTasks'
 
 interface HistoryEntry {
@@ -298,6 +298,7 @@ const useEventStore = create<EventStore>()(
             const oldCategory = get().eventTypes.get(event.typeId)?.category
             if (newType.category !== oldCategory) {
               if (newType.category === 'homework') merged.properties.taskKind = '作业'
+              else if (newType.category === 'lab_report') merged.properties.taskKind = '实验报告'
               else if (newType.category === 'exam') merged.properties.taskKind = '考试'
               else if (newType.category === 'lab') merged.properties.taskKind = '实验课'
               else delete merged.properties.taskKind
@@ -706,10 +707,13 @@ const useEventStore = create<EventStore>()(
           }
           return [id, t]
         })
+        const originalTypes = patchedTypes.map(([, t]: [string, EventType]) => t)
+        const taskTypes = ensureDefaultTaskTypes(originalTypes)
+        const taskEvents = migrateLegacyReports<Event>((p.events || []).map(deserEvent).map(([, e]: [string, Event]) => e), originalTypes, taskTypes)
         set({
-          events: new Map((p.events || []).map(deserEvent)),
+          events: new Map(taskEvents.map(e => [e.id, e])),
           eventChains: new Map((p.eventChains || []).map(deserChain)),
-          eventTypes: new Map(ensureDefaultTaskTypes(patchedTypes.map(([, t]: [string, EventType]) => t)).map(t => [t.id, t])),
+          eventTypes: new Map(taskTypes.map(t => [t.id, t])),
           semesterStartDate: p.semesterStartDate ? new Date(p.semesterStartDate) : new Date(2026, 7, 31),
         })
         get().save()

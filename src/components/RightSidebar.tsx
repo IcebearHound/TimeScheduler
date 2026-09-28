@@ -1,10 +1,11 @@
 import { useEffect, useRef } from 'react'
-import { CheckSquare, FlaskConical, Info, Maximize2, Minimize2, PanelRightClose, Sparkles } from 'lucide-react'
+import { BookOpen, CheckSquare, FlaskConical, Info, Maximize2, Minimize2, PanelRightClose, Sparkles } from 'lucide-react'
 import useUIStore from '../stores/uiStore'
 import useLayoutStore from '../stores/layoutStore'
 import RightPanel from './RightPanel'
 import TodoView from './TodoView'
 import AssignmentPanel from './AssignmentPanel'
+import CourseOverviewPanel from './CourseOverviewPanel'
 
 export default function RightSidebar() {
   const agentOpen = useUIStore(s => s.isAgentOpen)
@@ -38,6 +39,7 @@ export default function RightSidebar() {
       <nav aria-label="右边栏栏目" className="flex min-w-0 flex-1 flex-wrap gap-1">
         <button className="sidebar-tab" aria-pressed={tab === 'todo'} onClick={() => open('todo')}><CheckSquare size={16} aria-hidden="true" />TODO</button>
         <button className="sidebar-tab" aria-pressed={tab === 'assignments'} onClick={() => open('assignments')}><FlaskConical size={16} aria-hidden="true" />实验作业</button>
+        <button className="sidebar-tab" aria-pressed={tab === 'overview'} onClick={() => open('overview')}><BookOpen size={16} aria-hidden="true" />课程概览</button>
         <button className="sidebar-tab" aria-pressed={agentOpen} onClick={() => open('ai')}><Sparkles size={16} aria-hidden="true" />Agent</button>
         {selected && <button className="sidebar-tab" aria-pressed={tab === 'details'} onClick={() => open('details')}><Info size={16} aria-hidden="true" />详情</button>}
       </nav>
@@ -48,6 +50,7 @@ export default function RightSidebar() {
       <div className="h-full" style={{ visibility: agentOpen && agentDock === 'right' && !isMobile ? 'hidden' : undefined }}>
       {tab === 'todo' && <div className="h-full overflow-y-auto"><TodoView embedded /></div>}
       {tab === 'assignments' && <div className="assignment-scroll h-full overflow-y-auto p-3"><AssignmentPanel /></div>}
+      {tab === 'overview' && <div className="h-full overflow-y-auto p-3"><CourseOverviewPanel /></div>}
       {tab === 'details' && <RightPanel />}
       </div>
     </div>

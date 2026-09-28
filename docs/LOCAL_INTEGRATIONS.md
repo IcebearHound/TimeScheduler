@@ -128,7 +128,7 @@ MCP 使用标准 **stdio** 传输，采用官方 `@modelcontextprotocol/sdk`。M
 | `apply_actions` | `{revision, actions}` | 校验版本，向网页发出操作，收到网页持久化确认后才返回成功 |
 | `list_course_tasks` | `{courseId?, typeId?, kind?, status?, from?, to?}` | 按时间读取五类事项，可按事件类型和事件链筛选；返回 revision、types、课程 ID、任务 ID、typeId、typeName、sequence、skipped、skipReason 和 scheduleWarnings。status 为 all/pending/completed/overdue，默认 all；日期区间两端均包含 |
 | `create_course_task` | `{revision, task:{courseId,name,kind,endTime,startTime?,labGroupId?,...详情}}` | 新增单个课程事项；实验课和考试必填 startTime，其他事项以 endTime 为截止 |
-| `create_lab` | `{revision, lab:{courseId,name,startTime?,endTime?,existingClassId?,acceptanceDeadline?,acceptanceAtNextClass?,reportDeadline?,...详情}}` | 一次创建实验课和独立截止事项；existingClassId 可为已有实验课补充截止事项，保留课表时间 |
+| `create_lab` | `{revision, lab:{courseId,name,startTime?,endTime?,existingClassId?,acceptanceDeadline?,acceptanceAtNextClass?,reportDeadline?,reportDeadlineRule?,number?,...详情}}` | 一次创建实验课和独立截止事项；existingClassId 可为已有实验课补充截止事项，保留课表时间 |
 | `update_course_task` | `{revision,id,changes:{name?,courseId?,startTime?,endTime?,...详情}}` | 精确修改一个事项；courseId 可修改所属事件链，其他关联事项不随之移动；保留类别、关联编号、状态及未指定属性 |
 | `set_course_task_status` | `{revision,id,completed}` | 单独完成或重新打开该项；支持实验课和考试的持久手动状态，不联动其他事项 |
 | `set_course_row_category` | `{revision,typeId?,courseId?,category}` | 必须且只能指定 typeId 或 courseId；typeId 批量修改该类型（跨链），courseId 兼容按单链修改。category 为作业／实验／考试，可撤销 |
@@ -211,3 +211,34 @@ npm run test:ai-relay
 `test:workspace` 使用 Playwright Chromium，需要已经安装浏览器（`npx playwright install chromium`），并要求 4318 端口空闲。它启动临时本机服务和真正的 MCP stdio 客户端，在隔离浏览器与临时凭据目录中验证课程表单、批量导入、边缘摘要、配对、MCP 写入、版本冲突和刷新后的持久化；截图输出至忽略提交的 `test-results/`。
 
 平台 API 和三种 AI 协议在单元测试中使用模拟响应，未使用真实账号、密钥、付费请求或创建实际远端仓库。部署前需用自己的 OAuth 应用完成平台端到端验收。
+
+
+### 实验报告截止规则与课程概览
+
+实验报告使用独立事件类型 `category: lab_report`（默认 `type-lab-report`），仍属于原课程事件链；`properties.taskKind` 为 `实验报告`，通过 `labGroupId` 与同次实验关联，共用实验编号和跳过规则，提交状态独立。旧存档首次升级时，将原课程/实验类型下明确标记为实验报告的任务迁移到报告类型，保留任务 ID、所属课程、时间、编号关联及完成状态。
+
+快捷添加实验时勾选“同时添加实验报告截止时间”，可手动指定或选择以下规则。每周重复为每一次实验单独计算截止时间，生成后可独立编辑；之后调整实验课时间不会自动移动已生成的报告截止时间。
+
+`create_lab.lab` 的 `reportDeadline` 与 `reportDeadlineRule` 互斥；均省略则不创建报告。规则均按北京时间（UTC+8）计算，且截止必须晚于实验结束时间：
+
+```json
+{ "mode": "after_days", "days": 7, "time": "23:59" }
+```
+
+表示实验结束所在日期之后 7 天的 23:59；允许 0–365 天。
+
+```json
+{ "mode": "weekday", "weekday": 0, "time": "23:59" }
+```
+
+表示实验结束之后最近的星期日 23:59；`weekday` 为 0（星期日）至 6（星期六），若当天的指定时刻仍在实验结束之后，则使用当天。
+
+| MCP 工具 | 输入 | 行为 |
+|---|---|---|
+| `create_weekly_labs` | `{revision,lab:{courseId,name,startTime,endTime,reportDeadlineRule?,reportDeadline?,acceptanceDeadline?,number?,...详情},rule:{count,intervalWeeks}}` | 在同一课程按北京时间每周创建实验与独立报告；每次实验使用不同关联组。规则逐次计算；手动截止时间随周数平移。`count` 含首次；已有实验或按下一次实验验收请用 `create_lab` |
+| `get_course_overview` | `{}` | 返回 revision 和各课程卡片数据：最近待办截止时间、逾期标记、最新完成编号、手动调整状态 |
+| `set_course_overview_progress` | `{revision,courseId,progress:{acceptance?,report?,homework?}}` | 替换该课程的概览完成编号调整，不改变任何事件状态、时间、编号基准或跳过规则 |
+
+课程概览独立展示验收、报告和作业的下一项待办，最早逾期任务优先且跳过任务不计入。自动进度取已完成任务的最高编号（无需前面的任务全部完成），无编号时显示任务名和“未编号”。`progress` 值为 0–100000 的整数，`null` 表示“暂无完成”，省略某项表示恢复自动统计，`{}` 恢复全部自动统计。手动值会标记“手动”，不会自动完成任务，也不会隐藏下一项待办。调整记录存于课程链 `taskRules.completedProgress`，随存档同步，支持撤销；修改其他课程规则时需保留该字段。
+
+界面入口：右边栏“课程概览”；手机上先打开“待办”，再切换“课程概览”。点击课程卡片右上角铅笔调整统计，点击截止时间打开对应事件详情。

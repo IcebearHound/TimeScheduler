@@ -15,6 +15,7 @@ export function courseTaskKind(event: TaskEvent, types: readonly TaskType[]): Co
   if (!kind && types.some(t => t.id === event.typeId && t.category === 'homework')) return '作业'
   if (!kind && types.some(t => t.id === event.typeId && t.category === 'exam')) return '考试'
   if (!kind && types.some(t => t.id === event.typeId && t.category === 'lab')) return '实验课'
+  if (!kind && types.some(t => t.id === event.typeId && t.category === 'lab_report')) return '实验报告'
   return undefined
 }
 export function courseTaskTime(event: TaskEvent, kind: CourseTaskKind): Date {

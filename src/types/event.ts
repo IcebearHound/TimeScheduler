@@ -11,7 +11,7 @@ export interface Reminder {
   notified: boolean
 }
 
-export type EventTypeCategory = 'course' | 'exam' | 'lab' | 'homework' | 'custom'
+export type EventTypeCategory = 'course' | 'exam' | 'lab' | 'lab_report' | 'homework' | 'custom'
 
 export interface PropertyField {
   name: string
@@ -104,6 +104,7 @@ export interface EventChain {
 }
 
 export interface CourseTaskRules {
+  completedProgress?: { acceptance?: number | null; report?: number | null; homework?: number | null }
   homeworkAnchor?: { eventId: string; number: number }
   labAnchor?: { eventId: string; number: number }
   examAnchor?: { eventId: string; number: number }

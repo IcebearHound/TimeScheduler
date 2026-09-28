@@ -13,7 +13,7 @@ test('weekly lab bundles use real lab types, independent groups and synchronized
   const actions = createWeeklyTaskActions(s, [lab, { ...lab, kind: '实验报告', startTime: undefined, endTime: '2026-09-10T23:59:00+08:00' }], { count: 6, intervalWeeks: 1 })
   s = apply(s, actions)
   assert.equal(s.events.length, 12)
-  assert.ok(s.events.every(e => s.eventTypes.find(t => t.id === e.typeId)?.category === 'lab'))
+  assert.ok(s.events.every(e => s.eventTypes.find(t => t.id === e.typeId)?.category === (e.properties.taskKind === '实验报告' ? 'lab_report' : 'lab')))
   assert.equal(new Set(s.events.map(e => e.properties.labGroupId)).size, 6)
   s = apply(s, configureCourseTaskRulesActions(s, 'c', { labAnchor: { eventId: s.events[4].id, number: 3 }, skipHolidays: true }))
   const rows = listCourseTasks(s)

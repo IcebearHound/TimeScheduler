@@ -35,6 +35,7 @@
     "test:workspace": "npm run build && node scripts/test-workspace.mjs",
     "test:mobile-panels": "npm run build && node scripts/test-mobile-panels.mjs",
     "test:assignment-sidebar": "npm run build && node scripts/test-assignment-sidebar.mjs",
+    "test:course-overview": "npm run build && node scripts/test-course-overview.mjs",
     "test:course-task-rules": "npm run build && node scripts/test-course-task-rules.mjs",
     "test:calendar-scroll": "npm run build && node scripts/test-calendar-scroll.mjs",
     "test:agent-layout": "npm run build && node scripts/test-agent-layout.mjs",
