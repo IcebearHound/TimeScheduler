@@ -18,7 +18,7 @@ import { Paperclip, FileText, X, Download, Globe, History, Plus, ArrowUp, Chevro
 import { AgentAttachment, attachmentsSchema } from '../integrations/attachments'
 import { agentFileAccept, readAgentFile } from '../utils/agentFiles'
 import { AgentWebPage } from '../integrations/agentArtifacts'
-import { messageLinks, readAgentWebPage, publicWebUrl } from '../utils/agentWeb'
+import { requestedWebLinks, readAgentWebPage, publicWebUrl } from '../utils/agentWeb'
 import { downloadAgentFile } from '../utils/agentDownloads'
 
 const useConversation = create<{ models: Record<string, { defaultModel: string; chosenModel: string }>; attachments: AgentAttachment[]; webPages: AgentWebPage[]; proposal: (AgentReply & { revision: string; snapshot: Snapshot }) | null }>(() => ({ models: {}, attachments: [], webPages: [], proposal: null }))
@@ -89,7 +89,7 @@ export default function IntegrationPanel() {
     if (!profile) { configure(); return }
     if ((!prompt.trim() && !attachments.length) || busy || reading || loading || !model.trim()) return
     const text = prompt.trim() || '请先概述附件内容，再询问我希望如何处理。', history = messages.slice(-12).map(({ generatedFiles, ...m }) => ({ ...m, ...(generatedFiles?.length ? { generatedFileNames: generatedFiles.map(f => f.name) } : {}) }))
-    const links = messageLinks(text)
+    const links = requestedWebLinks(text)
     if (links.length > 3) { setError('每次最多读取 3 个网页链接，请分批发送'); return }
     setInstruction(''); setBusy(true); setError(''); useConversation.setState({ proposal: null }); append({ role: 'user', text, files: attachments.map(a => a.name) })
     const request = new AbortController(); controller.current = request
@@ -160,7 +160,7 @@ export default function IntegrationPanel() {
       </div>
     </form>
     <div ref={extras} className="relative z-50">
-    {composerMenu === 'attachments' && <div aria-label="添加到对话" className="agent-composer-options"><button type="button" disabled={busy || reading} className="task-menu-item" onClick={() => { fileInput.current?.click(); setComposerMenu(null) }}><Paperclip size={15} />上传文件</button><button type="button" disabled={busy} className="task-menu-item" onClick={() => { setComposerMenu(null); useUIStore.getState().setIsImportDialogOpen(true) }}><FileText size={15} />导入课程表</button><details className="p-2 text-[11px] text-slate-500"><summary className="flex cursor-pointer items-center gap-2"><Info size={14} />附件与联网说明</summary><p className="pt-2 leading-relaxed">支持文本、CSV / Excel、PDF、PNG / JPG / WebP；每个 ≤5 MB，最多 5 个。图片和 PDF 需要所选模型支持。提供链接时通过 Jina Reader 读取公开网页。发送会将附件、日程与最近对话提交给所选 AI 服务；附件仅保留在当前页面。</p></details></div>}
+    {composerMenu === 'attachments' && <div aria-label="添加到对话" className="agent-composer-options"><button type="button" disabled={busy || reading} className="task-menu-item" onClick={() => { fileInput.current?.click(); setComposerMenu(null) }}><Paperclip size={15} />上传文件</button><button type="button" disabled={busy} className="task-menu-item" onClick={() => { setComposerMenu(null); useUIStore.getState().setIsImportDialogOpen(true) }}><FileText size={15} />导入课程表</button><details className="p-2 text-[11px] text-slate-500"><summary className="flex cursor-pointer items-center gap-2"><Info size={14} />附件与联网说明</summary><p className="pt-2 leading-relaxed">支持文本、CSV / Excel、PDF、PNG / JPG / WebP；每个 ≤5 MB，最多 5 个。图片和 PDF 需要所选模型支持。仅在明确要求读取、浏览或总结网页时通过 Jina Reader 获取正文，最多 3 个；填写或保存提交链接不会读取网页。发送会将附件、日程与最近对话提交给所选 AI 服务；附件仅保留在当前页面。</p></details></div>}
     <div aria-label="模型与 API 选项" className="agent-model-controls agent-composer-options" style={{ display: composerMenu === 'model' ? 'grid' : 'none' }}>
       <label className="block text-xs">API 配置<select aria-label="API 配置" className="workspace-input" disabled={busy || loading} value={configs.activeId} onChange={e => { const next = { ...configs, activeId: e.target.value }; const selected = next.profiles.find(p => p.id === next.activeId); configIdentity.current = `${selected?.id}:${selected?.model}`; setConfigs(next); setModel(selected ? chosenModel(selected.id, selected.model) : ''); history.updateThread(active.id, { profileId: selected?.id, model: selected ? chosenModel(selected.id, selected.model) : '' }); void saveAIProfiles(next).catch(e => setError(e.message)) }}>{!configs.profiles.length && <option value="">尚未配置</option>}{configs.profiles.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}</select></label>
       <label className="block text-xs">模型<input aria-label="当前模型" className="workspace-input" title="选择推荐模型或输入模型名称" list="agent-models" value={model} disabled={busy} onChange={e => { const value = e.target.value; setModel(value); history.updateThread(active.id, { model: value }); if (activeProfile) useConversation.setState(state => ({ models: { ...state.models, [activeProfile.id]: { defaultModel: activeProfile.model, chosenModel: value } } })) }} /><datalist id="agent-models">{modelOptions.map(m => <option key={m} value={m} />)}</datalist></label>

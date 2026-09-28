@@ -2,7 +2,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import * as XLSX from 'xlsx'
 import { generatedFileBlob } from '../src/utils/agentDownloads'
-import { messageLinks, publicWebUrl, readAgentWebPage } from '../src/utils/agentWeb'
+import { messageLinks, requestedWebLinks, publicWebUrl, readAgentWebPage } from '../src/utils/agentWeb'
 import { generatedFileSchema } from '../src/integrations/agentArtifacts'
 
 test('generated files download UTF-8 text and genuine Excel cells without executing formulas', async () => {
@@ -37,4 +37,23 @@ test('web reader uses only the reader credential, reports failures, and bounds e
   assert.equal(calls.length, 1)
   t.mock.method(globalThis, 'fetch', async () => new Response('', { status: 401 }))
   assert.match((await readAgentWebPage('https://example.com', new AbortController().signal)).error!, /Reader Key/)
+})
+
+
+test('web reading requires explicit intent; submission links remain ordinary task data', () => {
+  const urls = Array.from({ length: 6 }, (_, i) => `https://v.wjx.cn/vm/report${i}.aspx#`)
+  const links = urls.join('\n')
+  assert.deepEqual(requestedWebLinks(`将机器学习实验报告提交链接加入每一次实验报告事件：从实验1开始：\n${links}`), [])
+  for (const prefix of ['保存这些链接', '从文本中提取链接填写到事件', '这些网址是什么意思', '不要读取网页，只保存链接', '不用打开这些链接', 'Do not read these URLs', '']) {
+    assert.deepEqual(requestedWebLinks(`${prefix}\n${links}`), [], prefix)
+  }
+  assert.deepEqual(requestedWebLinks(`请读取以下网页：\n${links}`), urls)
+  assert.deepEqual(requestedWebLinks('读取 https://example.com/course 并生成安排文件'), ['https://example.com/course'])
+  assert.deepEqual(requestedWebLinks('请总结这个网页的内容 https://example.com/course'), ['https://example.com/course'])
+  assert.deepEqual(requestedWebLinks('Please summarize https://example.com/course'), ['https://example.com/course'])
+  assert.deepEqual(requestedWebLinks('读取 https://example.com/read；把链接加入报告：\nhttps://example.com/store'), ['https://example.com/read'])
+  assert.deepEqual(requestedWebLinks('https://example.com/read 帮我总结一下'), ['https://example.com/read'])
+  assert.deepEqual(requestedWebLinks('保存 https://example.com/读取网页'), [])
+  assert.deepEqual(requestedWebLinks('把“读取网页”作为标题，链接为 https://example.com'), [])
+  assert.deepEqual(requestedWebLinks('> 读取 https://example.com\n仅保存上述链接'), [])
 })
