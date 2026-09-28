@@ -1,4 +1,18 @@
-import type { EventType } from '../types/event'
+import type { CourseTaskRules, EventType } from '../types/event'
+import { courseTaskKind } from './courseTasks'
+
+/** Old versions allowed a report to anchor the combined lab sequence. Split that anchor once. */
+export function migrateReportNumberAnchors<E extends Parameters<typeof courseTaskKind>[0] & { chainId: string }, C extends { id: string; taskRules?: CourseTaskRules }>(events: E[], types: EventType[], chains: C[]): C[] {
+  return chains.map(chain => {
+    const anchor = chain.taskRules?.labAnchor
+    const report = anchor && events.find(e => e.id === anchor.eventId && e.chainId === chain.id && courseTaskKind(e, types) === '实验报告')
+    if (!anchor || !report) return chain
+    const rules = { ...chain.taskRules, reportAnchor: chain.taskRules?.reportAnchor || anchor }
+    const sibling = report.properties.labGroupId && events.find(e => e.chainId === chain.id && e.properties.labGroupId === report.properties.labGroupId && ['实验课', '实验验收'].includes(courseTaskKind(e, types) || ''))
+    if (sibling) rules.labAnchor = { ...anchor, eventId: sibling.id }; else delete rules.labAnchor
+    return { ...chain, taskRules: rules }
+  })
+}
 /** One-time upgrade of legacy report tasks, before the report type existed. */
 export function migrateLegacyReports<T extends { typeId: string; properties: Record<string, string | undefined> }>(events: T[], originalTypes: EventType[], types: EventType[]): T[] {
   if (originalTypes.some(t => t.category === 'lab_report')) return events

@@ -107,6 +107,7 @@ export interface CourseTaskRules {
   completedProgress?: { acceptance?: number | null; report?: number | null; homework?: number | null }
   homeworkAnchor?: { eventId: string; number: number }
   labAnchor?: { eventId: string; number: number }
+  reportAnchor?: { eventId: string; number: number }
   examAnchor?: { eventId: string; number: number }
   skipHolidays?: boolean
   extraSkipDates?: string[]

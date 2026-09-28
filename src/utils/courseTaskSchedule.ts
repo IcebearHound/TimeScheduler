@@ -1,5 +1,5 @@
 import type { CourseTaskRules, EventType } from '../types/event'
-import { courseTaskCategory, courseTaskKind, courseTaskTime } from './courseTasks'
+import { courseTaskCategory, courseTaskNumberCategory, taskNumberAnchorKey, courseTaskKind, courseTaskTime } from './courseTasks'
 
 export const holidaySource = 'https://www.gov.cn/zhengce/zhengceku/202511/content_7047091.htm'
 export const holidayYears = [2026]
@@ -28,24 +28,33 @@ export function buildCourseTaskSchedule(events: readonly ScheduleEvent[], types:
   }
   for (const chain of chains) {
     const rules = chain.taskRules || {}, rowWarnings: string[] = []
-    for (const category of ['作业', '实验', '考试'] as const) {
+    const linkedLabs = new Map<string, ScheduleEvent[]>()
+    for (const event of byChain.get(chain.id) || []) {
+      if (!event.properties.labGroupId || courseTaskCategory(kinds.get(event.id)!) !== '实验') continue
+      const linked = linkedLabs.get(event.properties.labGroupId) || []
+      linked.push(event); linkedLabs.set(event.properties.labGroupId, linked)
+    }
+    for (const category of ['作业', '实验', '实验报告', '考试'] as const) {
       const groups = new Map<string, ScheduleEvent[]>()
       for (const e of byChain.get(chain.id) || []) {
         const kind = kinds.get(e.id)!
-        if (courseTaskCategory(kind) !== category) continue
-        const key = category === '实验' && e.properties.labGroupId ? `group:${e.properties.labGroupId}` : `event:${e.id}`
+        if (courseTaskNumberCategory(kind) !== category) continue
+        const key = (category === '实验' || category === '实验报告') && e.properties.labGroupId ? `group:${e.properties.labGroupId}` : `event:${e.id}`
         groups.set(key, [...(groups.get(key) || []), e])
       }
       const occurrences = [...groups.values()].map(items => {
         const representative = items.find(e => courseTaskKind(e, types) === '实验课') || [...items].sort((a, b) => +courseTaskTime(a, courseTaskKind(a, types)!) - +courseTaskTime(b, courseTaskKind(b, types)!))[0]
-        const when = courseTaskTime(representative, courseTaskKind(representative, types)!), day = taskCalendarDay(when)
+        const when = courseTaskTime(representative, courseTaskKind(representative, types)!)
+        const linked = representative.properties.labGroupId && (category === '实验' || category === '实验报告') ? linkedLabs.get(representative.properties.labGroupId) || items : items
+        const skipRepresentative = linked.find(e => courseTaskKind(e, types) === '实验课') || [...linked].sort((a, b) => +courseTaskTime(a, courseTaskKind(a, types)!) - +courseTaskTime(b, courseTaskKind(b, types)!))[0]
+        const day = taskCalendarDay(courseTaskTime(skipRepresentative, courseTaskKind(skipRepresentative, types)!))
         const holiday = rules.skipHolidays && category !== '考试' ? holidays.get(day) : undefined
-        const override = items.find(e => e.properties.taskSkipOverride === 'skip' || e.properties.taskSkipOverride === 'keep')?.properties.taskSkipOverride
+        const override = linked.find(e => e.properties.taskSkipOverride === 'skip' || e.properties.taskSkipOverride === 'keep')?.properties.taskSkipOverride
         const reason = override === 'keep' ? undefined : override === 'skip' ? '手动跳过' : rules.keepDates?.includes(day) ? undefined : rules.extraSkipDates?.includes(day) ? '手动跳过' : holiday
         if (rules.skipHolidays && !holidayYears.includes(+day.slice(0, 4))) rowWarnings.push(`${day.slice(0, 4)} 年节假日未内置，请手动填写跳过日期`)
         return { items, when, representative, skipped: !!reason, reason }
       }).sort((a, b) => +a.when - +b.when || a.representative.id.localeCompare(b.representative.id))
-      const anchor = category === '作业' ? rules.homeworkAnchor : category === '考试' ? rules.examAnchor : rules.labAnchor
+      const anchor = rules[taskNumberAnchorKey(category)]
       const anchorOccurrence = anchor ? occurrences.findIndex(o => o.items.some(e => e.id === anchor.eventId)) : -1
       // A skipped anchor keeps its position: the next active occurrence takes its number.
       const anchorIndex = anchorOccurrence < 0 ? -1 : occurrences.slice(0, anchorOccurrence).filter(o => !o.skipped).length

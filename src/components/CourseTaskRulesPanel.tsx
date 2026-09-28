@@ -3,20 +3,20 @@ import { Hash, SkipForward } from 'lucide-react'
 import { CourseTaskRules, Event, EventChain, EventType } from '../types/event'
 import AppPanel from './AppPanel'
 import CourseTaskIcon from './CourseTaskIcon'
-import { CourseTaskCategory, courseTaskCategory, courseTaskKind, courseTaskTime } from '../utils/courseTasks'
+import { CourseTaskNumberCategory, courseTaskNumberCategory, taskNumberAnchorKey, courseTaskKind, courseTaskTime } from '../utils/courseTasks'
 import { buildCourseTaskSchedule, holidaySource, taskCalendarDay } from '../utils/courseTaskSchedule'
 
-const anchorKey = (category: CourseTaskCategory) => category === '实验' ? 'labAnchor' : category === '考试' ? 'examAnchor' : 'homeworkAnchor'
-export default function CourseTaskRulesPanel({ course, tasks, types, onSave, onClose }: {
-  course: EventChain; tasks: Event[]; types: EventType[]; onSave: (rules: CourseTaskRules) => Promise<void>; onClose: () => void
+const anchorKey = taskNumberAnchorKey
+export default function CourseTaskRulesPanel({ course, tasks, types, initialCategory, onSave, onClose }: {
+  initialCategory?: CourseTaskNumberCategory; course: EventChain; tasks: Event[]; types: EventType[]; onSave: (rules: CourseTaskRules) => Promise<void>; onClose: () => void
 }) {
-  const categories = (['实验', '作业', '考试'] as const).filter(category => tasks.some(e => courseTaskCategory(courseTaskKind(e, types)!) === category))
-  const [category, setCategory] = useState<CourseTaskCategory>(categories[0] || '作业')
+  const categories = (['实验', '实验报告', '作业', '考试'] as const).filter(category => tasks.some(e => courseTaskNumberCategory(courseTaskKind(e, types)!) === category))
+  const [category, setCategory] = useState<CourseTaskNumberCategory>(initialCategory && categories.includes(initialCategory) ? initialCategory : categories[0] || '作业')
   const [rules, setRules] = useState<CourseTaskRules>(() => {
     const value = { ...course.taskRules }
-    for (const c of ['实验', '作业', '考试'] as const) {
+    for (const c of ['实验', '实验报告', '作业', '考试'] as const) {
       const key = anchorKey(c), anchor = value[key]
-      if (anchor && !tasks.some(e => e.id === anchor.eventId && courseTaskCategory(courseTaskKind(e, types)!) === c)) delete value[key]
+      if (anchor && !tasks.some(e => e.id === anchor.eventId && courseTaskNumberCategory(courseTaskKind(e, types)!) === c)) delete value[key]
     }
     return value
   })
@@ -24,18 +24,18 @@ export default function CourseTaskRulesPanel({ course, tasks, types, onSave, onC
   const [busy, setBusy] = useState(false), [error, setError] = useState('')
   const dates = (text: string) => [...new Set(text.split(/[\s,，;；]+/).filter(Boolean))]
   const draft = { ...rules, extraSkipDates: dates(extra), keepDates: dates(keep) }
-  const key = anchorKey(category), anchor = rules[key], selectedTasks = tasks.filter(e => courseTaskCategory(courseTaskKind(e, types)!) === category)
+  const key = anchorKey(category), anchor = rules[key], selectedTasks = tasks.filter(e => courseTaskNumberCategory(courseTaskKind(e, types)!) === category)
   const schedule = buildCourseTaskSchedule(tasks, types, [{ ...course, taskRules: draft }])
   return <AppPanel title={`${course.name} · 编号与跳过`} onClose={onClose}>
     <form className="task-rules-form space-y-3 text-sm" onSubmit={async e => { e.preventDefault(); setBusy(true); setError(''); try { await onSave(draft); onClose() } catch (e) { setError(e instanceof Error ? e.message : '保存失败') } finally { setBusy(false) } }}>
       <div className="rounded-xl border border-slate-200 p-3 dark:border-slate-700">
         <h3 className="mb-2 flex items-center gap-2 font-semibold"><Hash size={12} />自动编号</h3>
-        <div className="mb-2 flex gap-1 rounded-lg bg-slate-100 p-1 dark:bg-slate-800" aria-label="编号任务类别">{categories.map(c => <button key={c} type="button" aria-pressed={category === c} className={`flex min-h-9 flex-1 items-center justify-center gap-1.5 rounded-md text-xs ${category === c ? 'bg-white text-indigo-600 shadow-sm dark:bg-slate-700 dark:text-indigo-300' : 'text-slate-500'}`} onClick={() => setCategory(c)}><CourseTaskIcon kind={c === '实验' ? '实验课' : c} />{c}</button>)}</div>
+        <div className="mb-2 flex flex-wrap gap-1 rounded-lg bg-slate-100 p-1 dark:bg-slate-800" aria-label="编号任务类别">{categories.map(c => <button key={c} type="button" aria-pressed={category === c} className={`flex min-h-9 flex-1 items-center justify-center gap-1.5 rounded-md text-xs ${category === c ? 'bg-white text-indigo-600 shadow-sm dark:bg-slate-700 dark:text-indigo-300' : 'text-slate-500'}`} onClick={() => setCategory(c)}><CourseTaskIcon kind={c === '实验' ? '实验课' : c} />{c}</button>)}</div>
         <label className="flex min-h-10 items-center justify-between gap-2">为{category}编号<input aria-label="自动编号" type="checkbox" checked={!!anchor} onChange={e => { const next = { ...rules }; if (e.target.checked) next[key] = { eventId: selectedTasks[0]?.id || '', number: 0 }; else delete next[key]; setRules(next) }} /></label>
         {anchor && <div className="space-y-2">
           <label className="block text-xs">选择一次任务<select aria-label="编号基准" className="workspace-input mt-1 w-full" value={anchor.eventId} onChange={e => setRules({ ...rules, [key]: { ...anchor, eventId: e.target.value } })}>{selectedTasks.map(e => <option value={e.id} key={e.id}>{taskCalendarDay(courseTaskTime(e, courseTaskKind(e, types)!))} · {courseTaskKind(e, types)} · {e.name}</option>)}</select></label>
           <label className="flex items-center justify-between gap-3 text-xs">将这次设为<input aria-label="这次是第几次" required type="number" min={0} max={100000} step={1} className="workspace-input w-24" value={anchor.number} onChange={e => setRules({ ...rules, [key]: { ...anchor, number: Number(e.target.value) } })} /></label>
-          <p className="text-xs text-slate-500">允许从 0 开始，前后自动递推；负数留空。同组实验共用编号，不同类型分别计数。</p>
+          <p className="text-xs text-slate-500">允许从 0 开始，前后自动递推；负数留空。实验课与验收共用编号；实验报告、作业、考试各自独立编号。</p>
         </div>}
       </div>
       <div className="rounded-xl border border-slate-200 p-3 dark:border-slate-700">

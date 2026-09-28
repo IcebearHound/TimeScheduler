@@ -9,7 +9,7 @@ import { getConflictingEvents } from '../utils/eventUtils'
 import { executeCreateRule, executeModifyRule } from '../utils/batchRuleUtils'
 import useEventGroupStore from './eventGroupStore'
 import { debugLog } from '../utils/debugStore'
-import { ensureDefaultTaskTypes, migrateLegacyReports } from '../utils/defaultTaskTypes'
+import { ensureDefaultTaskTypes, migrateLegacyReports, migrateReportNumberAnchors } from '../utils/defaultTaskTypes'
 import { completionProperties, courseTaskKind } from '../utils/courseTasks'
 
 interface HistoryEntry {
@@ -712,7 +712,7 @@ const useEventStore = create<EventStore>()(
         const taskEvents = migrateLegacyReports<Event>((p.events || []).map(deserEvent).map(([, e]: [string, Event]) => e), originalTypes, taskTypes)
         set({
           events: new Map(taskEvents.map(e => [e.id, e])),
-          eventChains: new Map((p.eventChains || []).map(deserChain)),
+          eventChains: new Map(migrateReportNumberAnchors<Event, EventChain>(taskEvents, taskTypes, (p.eventChains || []).map(deserChain).map(([, c]: [string, EventChain]) => c)).map(c => [c.id, c])),
           eventTypes: new Map(taskTypes.map(t => [t.id, t])),
           semesterStartDate: p.semesterStartDate ? new Date(p.semesterStartDate) : new Date(2026, 7, 31),
         })

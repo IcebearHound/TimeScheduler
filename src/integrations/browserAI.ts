@@ -1,4 +1,5 @@
 import { aiConfigSchema, AIConfig, proposeActions, proposeAgent, parseAgentReply, AgentReply } from './ai'
+import { localTimeZone } from '../utils/currentTime'
 import { aiPresets } from './aiPresets'
 import { browserVault } from './browserVault'
 import { actionsSchema, projectActions, Snapshot, snapshotRevision } from './contracts'
@@ -24,17 +25,18 @@ function validateAIAddress(address: string) {
 export async function proposeBrowserActions(config: BrowserAIConfig, instruction: string, snapshot: Snapshot, signal: AbortSignal) {
   aiConfigSchema.parse(config); validateAIAddress(config.baseUrl)
   if (!instruction.trim() || instruction.length > 20000) throw new Error('请输入 1 至 20000 字的安排')
+  const timeZone = localTimeZone()
   const revision = await snapshotRevision(snapshot)
   let actions
   try {
     if (config.transport === 'relay') {
       if (!aiRelayEndpoint) throw new Error('网站尚未开通 AI 转发，请选择直连')
       validateAIAddress(aiRelayEndpoint)
-      const response = await fetch(aiRelayEndpoint + '/ai/propose', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${config.apiKey}` }, body: JSON.stringify({ preset: config.preset, model: config.model, instruction, snapshot }), redirect: 'error', signal })
+      const response = await fetch(aiRelayEndpoint + '/ai/propose', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${config.apiKey}` }, body: JSON.stringify({ preset: config.preset, model: config.model, timeZone, instruction, snapshot }), redirect: 'error', signal })
       const result = await response.json()
       if (!response.ok) throw new Error(typeof result.error === 'string' ? result.error : '网站 AI 转发暂时不可用')
       actions = actionsSchema.parse(result.actions)
-    } else actions = await proposeActions(config, instruction, snapshot, { browser: true, signal })
+    } else actions = await proposeActions(config, instruction, snapshot, { timeZone, browser: true, signal })
   } catch (error) {
     if (signal.aborted) throw new Error('请求已取消或超时，请重试')
     if (error instanceof TypeError) throw new Error(config.transport === 'direct' ? `无法连接 AI 服务，请检查网络。若服务商限制浏览器访问，${aiRelayEndpoint ? '可在高级设置选择网站转发' : '请换用支持网页直连的服务商，或联系网站管理员开通转发'}。` : '无法连接网站 AI 转发服务，请稍后重试')
@@ -70,17 +72,18 @@ export async function requestBrowserAgent(config: BrowserAIConfig, instruction: 
   attachmentsSchema.parse(attachments)
   webPagesSchema.parse(webPages)
   if (!instruction.trim() || instruction.length > 20000) throw new Error('对话过长，请清空会话后重试')
+  const timeZone = localTimeZone()
   const revision = await snapshotRevision(snapshot)
   try {
     let reply: AgentReply
     if (config.transport === 'relay') {
       if (!aiRelayEndpoint) throw new Error('网站尚未配置转发服务')
       validateAIAddress(aiRelayEndpoint)
-      const response = await fetch(aiRelayEndpoint + '/ai/propose', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${config.apiKey}` }, body: JSON.stringify({ mode: 'agent', preset: config.preset, model: config.model, instruction, snapshot, attachments, webPages }), redirect: 'error', signal })
+      const response = await fetch(aiRelayEndpoint + '/ai/propose', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${config.apiKey}` }, body: JSON.stringify({ mode: 'agent', preset: config.preset, model: config.model, timeZone, instruction, snapshot, attachments, webPages }), redirect: 'error', signal })
       const result = await response.json()
       if (!response.ok) throw new Error(result.error || 'AI 转发失败')
       reply = parseAgentReply(result, snapshot)
-    } else reply = await proposeAgent(config, instruction, snapshot, { browser: true, signal, attachments, webPages })
+    } else reply = await proposeAgent(config, instruction, snapshot, { timeZone, browser: true, signal, attachments, webPages })
     if (reply.actions.length) projectActions(snapshot, reply.actions, () => crypto.randomUUID())
     return { ...reply, revision }
   } catch (error) {

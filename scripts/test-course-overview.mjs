@@ -48,6 +48,7 @@ try {
     await add()
     await page.getByLabel('本次编号', { exact: true }).fill('1')
     await page.getByRole('checkbox', { name: '同时添加实验报告截止时间', exact: true }).check()
+    await page.getByLabel('本次报告编号', { exact: true }).fill('1')
     await page.getByLabel('实验结束后天数', { exact: true }).fill('2')
     await page.getByLabel('截止时刻', { exact: true }).fill('23:00')
     await page.getByRole('checkbox', { name: '每周重复', exact: true }).check()

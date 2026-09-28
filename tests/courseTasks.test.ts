@@ -98,13 +98,13 @@ test('new recurring tasks anchor at zero with stable IDs and continue numbering 
   const initial = fixture()
   const actions = createWeeklyTaskActions(initial, [
     { courseId: 'course', name: '带编号实验', kind: '实验课', startTime: lab.startTime, endTime: lab.endTime, labGroupId: 'group', number: 0 },
-    { courseId: 'course', name: '带编号实验', kind: '实验报告', endTime: lab.reportDeadline, labGroupId: 'group' },
+    { courseId: 'course', name: '带编号实验', kind: '实验报告', endTime: lab.reportDeadline, labGroupId: 'group', number: 10 },
   ], { count: 3, intervalWeeks: 1 })
   const preview = project(initial, actions), applied = project(initial, actions)
   assert.equal(preview.eventChains[0].taskRules?.labAnchor?.eventId, applied.eventChains[0].taskRules?.labAnchor?.eventId)
   const rows = listCourseTasks(applied)
   assert.deepEqual(rows.filter(e => e.kind === '实验课').map(e => e.sequence), [0, 1, 2])
-  assert.deepEqual(rows.filter(e => e.kind === '实验报告').map(e => e.sequence), [0, 1, 2])
+  assert.deepEqual(rows.filter(e => e.kind === '实验报告').map(e => e.sequence), [10, 11, 12])
   assert.throws(() => project(applied, actions), /ID 已存在/)
 })
 
@@ -277,12 +277,13 @@ test('weekly labs create independent report types/groups, opt in explicitly and 
   const initial = fixture()
   assert.equal(project(initial, createLabActions(initial, base)).events.length, 2)
   const reportDeadlineRule = { mode: 'weekday' as const, weekday: 0, time: '23:59' }
-  const result = project(initial, createWeeklyLabActions(initial, { ...base, number: 0, reportDeadlineRule }, { count: 3, intervalWeeks: 2 }))
+  const result = project(initial, createWeeklyLabActions(initial, { ...base, number: 0, reportNumber: 2, reportDeadlineRule }, { count: 3, intervalWeeks: 2 }))
   const reports = result.events.filter(e => e.properties.taskKind === '实验报告')
   assert.deepEqual(reports.map(e => e.endTime), ['2026-09-20T15:59:00.000Z', '2026-10-04T15:59:00.000Z', '2026-10-18T15:59:00.000Z'])
   assert.ok(reports.every(e => e.typeId === 'type-lab-report' && e.chainId === 'course'))
   assert.equal(new Set(reports.map(e => e.properties.labGroupId)).size, 3)
-  assert.deepEqual(listCourseTasks(result, { kind: '实验报告' }).map(t => t.sequence), [0, 1, 2])
+  assert.deepEqual(listCourseTasks(result, { kind: '实验报告' }).map(t => t.sequence), [2, 3, 4])
+  assert.deepEqual(listCourseTasks(result, { kind: '实验课' }).map(t => t.sequence), [0, 1, 2], 'Report numbering must preserve the lab anchor created in the same transaction')
   assert.equal(courseTaskKind({ ...reports[0], properties: {} }, result.eventTypes), '实验报告')
   assert.throws(() => createLabActions(initial, { ...lab, reportDeadlineRule }), /只能选择一种/)
   assert.throws(() => createLabActions(initial, { ...base, reportDeadline: base.endTime }), /晚于/)
@@ -297,7 +298,7 @@ test('weekly labs create independent report types/groups, opt in explicitly and 
 
 test('course overview separates completion milestones, excludes skipped tasks and supports reversible display overrides', () => {
   let s = fixture()
-  s = project(s, createWeeklyLabActions(s, { ...lab, number: 1 }, { count: 3, intervalWeeks: 1 }))
+  s = project(s, createWeeklyLabActions(s, { ...lab, number: 1, reportNumber: 1 }, { count: 3, intervalWeeks: 1 }))
   s = project(s, createWeeklyTaskActions(s, [{ courseId: 'course', name: '作业', kind: '作业', endTime: lab.reportDeadline, number: 1 }], { count: 2, intervalWeeks: 1 }))
   const byKind = (kind: string) => s.events.filter(e => e.properties.taskKind === kind)
   byKind('实验验收')[1].properties.completed = 'true'

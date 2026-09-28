@@ -32,7 +32,7 @@ export function createWeeklyLabActions(snapshot: Snapshot, raw: LabInput, rule: 
   const result: Action[] = []
   let working = snapshot
   for (let n = 0; n < count; n++) {
-    const actions = createLabActions(working, { ...input, number: n === 0 ? input.number : undefined, startTime: shift(input.startTime, n), endTime: shift(input.endTime, n), acceptanceDeadline: shift(input.acceptanceDeadline, n), reportDeadline: shift(input.reportDeadline, n) }, newId)
+    const actions = createLabActions(working, { ...input, number: n === 0 ? input.number : undefined, reportNumber: n === 0 ? input.reportNumber : undefined, startTime: shift(input.startTime, n), endTime: shift(input.endTime, n), acceptanceDeadline: shift(input.acceptanceDeadline, n), reportDeadline: shift(input.reportDeadline, n) }, newId)
     result.push(...actions)
     if (result.length > 200) throw new Error('一次最多创建 200 项操作')
     working = projectActions(working, actions, newId)

@@ -4,6 +4,9 @@ export const courseTaskKinds = ['实验课', '实验验收', '实验报告', '�
 export type CourseTaskKind = typeof courseTaskKinds[number]
 export type CourseTaskCategory = '作业' | '实验' | '考试'
 export function courseTaskCategory(kind: CourseTaskKind): CourseTaskCategory { return kind === '作业' || kind === '考试' ? kind : '实验' }
+export type CourseTaskNumberCategory = CourseTaskCategory | '实验报告'
+export function courseTaskNumberCategory(kind: CourseTaskKind): CourseTaskNumberCategory { return kind === '实验报告' ? kind : courseTaskCategory(kind) }
+export function taskNumberAnchorKey(category: CourseTaskNumberCategory) { return category === '实验报告' ? 'reportAnchor' : category === '实验' ? 'labAnchor' : category === '考试' ? 'examAnchor' : 'homeworkAnchor' }
 type TaskEvent = { id: string; typeId: string; startTime: Date | string; endTime: Date | string; properties: Record<string, string | undefined> }
 type TaskType = Pick<EventType, 'id' | 'category'>
 

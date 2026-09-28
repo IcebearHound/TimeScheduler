@@ -88,3 +88,43 @@ test('numbered clarification text becomes options without converting ordinary li
   assert.deepEqual(extractAgentChoices('请选择：\n1. 课程A\n2. 课程B').choices, ['课程A', '课程B'])
   assert.equal(extractAgentChoices('课程列表\n1. 课程A\n2. 课程B').choices.length, 0)
 })
+
+
+for (const provider of ['openai', 'anthropic', 'gemini'] as const) test(`Agent ${provider} receives refreshed local time in system context on each request`, async t => {
+  t.mock.timers.enable({ apis: ['Date'], now: new Date('2026-09-28T15:59:59Z') })
+  const times: string[] = []
+  t.mock.method(globalThis, 'fetch', async (_url, init) => {
+    const body = JSON.parse(String(init?.body))
+    const system = provider === 'anthropic' ? body.system : provider === 'gemini' ? body.systemInstruction.parts[0].text : body.messages[0].content
+    const data = JSON.parse(provider === 'gemini' ? body.contents[0].parts[0].text : body.messages.at(-1).content)
+    assert.ok(system.includes(data.currentTime.localTime))
+    assert.ok(system.includes('无需联网或向用户追问'))
+    assert.equal(data.currentTime.timeZone, 'Asia/Shanghai')
+    times.push(data.currentTime.localTime)
+    const raw = JSON.stringify({ intent: 'query', message: '当前时间' })
+    return new Response(JSON.stringify(provider === 'anthropic' ? { content: [{ type: 'text', text: raw }] } : provider === 'gemini' ? { candidates: [{ content: { parts: [{ text: raw }] } }] } : { choices: [{ message: { content: raw } }] }))
+  })
+  const config = { provider, baseUrl: 'https://example.com/v1', model: 'test', apiKey: 'synthetic' }
+  await proposeAgent(config, '现在几点', snapshot, { timeZone: 'Asia/Shanghai' })
+  t.mock.timers.tick(2000)
+  await proposeAgent(config, '今天是几号', snapshot, { timeZone: 'Asia/Shanghai' })
+  assert.deepEqual(times, ['2026-09-28T23:59:59+08:00', '2026-09-29T00:00:01+08:00'])
+})
+
+test('relay preserves the browser timezone and rejects invalid zones before contacting a provider', async t => {
+  t.mock.timers.enable({ apis: ['Date'], now: new Date('2026-09-28T16:00:00Z') })
+  let calls = 0
+  t.mock.method(globalThis, 'fetch', async (_url, init) => {
+    calls++
+    const body = JSON.parse(String(init?.body)), data = JSON.parse(body.messages[1].content)
+    assert.equal(data.currentTime.timeZone, 'America/Los_Angeles')
+    assert.equal(data.currentTime.localTime, '2026-09-28T09:00:00-07:00')
+    assert.ok(body.messages[0].content.includes('2026-09-28T09:00:00-07:00'))
+    return new Response(JSON.stringify({ choices: [{ message: { content: JSON.stringify({ intent: 'query', message: '当前时间' }) } }] }))
+  })
+  const send = (timeZone: unknown) => worker.fetch(new Request('https://relay.example/ai/propose', { method: 'POST', headers: { Origin: 'https://planner.example', 'Content-Type': 'application/json', Authorization: 'Bearer synthetic' }, body: JSON.stringify({ mode: 'agent', preset: 'deepseek', instruction: '现在几点', timeZone, snapshot }) }), { APP_URL: 'https://planner.example/', AUTH_STATE_SECRET: '' })
+  assert.equal((await send('America/Los_Angeles')).status, 200)
+  assert.equal((await send('invalid')).status, 400)
+  assert.equal((await send({ timeZone: 'UTC' })).status, 400)
+  assert.equal(calls, 1)
+})

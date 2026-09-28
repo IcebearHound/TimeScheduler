@@ -1,6 +1,6 @@
 import * as XLSX from 'xlsx'
 import { Action, Snapshot, projectActions } from '../integrations/contracts'
-import { courseTaskCategory, courseTaskKind, courseTaskKinds } from './courseTasks'
+import { courseTaskNumberCategory, courseTaskKind, courseTaskKinds } from './courseTasks'
 import { createCourseTaskActions, setCourseTaskNumberActions, updateCourseTaskActions } from '../integrations/courseTasks'
 import { buildCourseTaskSchedule } from './courseTaskSchedule'
 
@@ -95,7 +95,7 @@ export function assignmentActions(snapshot: Snapshot, rows: AssignmentRow[]): Ac
     for (const item of numbers) {
       if (!Number.isInteger(item.number) || item.number < 0 || item.number > 100000) throw new Error(`${item.name}：编号须为 0–100000 的整数`)
       const event = planned.events.find(e => e.id === item.id)!
-      const key = JSON.stringify([event.chainId, courseTaskCategory(courseTaskKind(event, planned.eventTypes)!)])
+      const key = JSON.stringify([event.chainId, courseTaskNumberCategory(courseTaskKind(event, planned.eventTypes)!)])
       if (anchored.has(key)) continue
       const changes = setCourseTaskNumberActions(planned, item.id, item.number)
       actions.push(...changes); planned = projectActions(planned, changes, () => crypto.randomUUID()); anchored.add(key)

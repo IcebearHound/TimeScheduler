@@ -2,7 +2,7 @@ import { z } from 'zod'
 import { Action, Snapshot, projectActions, taskRulesSchema, validateSnapshot } from './contracts'
 import { buildCourseTaskSchedule } from '../utils/courseTaskSchedule'
 import { calculateReportDeadline, reportDeadlineRuleSchema } from '../utils/reportDeadline'
-import { completionProperties, courseTaskCategory, CourseTaskCategory, courseTaskCompleted, courseTaskKind, courseTaskKinds, courseTaskStatus, courseTaskTime, nextLabClass, sortedCourseTasks } from '../utils/courseTasks'
+import { completionProperties, courseTaskNumberCategory, taskNumberAnchorKey, courseTaskCategory, CourseTaskCategory, courseTaskCompleted, courseTaskKind, courseTaskKinds, courseTaskStatus, courseTaskTime, nextLabClass, sortedCourseTasks } from '../utils/courseTasks'
 
 const id = z.string().min(1).max(200)
 const date = z.string().datetime({ offset: true })
@@ -20,7 +20,7 @@ export const labInputSchema = z.object({
   courseId: id, name: z.string().trim().min(1).max(500),
   existingClassId: id.optional(), startTime: date.optional(), endTime: date.optional(),
   acceptanceDeadline: date.optional(), acceptanceAtNextClass: z.boolean().optional(), reportDeadline: date.optional(),
-  reportDeadlineRule: reportDeadlineRuleSchema.optional(), number: z.number().int().min(0).max(100000).optional(),
+  reportDeadlineRule: reportDeadlineRuleSchema.optional(), reportNumber: z.number().int().min(0).max(100000).optional(), number: z.number().int().min(0).max(100000).optional(),
   ...details,
 }).strict()
 export const courseTaskChangesSchema = z.object({
@@ -68,7 +68,7 @@ export function createCourseTaskActions(snapshot: Snapshot, raw: CourseTaskInput
     isHighlight: input.kind === '考试', pinned: false, priority: input.kind === '考试' ? 3 : 1,
   } }]
   if (eventId) {
-    const key = input.kind === '作业' ? 'homeworkAnchor' : input.kind === '考试' ? 'examAnchor' : 'labAnchor'
+    const key = taskNumberAnchorKey(courseTaskNumberCategory(input.kind))
     actions.push({ op: 'set_course_task_rules', id: chain.id, rules: { ...chain.taskRules, [key]: { eventId, number: input.number! } } })
   }
   return actions
@@ -94,10 +94,11 @@ export function createLabActions(snapshot: Snapshot, raw: LabInput, newId: () =>
     acceptance = next.startTime
   }
   const report = input.reportDeadlineRule ? calculateReportDeadline(endTime, input.reportDeadlineRule) : input.reportDeadline
+  if (input.reportNumber !== undefined && !report) throw new Error('设置报告编号时请同时提供报告截止时间或规则')
   if (report && +new Date(report) <= +new Date(endTime)) throw new Error('报告截止时间必须晚于实验结束时间')
   if (existing && input.number !== undefined) throw new Error('为已有实验编号请使用编号规则接口')
   for (const [kind, deadline] of [['实验验收', acceptance], ['实验报告', report]] as const) {
-    if (deadline) actions.push(...createCourseTaskActions(snapshot, { ...taskProperties(input), courseId: input.courseId, name: input.name, kind, endTime: deadline, labGroupId: group }))
+    if (deadline) actions.push(...createCourseTaskActions(projectActions(snapshot, actions, newId), { ...taskProperties(input), courseId: input.courseId, name: input.name, kind, endTime: deadline, labGroupId: group, ...(kind === '实验报告' ? { number: input.reportNumber } : {}) }))
   }
   return actions
 }
@@ -116,15 +117,15 @@ export function setCourseTaskStatusActions(snapshot: Snapshot, eventId: string, 
   return [{ op: 'update_event', id: eventId, changes: { properties: completionProperties(event, completed, now, ['实验课', '考试'].includes(courseTaskKind(event, snapshot.eventTypes)!)) } }]
 }
 export function setCourseTaskNumberActions(snapshot: Snapshot, eventId: string, number: number | null): Action[] {
-  const event = requireTask(snapshot, eventId), category = courseTaskCategory(courseTaskKind(event, snapshot.eventTypes)!)
+  const event = requireTask(snapshot, eventId), category = courseTaskNumberCategory(courseTaskKind(event, snapshot.eventTypes)!)
   const rules = { ...snapshot.eventChains.find(c => c.id === event.chainId)?.taskRules }
-  const key = category === '实验' ? 'labAnchor' : category === '作业' ? 'homeworkAnchor' : 'examAnchor'
+  const key = taskNumberAnchorKey(category)
   if (number === null) delete rules[key]; else rules[key] = { eventId, number }
   // A previous row conversion may have left an anchor in its old category.
-  for (const [name, expected] of [['labAnchor', '实验'], ['homeworkAnchor', '作业'], ['examAnchor', '考试']] as const) {
+  for (const [name, expected] of [['labAnchor', '实验'], ['reportAnchor', '实验报告'], ['homeworkAnchor', '作业'], ['examAnchor', '考试']] as const) {
     const anchor = rules[name], task = anchor && snapshot.events.find(e => e.id === anchor.eventId && e.chainId === event.chainId)
     const kind = task && courseTaskKind(task, snapshot.eventTypes)
-    if (anchor && (!kind || courseTaskCategory(kind) !== expected)) delete rules[name]
+    if (anchor && (!kind || courseTaskNumberCategory(kind) !== expected)) delete rules[name]
   }
   return configureCourseTaskRulesActions(snapshot, event.chainId, rules)
 }
@@ -145,11 +146,11 @@ export function setCourseTaskKindActions(snapshot: Snapshot, eventId: string, ne
     typeId: types.find(t => t.category === (nextKind === '实验报告' ? 'lab_report' : category === '作业' ? 'homework' : category === '考试' ? 'exam' : 'lab'))!.id,
     properties: { ...event.properties, taskKind: nextKind, completed: String(courseTaskCompleted(event, kind, now)), ...(['实验课', '考试'].includes(nextKind) ? { classCompletionOverride: 'true' } : {}) },
   } }]
-  if (courseTaskCategory(kind) !== category) {
-    const key = kind === '作业' ? 'homeworkAnchor' : kind === '考试' ? 'examAnchor' : 'labAnchor'
+  if (courseTaskNumberCategory(kind) !== courseTaskNumberCategory(nextKind)) {
+    const key = taskNumberAnchorKey(courseTaskNumberCategory(kind))
     const rules = { ...snapshot.eventChains.find(c => c.id === event.chainId)?.taskRules }
     if (rules[key]?.eventId === eventId) {
-      const sibling = snapshot.events.find(e => e.id !== eventId && e.chainId === event.chainId && event.properties.labGroupId && e.properties.labGroupId === event.properties.labGroupId && courseTaskCategory(courseTaskKind(e, types) || '作业') === courseTaskCategory(kind))
+      const sibling = snapshot.events.find(e => e.id !== eventId && e.chainId === event.chainId && event.properties.labGroupId && e.properties.labGroupId === event.properties.labGroupId && courseTaskNumberCategory(courseTaskKind(e, types) || '作业') === courseTaskNumberCategory(kind))
       if (sibling) rules[key] = { ...rules[key]!, eventId: sibling.id }; else delete rules[key]
       actions.push({ op: 'set_course_task_rules', id: event.chainId, rules })
     }
@@ -217,11 +218,11 @@ function setTaskCategoryActions(snapshot: Snapshot, tasks: Snapshot['events'], c
 export function configureCourseTaskRulesActions(snapshot: Snapshot, courseId: string, raw: z.infer<typeof taskRulesSchema>): Action[] {
   const rules = taskRulesSchema.parse(raw), chain = snapshot.eventChains.find(c => c.id === courseId)
   if (!chain) throw new Error('课程事件链不存在')
-  for (const [category, anchor] of [['作业', rules.homeworkAnchor], ['实验', rules.labAnchor], ['考试', rules.examAnchor]] as const) {
+  for (const [category, anchor] of [['作业', rules.homeworkAnchor], ['实验', rules.labAnchor], ['实验报告', rules.reportAnchor], ['考试', rules.examAnchor]] as const) {
     if (!anchor) continue
     const event = snapshot.events.find(e => e.id === anchor.eventId && e.chainId === courseId)
     const kind = event && courseTaskKind(event, snapshot.eventTypes)
-    if (!kind || courseTaskCategory(kind) !== category) throw new Error(`${category}编号基准必须属于该行的对应类型`)
+    if (!kind || courseTaskNumberCategory(kind) !== category) throw new Error(`${category}编号基准必须属于该行的对应类型`)
   }
   const schedule = buildCourseTaskSchedule(snapshot.events, snapshot.eventTypes, [{ ...chain, taskRules: rules }])
   const invalid = schedule.warnings.get(courseId)?.filter(w => !w.includes('未内置'))

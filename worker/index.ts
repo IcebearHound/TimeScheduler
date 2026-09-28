@@ -1,3 +1,4 @@
+import { timeZoneSchema } from '../src/utils/currentTime'
 import { aiPresets } from '../src/integrations/aiPresets'
 import { calendarRoute, CalendarEnv } from './calendar'
 export { CalendarFeedObject } from './calendar'
@@ -99,6 +100,9 @@ export default {
         if (!authorization?.startsWith('Bearer ') || authorization.length > 5007) return json({ error: '请填写 API Key' }, 401)
         const config = aiConfigSchema.safeParse({ ...preset, apiKey: authorization.slice(7), model: input.model || preset.model })
         if (!config.success || typeof input.instruction !== 'string' || !input.instruction.trim() || input.instruction.length > 20000) return json({ error: 'AI 请求参数无效' }, 400)
+        const zone = timeZoneSchema.optional().safeParse(input.timeZone)
+        if (!zone.success) return json({ error: '无效的时区' }, 400)
+        const timeZone = zone.data || 'Asia/Shanghai'
         // Fixed provider origins only: never forward credentials to a caller-supplied URL.
         let snapshot
         try { snapshot = validateSnapshot(input.snapshot) } catch { return json({ error: '存档格式无效' }, 400) }
@@ -106,13 +110,13 @@ export default {
           try {
             const attachments = attachmentsSchema.parse(input.attachments || [])
             const webPages = webPagesSchema.parse(input.webPages || [])
-            const reply = await proposeAgent(config.data, input.instruction, snapshot, { signal: request.signal, attachments, webPages })
+            const reply = await proposeAgent(config.data, input.instruction, snapshot, { timeZone, signal: request.signal, attachments, webPages })
             if (reply.actions.length) projectActions(snapshot, reply.actions, () => crypto.randomUUID())
             return json(reply)
           } catch (error) { return json({ error: error instanceof Error && !['TypeError', 'SyntaxError', 'ZodError'].includes(error.name) ? error.message : 'AI 返回无效结果，请重试' }, 400) }
         }
         let actions
-        try { actions = await proposeActions(config.data, input.instruction, snapshot) }
+        try { actions = await proposeActions(config.data, input.instruction, snapshot, { timeZone }) }
         catch (error) { return json({ error: error instanceof Error && !['TypeError', 'SyntaxError', 'ZodError'].includes(error.name) ? error.message : 'AI 服务返回无效结果或暂时无法连接，请重试' }, 400) }
         try { projectActions(snapshot, actions, () => crypto.randomUUID()) } catch { return json({ error: 'AI 操作包含无效时间或不存在的事件，请重新描述' }, 400) }
         return json({ actions })

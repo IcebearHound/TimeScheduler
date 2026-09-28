@@ -128,7 +128,7 @@ MCP 使用标准 **stdio** 传输，采用官方 `@modelcontextprotocol/sdk`。M
 | `apply_actions` | `{revision, actions}` | 校验版本，向网页发出操作，收到网页持久化确认后才返回成功 |
 | `list_course_tasks` | `{courseId?, typeId?, kind?, status?, from?, to?}` | 按时间读取五类事项，可按事件类型和事件链筛选；返回 revision、types、课程 ID、任务 ID、typeId、typeName、sequence、skipped、skipReason 和 scheduleWarnings。status 为 all/pending/completed/overdue，默认 all；日期区间两端均包含 |
 | `create_course_task` | `{revision, task:{courseId,name,kind,endTime,startTime?,labGroupId?,...详情}}` | 新增单个课程事项；实验课和考试必填 startTime，其他事项以 endTime 为截止 |
-| `create_lab` | `{revision, lab:{courseId,name,startTime?,endTime?,existingClassId?,acceptanceDeadline?,acceptanceAtNextClass?,reportDeadline?,reportDeadlineRule?,number?,...详情}}` | 一次创建实验课和独立截止事项；existingClassId 可为已有实验课补充截止事项，保留课表时间 |
+| `create_lab` | `{revision, lab:{courseId,name,startTime?,endTime?,existingClassId?,acceptanceDeadline?,acceptanceAtNextClass?,reportDeadline?,reportDeadlineRule?,number?,reportNumber?,...详情}}` | 一次创建实验课和独立截止事项；existingClassId 可为已有实验课补充截止事项，保留课表时间 |
 | `update_course_task` | `{revision,id,changes:{name?,courseId?,startTime?,endTime?,...详情}}` | 精确修改一个事项；courseId 可修改所属事件链，其他关联事项不随之移动；保留类别、关联编号、状态及未指定属性 |
 | `set_course_task_status` | `{revision,id,completed}` | 单独完成或重新打开该项；支持实验课和考试的持久手动状态，不联动其他事项 |
 | `set_course_row_category` | `{revision,typeId?,courseId?,category}` | 必须且只能指定 typeId 或 courseId；typeId 批量修改该类型（跨链），courseId 兼容按单链修改。category 为作业／实验／考试，可撤销 |
@@ -138,7 +138,7 @@ MCP 使用标准 **stdio** 传输，采用官方 `@modelcontextprotocol/sdk`。M
 
 `create_course_task` 的 task 可选 `number`（0–100000）；`create_weekly_course_tasks` 中的 `number` 仅锚定第一次，后续周自动续号。`create_event` 操作支持可选 `id`，用于在同一事务中引用新任务设置编号；重复 ID 会被拒绝。
 
-`rules` 包含可选的 `homeworkAnchor`、`labAnchor`、`examAnchor`（各为 `{eventId,number}`，number 为 0–100000 的整数），以及 `skipHolidays`、`extraSkipDates`、`keepDates`。向前推算为负数的任务不编号，不限制基准之前的任务数量。日期数组使用 `YYYY-MM-DD`。空规则对象清除全部规则；编号基准必须属于本课程对应类型。基准被跳过时不占编号，由下一次未跳过任务接续其编号。先通过 `list_course_tasks` 读取当前规则。列表 status=all 保留跳过记录，其他状态筛选排除跳过记录。
+`rules` 包含可选的 `homeworkAnchor`、`labAnchor`、`reportAnchor`、`examAnchor`（各为 `{eventId,number}`，number 为 0–100000 的整数），以及 `skipHolidays`、`extraSkipDates`、`keepDates`。向前推算为负数的任务不编号，不限制基准之前的任务数量。日期数组使用 `YYYY-MM-DD`。空规则对象清除全部规则；编号基准必须属于本课程对应类型。基准被跳过时不占编号，由下一次未跳过任务接续其编号。先通过 `list_course_tasks` 读取当前规则。列表 status=all 保留跳过记录，其他状态筛选排除跳过记录。
 
 面板灯珠单击切换完成状态，双击打开详情，右键或移动端长按打开快捷菜单；可修改当前任务类型、设置编号基准、跳过 / 恢复本次。作业只调整本项，同组实验课、验收和报告共同跳过 / 恢复。单次操作使用任务属性 `taskSkipOverride: "skip" | "keep"`，优先于课程日期规则，不会影响同日其他任务。课程名右侧的类型图标仅修改当前课程这一行，点击课程名打开该课程的编号预览和跳过规则面板。`list_course_tasks` 返回 `types`，每条任务包含 `typeId` / `typeName`，可按 `typeId` 筛选。
 
@@ -215,7 +215,7 @@ npm run test:ai-relay
 
 ### 实验报告截止规则与课程概览
 
-实验报告使用独立事件类型 `category: lab_report`（默认 `type-lab-report`），仍属于原课程事件链；`properties.taskKind` 为 `实验报告`，通过 `labGroupId` 与同次实验关联，共用实验编号和跳过规则，提交状态独立。旧存档首次升级时，将原课程/实验类型下明确标记为实验报告的任务迁移到报告类型，保留任务 ID、所属课程、时间、编号关联及完成状态。
+实验报告使用独立事件类型 `category: lab_report`（默认 `type-lab-report`），仍属于原课程事件链；`properties.taskKind` 为 `实验报告`，通过 `labGroupId` 与同次实验关联，保留同组跳过规则，报告编号使用独立的 `reportAnchor`，提交状态独立。旧存档首次升级时，将原课程/实验类型下明确标记为实验报告的任务迁移到报告类型，保留任务 ID、所属课程、时间、编号关联及完成状态。
 
 快捷添加实验时勾选“同时添加实验报告截止时间”，可手动指定或选择以下规则。每周重复为每一次实验单独计算截止时间，生成后可独立编辑；之后调整实验课时间不会自动移动已生成的报告截止时间。
 
@@ -242,3 +242,25 @@ npm run test:ai-relay
 课程概览独立展示验收、报告和作业的下一项待办，最早逾期任务优先且跳过任务不计入。自动进度取已完成任务的最高编号（无需前面的任务全部完成），无编号时显示任务名和“未编号”。`progress` 值为 0–100000 的整数，`null` 表示“暂无完成”，省略某项表示恢复自动统计，`{}` 恢复全部自动统计。手动值会标记“手动”，不会自动完成任务，也不会隐藏下一项待办。调整记录存于课程链 `taskRules.completedProgress`，随存档同步，支持撤销；修改其他课程规则时需保留该字段。
 
 界面入口：右边栏“课程概览”；手机上先打开“待办”，再切换“课程概览”。点击课程卡片右上角铅笔调整统计，点击截止时间打开对应事件详情。
+
+
+### Agent 当前时间
+
+内置日程 Agent 每次发起模型请求时实时读取时钟，将 UTC 时间、用户时区的本地 ISO 时间（含偏移）、日期及星期放入系统上下文。浏览器直连使用设备时区；网站转发携带浏览器时区，由转发服务按请求时刻计算，避免服务器 UTC 时区影响“今天”“明天”“下周”的判断。后续追问会重新读取，历史对话或日历当前查看的日期不会充当当前时间。
+
+MCP 工具 `get_current_time` 是只读接口，无需连接网页或提供 revision：
+
+```json
+{ "timeZone": "Asia/Shanghai" }
+```
+
+`timeZone` 可省略（默认北京时间），也可使用 `America/New_York` 等时区名称。返回 `utcTime`、`localTime`、`timeZone`、`date`、`weekday`、`utcOffsetMinutes`。偏移按查询时刻计算，支持夏令时。时间来自运行设备或服务的系统时钟。
+
+
+### 独立报告编号与自然语言截止日期
+
+实验课与实验验收共用 `labAnchor`；实验报告按报告截止时间顺序使用 `reportAnchor`，两者相互独立，均可从 0 开始，负数前项不编号。规则面板新增“实验报告”页；报告灯珠快捷编号、表格确认编号、课程概览和 MCP 使用同一套规则。
+
+快捷添加实验及报告时，“本次编号”设置实验编号，“本次报告编号”设置报告编号，留空不复制实验编号。MCP `create_lab` / `create_weekly_labs` 的 `lab.reportNumber` 设置报告序号，`lab.number` 只设置实验课；两个编号可以不同，按周重复仅为首项设置基准。为单个报告设置 `create_course_task.task.number` 会写入 `reportAnchor`。旧存档中以报告事件作为 `labAnchor` 的基准会迁移至 `reportAnchor`，存在同组实验课或验收时保留其实验基准。
+
+Agent 将“每周一报告截止，今天是实验二报告”理解为报告截止周期及第 2 份报告的编号基准，不当成实验课编号。截止日期可以由明确日期、星期周期和相对日期推导；仅缺截止钟点时默认当天 23:59，并在操作预览说明。真正缺少周期结束范围或存在日期冲突时，只针对缺少或冲突的部分提问。
