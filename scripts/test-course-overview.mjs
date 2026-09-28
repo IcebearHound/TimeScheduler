@@ -25,7 +25,7 @@ try {
       localStorage.setItem('hasSeenWelcomeGuide', 'true'); localStorage.setItem('notificationPromptSeen', 'true')
       if (localStorage.getItem('eventStore')) return
       const stamp = new Date().toISOString(), chain = id => [id, { id, name: id === 'c' ? '电路原理' : '高等数学', typeId: 'course', color: '#6366f1', defaultReminders: [], createdAt: stamp, updatedAt: stamp }]
-      localStorage.setItem('eventStore', JSON.stringify({ events: [], eventChains: [chain('c'), chain('other')], eventTypes: [['course', { id: 'course', name: '课程', emoji: '📚', category: 'course', color: '#6366f1' }]], semesterStartDate: stamp }))
+      localStorage.setItem('eventStore', JSON.stringify({ events: [], eventChains: [chain('other'), chain('c')], eventTypes: [['course', { id: 'course', name: '课程', emoji: '📚', category: 'course', color: '#6366f1' }]], semesterStartDate: stamp }))
     })
     const open = async () => {
       await page.goto(`http://127.0.0.1:${server.address().port}/TimeScheduler/`)
@@ -63,6 +63,12 @@ try {
     await page.clock.runFor(650)
     await tab('课程概览')
     const card = page.locator('[data-course-overview="c"]'), other = page.locator('[data-course-overview="other"]')
+    assert.equal(await page.locator('[data-course-overview]').first().getAttribute('data-course-overview'), 'c', 'Nearest pending deadline takes priority over courses with no pending work')
+    assert.equal(await card.locator('[data-next-deadline="report"]').isVisible(), false, 'Course details default to collapsed')
+    assert.equal(await card.locator('[data-progress="report"]').isVisible(), true, 'Completion summary stays visible')
+    await card.getByRole('button', { name: '电路原理 · 展开截止信息', exact: true }).click()
+    assert.equal(await card.locator('[data-next-deadline="report"]').isVisible(), true)
+    assert.equal(await other.locator('[data-next-deadline="report"]').isVisible(), false, 'Each course expands independently')
     assert.match(await card.locator('[data-progress="report"]').textContent(), /实验一/)
     assert.match(await card.locator('[data-next-deadline="report"]').textContent(), /9\/30|9月30/)
     assert.match(await other.textContent(), /暂无待办/)
@@ -89,6 +95,11 @@ try {
     await page.getByRole('dialog', { name: '电路原理 · 完成进度', exact: true }).waitFor({ state: 'hidden' })
     assert.match(await card.locator('[data-progress="acceptance"]').textContent(), /暂无完成/)
     assert.match(await card.locator('[data-progress="report"]').textContent(), /实验一/)
+    assert.equal(await card.locator('[data-next-deadline="report"]').isVisible(), false, 'Reload restores collapsed default')
+    await card.getByRole('button', { name: '电路原理 · 展开截止信息', exact: true }).click()
+    await card.getByRole('button', { name: '电路原理 · 收起截止信息', exact: true }).click()
+    assert.equal(await card.locator('[data-next-deadline="report"]').isVisible(), false)
+    await card.getByRole('button', { name: '电路原理 · 展开截止信息', exact: true }).click()
     await card.getByRole('button', { name: '查看实验报告：电路实验', exact: true }).click()
     await sidebar.getByRole('button', { name: '详情', exact: true }).waitFor()
     await add()

@@ -38,5 +38,9 @@ export function buildCourseOverview<E extends OverviewEvent, C extends OverviewC
       return { ...config, next, nextNumber: next ? schedule.entries.get(next.id)?.sequence : undefined, overdue: !!next && +new Date(next.endTime) < +now, pendingCount: pending.length, latest, number, manual,
         progress: typeof number === 'number' ? sequenceLabel(config.prefix, number) : manual || !latest ? '暂无完成' : `${latest.name}（未编号）` }
     }),
-  }))
+  })).sort((a, b) => {
+    const nextDeadline = (items: typeof a.items) => Math.min(...items.flatMap(item => item.next ? [+new Date(item.next.endTime)] : []))
+    const first = nextDeadline(a.items), second = nextDeadline(b.items)
+    return first === second ? 0 : first - second
+  })
 }

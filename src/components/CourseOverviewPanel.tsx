@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Pencil, CalendarClock } from 'lucide-react'
+import { Pencil, CalendarClock, ChevronDown } from 'lucide-react'
 import useEventStore from '../stores/eventStore'
 import useUIStore from '../stores/uiStore'
 import { CourseTaskRules } from '../types/event'
@@ -17,20 +17,22 @@ export default function CourseOverviewPanel() {
   useEffect(() => { const id = window.setInterval(() => setNow(new Date()), 60000); return () => clearInterval(id) }, [])
   const courses = useMemo(() => buildCourseOverview([...events.values()], [...types.values()], [...chains.values()], now), [events, types, chains, now])
   const [editing, setEditing] = useState<string | null>(null), [draft, setDraft] = useState<Progress>({})
+  const [expanded, setExpanded] = useState<Set<string>>(() => new Set())
+  const toggleCourse = (id: string) => setExpanded(previous => { const next = new Set(previous); if (next.has(id)) next.delete(id); else next.add(id); return next })
   const [busy, setBusy] = useState(false), [error, setError] = useState('')
   const selected = courses.find(c => c.course.id === editing)
   const openTask = (id: string) => { useUIStore.getState().setSelectedEvent(id); useUIStore.getState().openRightPanelTab('details') }
   return <section className="space-y-4" aria-label="课程概览">
-    <div><h3 className="font-semibold">课程概览</h3><p className="mt-1 text-xs text-slate-500">下次待办优先显示逾期项 · 截止时间为北京时间</p></div>
+    <div><h3 className="font-semibold">课程概览</h3><p className="mt-1 text-xs text-slate-500">按最近未完成 DDL 排序，逾期优先 · 北京时间</p></div>
     {!courses.length && <p className="rounded-xl border border-dashed p-6 text-center text-sm text-slate-500">暂无课程，请先添加课程或课程任务。</p>}
-    <div className="grid gap-4" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 300px), 1fr))' }}>
+    <div className="grid items-start gap-4" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 300px), 1fr))' }}>
       {courses.map(({ course, items }) => <article key={course.id} data-course-overview={course.id} className="min-w-0 rounded-2xl border border-slate-200 bg-white p-3 shadow-sm dark:border-slate-700 dark:bg-slate-900">
-        <header className="mb-3 flex items-center gap-2"><span className="h-5 w-1 shrink-0 rounded-full" style={{ background: course.color }} /><h4 className="min-w-0 flex-1 break-words font-semibold">{course.name}</h4><button className="sidebar-panel-action" aria-label={`${course.name} · 调整完成进度`} title="调整完成进度" onClick={() => { setEditing(course.id); setDraft({ ...course.taskRules?.completedProgress }); setError('') }}><Pencil size={14} /></button></header>
+        <header className="mb-3 flex items-center gap-2"><span className="h-5 w-1 shrink-0 rounded-full" style={{ background: course.color }} /><h4 className="min-w-0 flex-1 font-semibold"><button type="button" className="flex min-h-11 w-full items-center gap-2 rounded-lg text-left focus-visible:outline-indigo-500" aria-label={`${course.name} · ${expanded.has(course.id) ? '收起' : '展开'}截止信息`} aria-expanded={expanded.has(course.id)} aria-controls={`course-deadlines-${encodeURIComponent(course.id)}`} onClick={() => toggleCourse(course.id)}><span className="min-w-0 flex-1 break-words">{course.name}</span><ChevronDown size={16} aria-hidden="true" className={`shrink-0 text-slate-400 transition-transform ${expanded.has(course.id) ? '' : '-rotate-90'}`} /></button></h4><button className="sidebar-panel-action" aria-label={`${course.name} · 调整完成进度`} title="调整完成进度" onClick={() => { setEditing(course.id); setDraft({ ...course.taskRules?.completedProgress }); setError('') }}><Pencil size={14} /></button></header>
         <p className="mb-1 text-[11px] text-slate-500">最新已完成</p>
-        <div className="mb-3 grid grid-cols-3 gap-1 rounded-xl bg-slate-50 p-2 dark:bg-slate-800" aria-label="最新已完成编号">
+        <div className="grid grid-cols-3 gap-1 rounded-xl bg-slate-50 p-2 dark:bg-slate-800" aria-label="最新已完成编号">
           {items.map(item => <div key={item.key} className="min-w-0 p-1" data-progress={item.key}><p className="text-[11px] text-slate-500">{item.label}{item.manual && <span className="ml-1 text-amber-600">手动</span>}</p><p className="mt-1 break-words text-xs font-semibold">{item.progress}</p></div>)}
         </div>
-        <div className="space-y-2">{items.map(item => <div key={item.key} data-next-deadline={item.key} className={`rounded-xl border p-2.5 ${item.overdue ? 'border-rose-200 bg-rose-50 dark:border-rose-900 dark:bg-rose-950/30' : 'border-slate-100 dark:border-slate-800'}`}>
+        <div id={`course-deadlines-${encodeURIComponent(course.id)}`} hidden={!expanded.has(course.id)} className="mt-3 space-y-2">{items.map(item => <div key={item.key} data-next-deadline={item.key} className={`rounded-xl border p-2.5 ${item.overdue ? 'border-rose-200 bg-rose-50 dark:border-rose-900 dark:bg-rose-950/30' : 'border-slate-100 dark:border-slate-800'}`}>
           <div className="mb-1 flex items-center gap-1.5 text-xs"><CourseTaskIcon kind={item.kind} /><span className="font-medium">下次{item.label}</span>{item.overdue && <span className="ml-auto font-semibold text-rose-600">已逾期</span>}</div>
           {item.next ? <button className="block min-h-11 w-full text-left" onClick={() => openTask(item.next!.id)} aria-label={`查看${item.kind}：${item.next.name}`}><span className={`flex items-start gap-1 text-sm font-semibold ${item.overdue ? 'text-rose-700 dark:text-rose-300' : 'text-indigo-700 dark:text-indigo-300'}`}><CalendarClock size={14} className="mt-0.5 shrink-0" />{formatDeadline(item.next.endTime)}</span><span className="mt-1 block break-words text-xs text-slate-500">{item.nextNumber !== undefined ? `${sequenceLabel(item.prefix, item.nextNumber)} · ` : ''}{item.next.name}{item.pendingCount > 1 ? ` · 另有 ${item.pendingCount - 1} 项待办` : ''}</span></button> : <p className="py-2 text-xs text-slate-400">暂无待办</p>}
         </div>)}</div>
