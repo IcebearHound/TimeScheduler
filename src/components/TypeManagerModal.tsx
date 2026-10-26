@@ -5,6 +5,7 @@ import ModalShell from './ModalShell'
 import React, { useState, useEffect } from 'react'
 import { X, Plus, Edit2, Trash2, Check, MapPin, User, BookOpen, Clock, Bell, Link, Tag, Star, FileText, Home, Car, Phone, Mail, Globe, Coffee } from 'lucide-react'
 import useEventStore from '../stores/eventStore'
+import { dialogConfirm } from '../utils/dialog'
 import { EventType, EventTypeCategory, PropertyField } from '../types/event'
 
 interface TypeManagerModalProps {
@@ -128,8 +129,8 @@ export default function TypeManagerModal({ onClose, editTypeId }: TypeManagerMod
     }
   }
 
-  function handleDelete(type: EventType) {
-    if (confirm(`确定删除类型「${type.name}」？`)) {
+  async function handleDelete(type: EventType) {
+    if (await dialogConfirm(`删除类型「${type.name}」后，相关日程将保留并归入「未分类」。可通过撤销恢复。`, '删除事件类型', 'danger')) {
       deleteEventType(type.id)
     }
   }
@@ -144,7 +145,7 @@ export default function TypeManagerModal({ onClose, editTypeId }: TypeManagerMod
           <h2 className="text-lg font-bold text-slate-900 dark:text-white">
             {mode === 'list' ? '事件类型' : mode === 'create' ? '新建类型' : '编辑类型'}
           </h2>
-          <button onClick={onClose} className="text-slate-500 hover:text-slate-700 dark:hover:text-slate-300">
+          <button aria-label="关闭事件类型" onClick={onClose} className="text-slate-500 hover:text-slate-700 dark:hover:text-slate-300">
             <X className="w-5 h-5" />
           </button>
         </div>

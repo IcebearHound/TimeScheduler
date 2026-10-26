@@ -8,6 +8,7 @@ export default {
   theme: {
     extend: {
       colors: {
+        slate: { 400: '#a8b5c7', 500: '#586980' },
         surface: {
           DEFAULT: '#ffffff',
           dark: '#0f172a',
@@ -19,7 +20,7 @@ export default {
           100: '#dbeafe',
           200: '#bfdbfe',
           300: '#93c5fd',
-          400: '#60a5fa',
+          400: '#79b8ff',
           500: '#3b82f6',
           600: '#2563eb',
           700: '#1d4ed8',

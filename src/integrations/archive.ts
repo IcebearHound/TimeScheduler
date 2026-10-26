@@ -1,5 +1,6 @@
 import useEventStore from '../stores/eventStore'
 import useEventGroupStore from '../stores/eventGroupStore'
+import { persistence } from '../stores/persistenceStore'
 import { Event, EventChain, EventGroup, EventType } from '../types/event'
 import { actionsSchema, projectActions, Snapshot, snapshotRevision, validateSnapshot } from './contracts'
 
@@ -8,7 +9,8 @@ export function captureArchive(): Snapshot {
   return validateSnapshot(JSON.parse(JSON.stringify({ version: 1, semesterStartDate: e.semesterStartDate, events: [...e.events.values()], eventChains: [...e.eventChains.values()], eventTypes: [...e.eventTypes.values()], groups: [...g.groups.values()], groupOrder: g.groupOrder, activeGroupId: g.activeGroupId })))
 }
 
-export function installArchive(input: unknown, label = '恢复同步存档') {
+export function installArchive(input: unknown, label = '恢复同步存档', options: { replaceProtected?: boolean } = {}) {
+  if (!options.replaceProtected && Object.values(persistence.useStatus.getState().issues).some(issue => issue?.kind === 'unreadable')) throw new Error('原始存档已保护，请先在设置中导出原始数据，再恢复完整备份')
   const s = validateSnapshot(input)
   const revived = JSON.parse(JSON.stringify(s), (key, value) => ['startTime', 'endTime', 'createdAt', 'updatedAt', 'startDate', 'endDate', 'weekStartDate', 'semesterStartDate'].includes(key) && typeof value === 'string' ? new Date(value) : value)
   const beforeEvents = useEventStore.getState(), beforeGroups = useEventGroupStore.getState()
@@ -22,6 +24,7 @@ export function installArchive(input: unknown, label = '恢复同步存档') {
     useEventGroupStore.setState({ groups: new Map(revived.groups.map((g: EventGroup) => [g.id, g])), groupOrder: s.groupOrder, activeGroupId: s.activeGroupId })
     useEventStore.setState({ events: new Map(revived.events.map((e: Event) => [e.id, e])), eventChains: new Map(revived.eventChains.map((c: EventChain) => [c.id, c])), eventTypes: new Map(revived.eventTypes.map((t: EventType) => [t.id, t])), semesterStartDate: revived.semesterStartDate, clipboardEvent: null, clipboardAction: null })
     localStorage.setItem('eventStore', eventData); localStorage.setItem('eventGroupStore', groupData)
+    persistence.acknowledge('eventStore'); persistence.acknowledge('eventGroupStore')
   } catch {
     useEventStore.setState(beforeEvents); useEventGroupStore.setState(beforeGroups)
     try { if (rawEvents === null) localStorage.removeItem('eventStore'); else localStorage.setItem('eventStore', rawEvents); if (rawGroups === null) localStorage.removeItem('eventGroupStore'); else localStorage.setItem('eventGroupStore', rawGroups) } catch { /* Existing values may already be intact when storage is unavailable. */ }

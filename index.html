@@ -21,10 +21,18 @@
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="default" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <script>
+      // Apply the saved theme before the first paint to avoid a bright flash.
+      try {
+        const theme = localStorage.getItem('themeMode') || 'system'
+        document.documentElement.classList.toggle('dark', theme === 'dark' || (theme === 'system' && matchMedia('(prefers-color-scheme: dark)').matches))
+      } catch {}
+    </script>
     <meta name="description" content="现代化大学生时间规划器 - 专业的日程管理工具" />
     <title>时间规划器 - University Time Planner</title>
   </head>
   <body>
+    <noscript>时间规划器需要启用 JavaScript 才能管理和保存日程。请在浏览器设置中启用后刷新页面。</noscript>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>

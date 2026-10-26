@@ -3,6 +3,7 @@ import MobileSheet from './MobileSheet'
 import { useEffect, useRef } from 'react'
 import { X } from 'lucide-react'
 import CloudAccountPanel from './CloudAccountPanel'
+import { restoreFocus } from '../utils/useFocusTrap'
 import useWorkspaceStore from '../stores/workspaceStore'
 
 export default function WorkspaceTools() {
@@ -28,7 +29,7 @@ export default function WorkspaceTools() {
       if ((e.ctrlKey || e.metaKey) && ['z', 'y', 'n', 'f'].includes(e.key.toLowerCase())) e.stopImmediatePropagation()
     }
     window.addEventListener('keydown', handle, true)
-    return () => { window.removeEventListener('keydown', handle, true); previous?.focus() }
+    return () => { window.removeEventListener('keydown', handle, true); restoreFocus(previous) }
   }, [!!tab, isMobile])
   if (tab && isMobile) return <MobileSheet title={'用户账号与私有仓库同步'} closeLabel="关闭工作台" onClose={close}><div className="p-4"><CloudAccountPanel key={provider} initialProvider={provider} /></div></MobileSheet>
   return <>

@@ -6,29 +6,37 @@ import useEventStore from '../stores/eventStore'
 import useEventGroupStore from '../stores/eventGroupStore'
 import useUIStore from '../stores/uiStore'
 import { sideSelection } from '../stores/sideSelection'
+import { addDays, getStartOfDay, getMonthDays } from '../utils/dateUtils'
 
 export default function KeyboardShortcuts() {
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      // Native text editing, IME composition and modal actions own their keystrokes.
+      if (e.defaultPrevented || e.isComposing) return
+      const target = e.target as HTMLElement
+      if (target.closest('input, textarea, select, [contenteditable="true"], [role="textbox"]')) return
+      if (document.querySelector('[aria-modal="true"]')) return
       const ui = useUIStore.getState()
       if (ui.isSettingsOpen || ui.isMobileToolsOpen || ui.dialogConfig) return
       const ctrl = e.ctrlKey || e.metaKey
+      const key = e.key.toLowerCase()
       const store = useEventStore.getState()
 
-      if (ctrl && (e.key === 'f' || e.key === 'k')) {
+      if (ctrl && (key === 'f' || key === 'k')) {
         e.preventDefault()
         useUIStore.getState().setIsSearchOpen(true)
       }
 
-      if (ctrl && e.key === 'n') {
+      if (ctrl && key === 'n') {
         e.preventDefault()
         const uis = useUIStore.getState()
         if (!uis.isEventPanelOpen) {
+          uis.setSelectedEvent(undefined)
           uis.setIsEventPanelOpen(true)
         }
       }
 
-      if (ctrl && e.key === 'a') {
+      if (ctrl && key === 'a') {
         if (!(e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement)) {
           e.preventDefault()
           const es = useEventStore.getState()
@@ -41,21 +49,26 @@ export default function KeyboardShortcuts() {
             const de = new Date(cd); de.setHours(23, 59, 59, 999)
             filter = (ev: any) => new Date(ev.startTime) <= de && new Date(ev.endTime) >= ds
           } else if (uis.viewMode === 'week') {
-            const ws = new Date(cd); ws.setDate(cd.getDate() - ((cd.getDay() + 6) % 7)); ws.setHours(0, 0, 0, 0)
-            const we = new Date(ws); we.setDate(ws.getDate() + 7)
+            const ws = getStartOfDay(cd)
+            const we = addDays(ws, uis.calendarDayCount)
             filter = (ev: any) => new Date(ev.startTime) < we && new Date(ev.endTime) > ws
           } else {
-            const ms = new Date(cd.getFullYear(), cd.getMonth(), 1)
-            const me = new Date(cd.getFullYear(), cd.getMonth() + 1, 0, 23, 59, 59, 999)
-            filter = (ev: any) => new Date(ev.startTime) <= me && new Date(ev.endTime) >= ms
+            const days = getMonthDays(cd), ms = days[0], me = addDays(days[days.length - 1], 1)
+            filter = (ev: any) => new Date(ev.startTime) < me && new Date(ev.endTime) > ms
           }
-          const visible = all.filter(filter)
+          const hidden = new Set<string>()
+          for (const id of uis.hiddenGroupIds) {
+            const group = useEventGroupStore.getState().groups.get(id)
+            group?.eventIds.forEach(id => hidden.add(id))
+            group?.eventChainIds.forEach(id => es.getEventsByChain(id).forEach(event => hidden.add(event.id)))
+          }
+          const visible = all.filter(ev => filter(ev) && !uis.filterTypeIds.has(ev.typeId) && !hidden.has(ev.id))
           uis.clearMultiSelect()
           visible.forEach(ev => uis.toggleMultiSelect(ev.id))
         }
       }
 
-      if (ctrl && e.key === 'c') {
+      if (ctrl && key === 'c') {
         const uis = useUIStore.getState()
         const eventId = uis.selectedEventId
         if (eventId && !(e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement)) {
@@ -63,7 +76,7 @@ export default function KeyboardShortcuts() {
         }
       }
 
-      if (ctrl && e.key === 'x') {
+      if (ctrl && key === 'x') {
         const uis = useUIStore.getState()
         const eventId = uis.selectedEventId
         if (eventId && !(e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement)) {
@@ -72,13 +85,14 @@ export default function KeyboardShortcuts() {
         }
       }
 
-      if (ctrl && e.key === 'v') {
+      if (ctrl && key === 'v') {
         if (!(e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement)) {
-          store.pasteEvent()
+          const pasted = store.pasteEvent()
+          if (pasted) { e.preventDefault(); ui.setSelectedEvent(pasted.id); ui.addToast('已粘贴日程', '撤销', () => useEventStore.getState().undo()) }
         }
       }
 
-      if (ctrl && e.key === 'z' && !e.shiftKey) {
+      if (ctrl && key === 'z' && !e.shiftKey) {
         e.preventDefault()
         const es = useEventStore.getState()
         if (!es.canUndo) return
@@ -89,7 +103,7 @@ export default function KeyboardShortcuts() {
         }, esAfter.lastAffected)
       }
 
-      if (ctrl && (e.key === 'y' || (e.key === 'z' && e.shiftKey))) {
+      if (ctrl && (key === 'y' || (key === 'z' && e.shiftKey))) {
         e.preventDefault()
         const es = useEventStore.getState()
         if (!es.canRedo) return

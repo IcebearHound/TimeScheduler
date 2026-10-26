@@ -2,7 +2,7 @@ import ModalShell from './ModalShell'
 /**
  * 搜索对话框 - 支持按名称、属性、时间查找，支持事件链/组/类型
  */
-import React, { useState, useMemo, useEffect } from 'react'
+import React, { useState, useMemo, useEffect, useRef, useDeferredValue } from 'react'
 import { X, Search as SearchIcon, Star, Link, FolderOpen, Tag } from 'lucide-react'
 import useEventStore from '../stores/eventStore'
 import useEventGroupStore from '../stores/eventGroupStore'
@@ -17,6 +17,12 @@ interface SearchDialogProps {
 
 export default function SearchDialog({ onClose }: SearchDialogProps) {
   const [query, setQuery] = useState('')
+  const deferredQuery = useDeferredValue(query)
+  const root = useRef<HTMLDivElement>(null)
+  const events = useEventStore(s => s.events)
+  const chains = useEventStore(s => s.eventChains)
+  const types = useEventStore(s => s.eventTypes)
+  const groups = useEventGroupStore(s => s.groups)
   const eventStore = useEventStore.getState()
   const setSelectedEvent = useUIStore((state) => state.setSelectedEvent)
   const setCurrentDate = useUIStore((state) => state.setCurrentDate)
@@ -74,14 +80,14 @@ export default function SearchDialog({ onClose }: SearchDialogProps) {
 
   const results = useMemo(() => {
     const empty = { chains: [] as EventChain[], groups: [] as EventGroup[], types: [] as EventType[], events: [] as { event: Event; source: string }[] }
-    if (!query.trim()) return empty
-    const { text, dateFilter } = parseTimeQuery(query.trim())
+    if (!deferredQuery.trim()) return empty
+    const { text, dateFilter } = parseTimeQuery(deferredQuery.trim())
     const q = text.trim().toLowerCase()
 
-    const allEvents = Array.from(eventStore.events.values())
-    const allChains = Array.from(eventStore.eventChains.values())
-    const allGroups = Array.from(useEventGroupStore.getState().groups.values())
-    const allTypes = Array.from(eventStore.eventTypes.values())
+    const allEvents = Array.from(events.values()).sort((a, b) => +a.startTime - +b.startTime)
+    const allChains = Array.from(chains.values())
+    const allGroups = Array.from(groups.values())
+    const allTypes = Array.from(types.values())
 
     // 搜索事件链
     const matchedChains = q
@@ -128,32 +134,45 @@ export default function SearchDialog({ onClose }: SearchDialogProps) {
     }
 
     return { chains: matchedChains, groups: matchedGroups, types: matchedTypes, events: matchedEvents.slice(0, 20) }
-  }, [query, eventStore.events, eventStore.eventChains, eventStore.eventTypes])
+  }, [deferredQuery, events, chains, types, groups])
 
   const hasResults = results.chains.length > 0 || results.groups.length > 0 || results.types.length > 0 || results.events.length > 0
 
   return (
     <ModalShell title="搜索" onClose={onClose} keepHeader className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-start justify-center pt-[20vh] z-50 animate-modal-backdrop">
-      <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-modal dark:shadow-modal-dark border border-slate-200/60 dark:border-slate-700/60 max-w-lg w-full mx-4 animate-modal-panel" onClick={e => e.stopPropagation()}>
+      <div ref={root} className="bg-white dark:bg-slate-900 rounded-2xl shadow-modal dark:shadow-modal-dark border border-slate-200/60 dark:border-slate-700/60 max-w-lg w-full mx-4 animate-modal-panel" onClick={e => e.stopPropagation()} onKeyDown={e => {
+        const buttons = Array.from(root.current?.querySelectorAll<HTMLButtonElement>('[data-search-results] button') || [])
+        if (!buttons.length) return
+        if (e.key === 'Enter' && e.target instanceof HTMLInputElement) { e.preventDefault(); buttons[0].click() }
+        if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+          e.preventDefault()
+          const index = buttons.indexOf(document.activeElement as HTMLButtonElement)
+          const next = buttons[e.key === 'ArrowDown' ? (index + 1) % buttons.length : (index <= 0 ? buttons.length - 1 : index - 1)]
+          next.focus(); next.scrollIntoView({ block: 'nearest' })
+        }
+      }}>
         <div className="flex items-center gap-3 p-4 border-b border-slate-200/60 dark:border-slate-700/60">
           <SearchIcon className="w-5 h-5 text-slate-400" />
           <input
             type="text"
+            aria-label="搜索日程"
+            aria-controls="search-results"
+            aria-describedby="search-keyboard-hint"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             placeholder="搜索事件、事件链、组、类型、日期、属性..."
             className="flex-1 bg-transparent text-slate-900 dark:text-white focus:outline-none text-lg"
             autoFocus
           />
-          <button onClick={onClose} className="hidden desktop:block text-slate-500 hover:text-slate-700 dark:hover:text-slate-300">
+          <button aria-label="关闭搜索" onClick={onClose} className="hidden desktop:block text-slate-500 hover:text-slate-700 dark:hover:text-slate-300">
             <X className="w-5 h-5" />
           </button>
         </div>
 
         {query.trim() && (
-          <div className="max-h-80 overflow-y-auto p-2">
+          <div id="search-results" data-search-results className="max-h-80 overflow-y-auto p-2" aria-busy={query !== deferredQuery}>
             {!hasResults ? (
-              <div className="p-4 text-center text-slate-500 dark:text-slate-400">没有找到匹配结果</div>
+              <div role="status" className="p-6 text-center text-slate-500 dark:text-slate-400"><p className="font-medium">没有找到匹配结果</p><p className="mt-2 text-xs">试试课程名称、地点，或「明天」「本周」。</p></div>
             ) : (
               <>
                 {/* 事件链 */}
@@ -244,8 +263,8 @@ export default function SearchDialog({ onClose }: SearchDialogProps) {
         )}
 
         <div className="border-t border-slate-200/60 dark:border-slate-700/60 p-3">
-          <div className="text-xs text-slate-400 dark:text-slate-500 text-center">
-            按名称、属性、事件链、日期（今天/后天/周几/2026-05-27）、时间、组、类型等搜索
+          <div id="search-keyboard-hint" className="text-xs text-slate-500 dark:text-slate-400 text-center">
+            支持名称、地点和「今天」「本周」 · ↑↓ 选择 · Enter 打开 · Esc 关闭
           </div>
         </div>
       </div>

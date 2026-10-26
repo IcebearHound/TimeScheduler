@@ -3,6 +3,7 @@ import MobileSheet from './MobileSheet'
 import useUIStore from '../stores/uiStore'
 import { ReactNode, useEffect, useRef } from 'react'
 import { X } from 'lucide-react'
+import { restoreFocus } from '../utils/useFocusTrap'
 
 export default function AppPanel({ title, onClose, children }: { title: string; onClose: () => void; children: ReactNode }) {
   const isMobile = useLayoutStore(s => s.isMobile)
@@ -22,7 +23,7 @@ export default function AppPanel({ title, onClose, children }: { title: string; 
       }
     }
     window.addEventListener('keydown', key)
-    return () => { window.removeEventListener('keydown', key); if (previous?.isConnected) previous.focus() }
+    return () => { window.removeEventListener('keydown', key); restoreFocus(previous) }
   }, [isMobile])
   if (isMobile) return <MobileSheet title={title} onClose={onClose}><div className="p-4">{children}</div></MobileSheet>
   return <div data-dismiss-layer className="fixed inset-0 z-[60] flex items-end justify-center bg-slate-950/40 p-3 backdrop-blur-sm desktop:items-center" onClick={onClose}>

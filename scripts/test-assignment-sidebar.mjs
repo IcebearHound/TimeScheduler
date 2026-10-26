@@ -23,6 +23,7 @@ try {
     page = await browser.newPage({ viewport: { width, height: 900 }, hasTouch: width < 500 })
     const errors = []; page.on('pageerror', error => errors.push(error.message))
     await page.clock.install({ time: new Date('2026-12-31T12:00:00') })
+    if (width > 500) await page.addInitScript(() => localStorage.setItem('layoutMode', 'desktop'))
     await page.addInitScript(() => {
       localStorage.setItem('hasSeenWelcomeGuide', 'true'); localStorage.setItem('notificationPromptSeen', 'true')
       if (localStorage.getItem('eventStore')) return
@@ -49,6 +50,7 @@ try {
     await sidebar.getByRole('button', { name: '实验作业', exact: true }).click()
     const dayCount = () => page.locator('[data-assignment-date]').count()
     const autoFits = async () => {
+      await page.locator('[data-assignment-days]').waitFor()
       await page.waitForFunction(() => {
         const table = document.querySelector('[data-assignment-days]'), viewport = table.parentElement
         const unused = viewport.clientWidth - parseFloat(getComputedStyle(table).minWidth)

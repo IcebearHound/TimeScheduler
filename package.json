@@ -20,12 +20,17 @@
     "schedule"
   ],
   "type": "module",
-  "engines": { "node": ">=22" },
+  "engines": {
+    "node": ">=22.12"
+  },
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",
     "preview": "vite preview",
     "type-check": "tsc --noEmit",
+    "check": "npm run type-check && npm run check:server && npm run check:worker",
+    "test:quality": "npm run build && node scripts/test-quality.mjs",
+    "test:ui": "npm run build && node scripts/test-quality.mjs && node scripts/test-mobile.mjs && node scripts/test-mobile-panels.mjs && node scripts/test-calendar-scroll.mjs",
     "test": "node scripts/run-tests.mjs",
     "local": "tsx server/index.ts",
     "mcp": "tsx server/index.ts --mcp",
@@ -46,27 +51,32 @@
     "test:cloud": "node --import tsx scripts/test-cloud.mjs"
   },
   "dependencies": {
-    "@modelcontextprotocol/sdk": "^1.30.0",
+    "@modelcontextprotocol/sdk": "^1.32.2",
     "clsx": "^2.0.0",
     "date-fns": "^2.30.0",
     "lucide-react": "^0.294.0",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
-    "xlsx": "^0.18.5",
-    "zod": "^4.6.5",
+    "xlsx": "https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz",
+    "zod": "^4.6.7",
     "zustand": "^4.4.0"
   },
   "devDependencies": {
+    "@axe-core/playwright": "^4.14.0",
     "@types/node": "^26.5.1",
     "@types/react": "^18.2.0",
     "@types/react-dom": "^18.2.0",
-    "@vitejs/plugin-react": "^4.0.0",
+    "@vitejs/plugin-react": "^6.1.2",
     "autoprefixer": "^10.4.14",
+    "esbuild": "^0.28.2",
     "playwright": "^1.61.0",
     "postcss": "^8.4.24",
     "tailwindcss": "^3.3.0",
     "tsx": "^4.23.13",
     "typescript": "^5.0.2",
-    "vite": "^4.4.0"
+    "vite": "^8.3.5"
+  },
+  "overrides": {
+    "postcss-selector-parser": "^7.1.6"
   }
 }

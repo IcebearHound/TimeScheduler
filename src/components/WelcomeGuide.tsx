@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react'
+import ModalShell from './ModalShell'
 import {
   X, Calendar, Pencil, Upload, Link, Folders,
   Tags, Zap, ListTodo, Search, Bell, Keyboard, Layout,
@@ -6,14 +7,14 @@ import {
 } from 'lucide-react'
 
 const Card: React.FC<{ icon: React.ReactNode; title: string; children: React.ReactNode; onClick: () => void }> = ({ icon, title, children, onClick }) => (
-  <div onClick={onClick}
-    className="bg-slate-50 dark:bg-slate-800/50 rounded-xl p-4 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors cursor-pointer">
+  <button type="button" onClick={onClick}
+    className="text-left bg-slate-50 dark:bg-slate-800/50 rounded-xl p-4 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors cursor-pointer">
     <div className="flex items-center gap-2 mb-2">
       <div className="text-accent-500 dark:text-accent-400">{icon}</div>
       <h3 className="font-semibold text-sm text-slate-800 dark:text-slate-200">{title}</h3>
     </div>
     <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">{children}</p>
-  </div>
+  </button>
 )
 
 interface CardData {
@@ -266,7 +267,7 @@ export default function WelcomeGuide({ onClose }: WelcomeGuideProps) {
   if (selectedIndex !== null) {
     const card = CARDS[selectedIndex]
     return (
-      <div data-dismiss-layer className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4 animate-modal-backdrop" onClick={closeDetail}>
+      <ModalShell title="功能详情" onClose={closeDetail} className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4 animate-modal-backdrop">
         <div
           className="bg-white dark:bg-slate-900 rounded-2xl shadow-modal dark:shadow-modal-dark border border-slate-200/60 dark:border-slate-700/60 max-w-lg w-full overflow-hidden flex flex-col animate-modal-panel"
           onClick={e => e.stopPropagation()}
@@ -310,13 +311,13 @@ export default function WelcomeGuide({ onClose }: WelcomeGuideProps) {
             </button>
           </div>
         </div>
-      </div>
+      </ModalShell>
     )
   }
 
   // Card grid view
   return (
-    <div data-dismiss-layer className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4 animate-modal-backdrop" onClick={handleClose}>
+    <ModalShell title="功能导览" onClose={handleClose} className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4 animate-modal-backdrop">
       <div
         className="bg-white dark:bg-slate-900 rounded-2xl shadow-modal dark:shadow-modal-dark border border-slate-200/60 dark:border-slate-700/60 max-w-3xl w-full max-h-[90vh] overflow-hidden flex flex-col animate-modal-panel"
         onClick={e => e.stopPropagation()}
@@ -331,6 +332,7 @@ export default function WelcomeGuide({ onClose }: WelcomeGuideProps) {
             <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">现代化大学生日程管理工具 — 单击卡片查看详情</p>
           </div>
           <button
+            aria-label="关闭功能导览"
             onClick={handleClose}
             className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 p-1 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors"
           >
@@ -359,6 +361,6 @@ export default function WelcomeGuide({ onClose }: WelcomeGuideProps) {
           </button>
         </div>
       </div>
-    </div>
+    </ModalShell>
   )
 }

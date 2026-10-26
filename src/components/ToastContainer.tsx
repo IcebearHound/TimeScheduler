@@ -23,7 +23,7 @@ export default function ToastContainer() {
   if (toasts.length === 0) return null
 
   return (
-    <div className="fixed bottom-4 right-4 z-[200] flex flex-col gap-2 pointer-events-none">
+    <div className="toast-region" role="region" aria-label="操作通知" aria-live="polite" aria-relevant="additions">
       {toasts.map(t => (
         <div key={t.id}
           className="pointer-events-auto flex items-center gap-3 px-4 py-3 bg-white/95 dark:bg-slate-800/95 backdrop-blur-md rounded-xl shadow-overlay border border-slate-200/60 dark:border-slate-700/60 animate-[slideUp_0.3s_cubic-bezier(0.16,1,0.3,1)] max-w-sm">
@@ -58,7 +58,7 @@ export default function ToastContainer() {
               {t.action}
             </button>
           )}
-          <button onClick={() => removeToast(t.id)} className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200">
+          <button aria-label="关闭通知" onClick={() => removeToast(t.id)} className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200">
             <X className="w-4 h-4" />
           </button>
         </div>

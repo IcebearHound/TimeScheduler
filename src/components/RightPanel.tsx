@@ -10,6 +10,9 @@ import TodoView from './TodoView'
 import ReminderQuickPicker from './EventForm/ReminderQuickPicker'
 import TimeEditPopover from './EventForm/TimeEditPopover'
 import { scrollToEventBlock } from '../utils/scrollTarget'
+import { readableEventText } from '../utils/colorContrast'
+import { EventDraft, eventDraft, eventDraftChanges } from '../utils/eventDraft'
+import type { Event } from '../types/event'
 import { completionProperties, courseTaskCompleted, courseTaskKind } from '../utils/courseTasks'
 
 const PROP_ICON_MAP: Record<string, React.ReactNode> = {
@@ -56,6 +59,8 @@ export default function RightPanel() {
   const getEventType = useEventStore((s) => s.getEventType)
 
   const [loadedEventId, setLoadedEventId] = useState<string>()
+  const baseDraft = useRef<{ id: string; value: EventDraft }>()
+  const [saveConflict, setSaveConflict] = useState(false)
   const [editName, setEditName] = useState('')
   const [editProps, setEditProps] = useState<Record<string, string>>({})
   const [editTypeId, setEditTypeId] = useState('')
@@ -91,35 +96,21 @@ export default function RightPanel() {
     return []
   })()
 
-  useEffect(() => {
-    if (event) {
-      setLoadedEventId(event.id)
-      setEditName(event.name)
-      // 将中英文混存的属性统一转为英文键
-      const raw = (event.properties as Record<string, string>) || {}
-      const mapped: Record<string, string> = {}
-      for (const [cn, en] of Object.entries(CN_TO_EN)) {
-        if (raw[cn] != null) mapped[en] = raw[cn]
-        else if (raw[en] != null) mapped[en] = raw[en]
-      }
-      for (const [k, v] of Object.entries(raw)) {
-        if (!Object.values(CN_TO_EN).includes(k) && !(k in CN_TO_EN)) mapped[k] = v
-      }
-      setEditProps(mapped)
-      setEditTypeId(event.typeId)
-      setEditChainId(event.chainId)
-      setEditReminders(event.reminders || [])
-      setEditStartTime(new Date(event.startTime))
-      setEditEndTime(new Date(event.endTime))
-    }
-  }, [selectedEventId, event?.startTime?.getTime(), event?.endTime?.getTime()])
+  const loadDraft = useCallback((source: Event) => {
+    const value = eventDraft(source)
+    baseDraft.current = { id: source.id, value }
+    setLoadedEventId(source.id); setEditName(value.name)
+    setEditProps(value.properties as Record<string, string>); setEditTypeId(value.typeId); setEditChainId(value.chainId)
+    setEditReminders(value.reminders); setEditStartTime(new Date(value.startTime)); setEditEndTime(new Date(value.endTime)); setSaveConflict(false)
+  }, [])
 
-  // 当事件类型被外部修改时（如右键菜单），同步 editTypeId
   useEffect(() => {
-    if (event && event.typeId !== editTypeId) {
-      setEditTypeId(event.typeId)
-    }
-  }, [event?.typeId])
+    if (!event) return
+    const base = baseDraft.current
+    const draft = { name: editName, properties: editProps, typeId: editTypeId, chainId: editChainId, reminders: editReminders, startTime: editStartTime, endTime: editEndTime }
+    if (!base || base.id !== event.id || !Object.keys(eventDraftChanges(base.value, draft, event).changes).length) loadDraft(event)
+    // External revisions refresh untouched drafts; local edits merge when saved.
+  }, [event, selectedEventId, loadDraft])
 
   // Close type picker on click outside
   useEffect(() => {
@@ -149,49 +140,47 @@ export default function RightPanel() {
   }, [selectedEventId, chain?.id])
 
   // 自动保存
-  const save = useCallback(() => {
+  const save = useCallback((force = false) => {
     if (loadedEventId !== selectedEventId) return
     const current = useEventStore.getState().getEvent(selectedEventId!)
     if (!current || !editName.trim()) return
-    const sameTime = current.startTime.getTime() === editStartTime.getTime() && current.endTime.getTime() === editEndTime.getTime()
-    const sameName = current.name === editName
-    const sameType = current.typeId === editTypeId
-    const sameChain = current.chainId === editChainId
-    const sameReminders = JSON.stringify(current.reminders || []) === JSON.stringify(editReminders)
-    const sameProps = JSON.stringify(current.properties || {}) === JSON.stringify(editProps)
-    if (sameTime && sameName && sameType && sameChain && sameReminders && sameProps) return
+    const base = baseDraft.current
+    if (!base || base.id !== current.id) return
+    const { changes, conflicts } = eventDraftChanges(base.value, { name: editName, properties: editProps, typeId: editTypeId, chainId: editChainId, reminders: editReminders, startTime: editStartTime, endTime: editEndTime }, current)
+    if (!Object.keys(changes).length) return
+    if (conflicts.length && !force) { setSaveConflict(true); return }
     if (!Number.isFinite(+editStartTime) || !Number.isFinite(+editEndTime) || +editEndTime <= +editStartTime) return
     if (editChainId && !useEventStore.getState().eventChains.has(editChainId)) return
-    useEventStore.getState().updateEvent(selectedEventId!, {
-      name: editName, properties: editProps, typeId: editTypeId, chainId: editChainId,
-      reminders: editReminders,
-      startTime: editStartTime, endTime: editEndTime,
-    })
-  }, [editName, editProps, editTypeId, editChainId, editReminders, editStartTime, editEndTime, selectedEventId, loadedEventId])
+    useEventStore.getState().updateEvent(selectedEventId!, changes)
+    const saved = useEventStore.getState().getEvent(selectedEventId!)
+    if (saved) loadDraft(saved)
+  }, [editName, editProps, editTypeId, editChainId, editReminders, editStartTime, editEndTime, selectedEventId, loadedEventId, loadDraft])
 
   useEffect(() => {
-    const t = setTimeout(save, 400)
+    const t = setTimeout(() => save(), 400)
     return () => clearTimeout(t)
   }, [save])
 
   const saveOnClose = useRef(save)
-  saveOnClose.current = save
-  useEffect(() => () => saveOnClose.current(), [])
+  useEffect(() => { saveOnClose.current = save }, [save])
+  useEffect(() => () => saveOnClose.current(), [selectedEventId])
 
   if (!event) {
     return <TodoView />
   }
 
   const barColor = chain?.color || event.color || '#3B82F6'
+  const barText = readableEventText(barColor)
 
   return (
     <div data-event-details className="h-full w-full bg-white/95 dark:bg-slate-900/95 border-l border-slate-200/60 dark:border-slate-800/60 overflow-y-auto flex flex-col">
+      {saveConflict && <div role="alert" className="shrink-0 border-b border-amber-300 bg-amber-50 p-3 text-xs text-amber-900 dark:bg-amber-950 dark:text-amber-100"><p>同一字段已在其他位置修改，自动保存已暂停。请选择要保留的版本。</p><div className="mt-2 flex gap-2"><button className="workspace-button" onClick={() => loadDraft(event)}>载入最新版本</button><button className="workspace-button" onClick={() => save(true)}>保留我的修改</button></div></div>}
       {/* 顶部地铁线路图 — 事件链各事件横向排列 */}
       {chain && (() => {
         const ce = eventStore.getEventsByChain(chain.id)
         const sorted = [...ce].sort((a, b) => new Date(a.startTime).getTime() - new Date(b.startTime).getTime())
         if (sorted.length === 0) {
-          return <div className="flex-shrink-0 h-8 flex items-center px-3 text-xs text-white" style={{ backgroundColor: barColor }}><Link className="w-3 h-3 mr-1.5" />{chain.name} · 无事件</div>
+          return <div className="flex-shrink-0 h-8 flex items-center px-3 text-xs" style={{ backgroundColor: barColor, color: barText }}><Link className="w-3 h-3 mr-1.5" />{chain.name} · 无事件</div>
         }
         return (
           <div ref={metroBarRef} className="flex-shrink-0 overflow-x-auto no-scrollbar" style={{ backgroundColor: barColor }}
@@ -237,7 +226,7 @@ export default function RightPanel() {
                         setSelectedEvent(evt.id)
                       }}
                       className={`flex items-center gap-1 px-2.5 py-1.5 text-[10px] whitespace-nowrap flex-shrink-0 border-l-2 transition-colors ${altBg} ${ia ? 'font-bold' : 'hover:bg-white/20'}`}
-                      style={{ color: 'white', borderLeftColor: typeColor }}>
+                      style={{ color: barText, borderLeftColor: typeColor }}>
                       <span className={`w-2.5 h-2.5 rounded-full flex-shrink-0 border-2 ${ia ? 'bg-white border-white' : 'border-white/50'}`} />
                       <span className="truncate max-w-[80px]">{t?.emoji} {evt.name}</span>
                     </button>
@@ -249,7 +238,7 @@ export default function RightPanel() {
         )
       })()}
       {!chain && (
-        <div className="flex-shrink-0 h-8 flex items-center px-3 text-xs text-white" style={{ backgroundColor: barColor }}>
+        <div className="flex-shrink-0 h-8 flex items-center px-3 text-xs" style={{ backgroundColor: barColor, color: barText }}>
           <Link className="w-3 h-3 mr-1.5" />无事件链
         </div>
       )}
@@ -301,7 +290,7 @@ export default function RightPanel() {
           <div className="relative" ref={typePickerRef}>
             <button onClick={() => setShowTypePicker(!showTypePicker)}
               className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium hover:opacity-80 transition-opacity"
-              style={{ backgroundColor: type?.color + '20', color: type?.color }}>
+              style={{ backgroundColor: type?.color || '#3B82F6', color: readableEventText(type?.color || '#3B82F6') }}>
               {type?.emoji} {type?.name} <ChevronDown className="w-3 h-3" />
             </button>
             {showTypePicker && (
@@ -311,7 +300,7 @@ export default function RightPanel() {
                   return (
                     <button key={t.id} onClick={() => { setEditTypeId(t.id); setShowTypePicker(false) }}
                       className={`flex items-center gap-2 w-full px-3 py-1.5 text-xs hover:bg-slate-50 dark:hover:bg-slate-700/50 ${isCurrent ? 'font-medium' : 'text-slate-700 dark:text-slate-200'}`}
-                      style={isCurrent ? { color: t.color } : {}}>
+                      style={isCurrent ? { backgroundColor: t.color, color: readableEventText(t.color) } : {}}>
                       <span>{t.emoji}</span>
                       <span>{t.name}</span>
                     </button>
@@ -330,6 +319,7 @@ export default function RightPanel() {
             if (!event) return
             eventStore.updateEvent(event.id, { isHighlight: !event.isHighlight })
           }}
+            aria-label={event.isHighlight ? '取消重点标记' : '标记为重点'} aria-pressed={event.isHighlight}
             className={`p-1 rounded-lg transition-colors ${event.isHighlight ? 'text-yellow-400 hover:text-yellow-500' : 'text-slate-300 hover:text-yellow-400'}`}>
             <Star className={`w-4 h-4 ${event.isHighlight ? 'fill-yellow-400' : ''}`} />
           </button>

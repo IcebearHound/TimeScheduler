@@ -2,6 +2,7 @@ import useEventStore from '../stores/eventStore'
 import useEventGroupStore from '../stores/eventGroupStore'
 import useCloudSyncStore from '../stores/cloudSyncStore'
 import useWorkspaceStore from '../stores/workspaceStore'
+import usePersistenceStore from '../stores/persistenceStore'
 import { browserVault } from './browserVault'
 import { CloudAccount, CloudAPIError, cloudEndpoint, completeCloudLogin, ensureCloudRepository, readCloudArchive, refreshCloudAccount, writeCloudArchive } from './cloudAPI'
 import { captureArchive, installArchive } from './archive'
@@ -57,6 +58,10 @@ async function commitSynced(version: number, before: Snapshot, remote: Snapshot,
 }
 
 async function syncOnce() {
+  if (Object.keys(usePersistenceStore.getState().issues).length) {
+    if (account) state({ status: 'error', message: '本地存档需要处理，自动同步已暂停。请先导出备份并检查存储状态。' })
+    return
+  }
   if (!account || stoppedForAuth || useCloudSyncStore.getState().conflict) return
   if (!navigator.onLine) { state({ status: 'offline', message: '当前离线，修改已保存在此设备，联网后自动同步' }); return }
   const version = epoch, active = account

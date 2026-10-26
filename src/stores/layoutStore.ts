@@ -5,7 +5,7 @@ function savedMode(): LayoutMode {
   try { const value = localStorage.getItem('layoutMode'); if (value === 'desktop' || value === 'mobile') return value } catch {}
   return 'auto'
 }
-const media = typeof window !== 'undefined' ? window.matchMedia('(max-width: 767px)') : undefined
+const media = typeof window !== 'undefined' ? window.matchMedia('(max-width: 1099px)') : undefined
 const resolve = (mode: LayoutMode) => mode === 'auto' ? !!media?.matches : mode === 'mobile'
 const mode = savedMode()
 const useLayoutStore = create<{ mode: LayoutMode; isMobile: boolean; setMode: (mode: LayoutMode) => void }>(set => ({

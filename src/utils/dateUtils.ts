@@ -16,9 +16,7 @@ export function getEndOfDay(date: Date): Date {
 
 export function getStartOfWeek(date: Date, startDay: 0 | 1 = 1): Date {
   const d = new Date(date)
-  const day = d.getDay()
-  const diff = d.getDate() - day + (startDay === 0 ? 0 : 1)
-  d.setDate(diff)
+  d.setDate(d.getDate() - ((d.getDay() - startDay + 7) % 7))
   d.setHours(0, 0, 0, 0)
   return d
 }
@@ -69,14 +67,17 @@ export function addWeeks(date: Date, weeks: number): Date {
 
 export function addMonths(date: Date, months: number): Date {
   const d = new Date(date)
+  const day = d.getDate()
+  d.setDate(1)
   d.setMonth(d.getMonth() + months)
+  d.setDate(Math.min(day, getDaysInMonth(d.getFullYear(), d.getMonth())))
   return d
 }
 
 export function getDaysBetween(startDate: Date, endDate: Date): number {
   const start = getStartOfDay(startDate)
   const end = getStartOfDay(endDate)
-  return Math.floor((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24))
+  return (Date.UTC(end.getFullYear(), end.getMonth(), end.getDate()) - Date.UTC(start.getFullYear(), start.getMonth(), start.getDate())) / 86400000
 }
 
 export function formatDate(date: Date, format: string = 'YYYY-MM-DD'): string {
@@ -109,10 +110,7 @@ export function isSameDay(date1: Date, date2: Date): boolean {
 }
 
 export function isSameWeek(date1: Date, date2: Date): boolean {
-  return (
-    getWeekNumber(date1) === getWeekNumber(date2) &&
-    date1.getFullYear() === date2.getFullYear()
-  )
+  return getStartOfWeek(date1).getTime() === getStartOfWeek(date2).getTime()
 }
 
 export function isSameMonth(date1: Date, date2: Date): boolean {
@@ -126,18 +124,13 @@ export function getDaysInMonth(year: number, month: number): number {
   return new Date(year, month + 1, 0).getDate()
 }
 
-export function getMonthDays(date: Date): Date[] {
+export function getMonthDays(date: Date, startDay: 0 | 1 = 1): Date[] {
   const year = date.getFullYear()
   const month = date.getMonth()
   const firstDay = new Date(year, month, 1)
-  const lastDay = new Date(year, month + 1, 0)
-  
-  const days: Date[] = []
-  for (let d = new Date(firstDay); d <= lastDay; d.setDate(d.getDate() + 1)) {
-    days.push(new Date(d))
-  }
-  
-  return days
+  const start = getStartOfWeek(firstDay, startDay)
+  // A stable six-week grid keeps weekdays aligned and prevents layout jumps.
+  return Array.from({ length: 42 }, (_, i) => addDays(start, i))
 }
 
 export function getWeekDays(date: Date, startDay: 0 | 1 = 1): Date[] {

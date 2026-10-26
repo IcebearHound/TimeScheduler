@@ -11,6 +11,9 @@ import OffscreenEvents from './OffscreenEvents'
 import useUIStore from '../../stores/uiStore'
 import useEventStore from '../../stores/eventStore'
 import useEventGroupStore from '../../stores/eventGroupStore'
+import { addDays } from '../../utils/dateUtils'
+import useNow from '../../utils/useNow'
+import { calendarSlotHeight } from './TimeScale'
 
 interface DayColumnProps { date: Date; events: Event[] }
 const HOURS = Array.from({ length: 24 }, (_, i) => i)
@@ -30,7 +33,7 @@ interface DayEventInfo {
 function getDayEventInfo(event: Event, date: Date): DayEventInfo | null {
   const dayStart = new Date(date)
   dayStart.setHours(0, 0, 0, 0)
-  const dayEnd = new Date(dayStart.getTime() + 86400000)
+  const dayEnd = addDays(dayStart, 1)
 
   const es = new Date(event.startTime).getTime()
   const ee = new Date(event.endTime).getTime()
@@ -40,8 +43,9 @@ function getDayEventInfo(event: Event, date: Date): DayEventInfo | null {
   const clampedStart = Math.max(es, dayStart.getTime())
   const clampedEnd = Math.min(ee, dayEnd.getTime())
 
-  const startMinutes = (clampedStart - dayStart.getTime()) / 60000
-  const endMinutes = (clampedEnd - dayStart.getTime()) / 60000
+  const localMinutes = (ms: number) => { const d = new Date(ms); return d.getHours() * 60 + d.getMinutes() }
+  const startMinutes = clampedStart === dayStart.getTime() ? 0 : localMinutes(clampedStart)
+  const endMinutes = clampedEnd === dayEnd.getTime() ? 1440 : localMinutes(clampedEnd)
 
   return { event, startMinutes, endMinutes, continuesBefore: es < dayStart.getTime(), continuesAfter: ee > dayEnd.getTime() }
 }
@@ -51,7 +55,8 @@ export default function DayColumn({ date, events }: DayColumnProps) {
   const blankMenuRef = useRef<HTMLDivElement>(null)
   const slotLongPressRef = useRef<number | null>(null)
   const slotTouchStartRef = useRef<{ x: number; y: number } | null>(null)
-  const [slotH, setSlotH] = useState(MIN_SLOT_H)
+  const [slotH, setSlotH] = useState(calendarSlotHeight)
+  const now = useNow()
   const [blankMenu, setBlankMenu] = useState<{ x: number; y: number; hour: number } | null>(null)
   const [expandPopup, setExpandPopup] = useState<{ eventIds: string[]; anchor: DOMRect } | null>(null)
   const selectedEventId = useUIStore((s) => s.selectedEventId)
@@ -147,8 +152,10 @@ export default function DayColumn({ date, events }: DayColumnProps) {
 
   function handleDoubleClickSlot(h: number) {
     const st = new Date(date); st.setHours(h, 0, 0, 0); const ed = new Date(date); ed.setHours(h + 1, 0, 0, 0)
-    const e = useEventStore.getState().addEvent({ name: '新事件', description: '', startTime: st, endTime: ed, chainId: '', typeId: 'type-course', reminders: [], properties: {}, isHighlight: false, priority: 0 })
-    const gid = useEventGroupStore.getState().ensureActiveGroup(); useEventGroupStore.getState().addEventToGroup(gid, e.id)
+    const gid = useEventGroupStore.getState().ensureActiveGroup()
+    const store = useEventStore.getState()
+    const typeId = store.eventTypes.has('type-course') ? 'type-course' : store.eventTypes.keys().next().value!
+    const e = store.addEvent({ name: '新事件', description: '', startTime: st, endTime: ed, chainId: '', typeId, reminders: [], properties: {}, isHighlight: false, priority: 0 }, { groupId: gid })
     useUIStore.getState().setSelectedEvent(e.id)
     if (useLayoutStore.getState().isMobile) useUIStore.getState().setIsRightPanelOpen(true)
   }
@@ -177,7 +184,7 @@ export default function DayColumn({ date, events }: DayColumnProps) {
   useEffect(() => clearSlotLongPress, [])
 
   return (
-    <div ref={containerRef} className="bg-white dark:bg-slate-900 relative" style={{ minHeight: totalH }}>
+    <div ref={containerRef} data-day-column data-slot-height={slotH} className="bg-white dark:bg-slate-900 relative" style={{ minHeight: totalH }}>
       <OffscreenEvents date={date} events={events} height={totalH} />
       {HOURS.map(hour => (
           <div key={hour} className="border-b border-slate-100 dark:border-slate-800 relative group hover:bg-slate-50 dark:hover:bg-slate-800/50 cursor-pointer"
@@ -196,6 +203,7 @@ export default function DayColumn({ date, events }: DayColumnProps) {
           <div className="absolute inset-0 opacity-0 group-hover:opacity-100 bg-accent-400/5 flex items-center justify-center text-blue-600 dark:text-blue-400 text-xs font-medium transition-all pointer-events-none"><span className="hidden desktop:inline">双击创建事件</span><span className="desktop:hidden">长按创建事件</span></div>
         </div>
       ))}
+      {now.toDateString() === date.toDateString() && <div data-current-time role="img" aria-label={`当前时间 ${now.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })}`} className="calendar-now-line" style={{ top: (now.getHours() + now.getMinutes() / 60) * slotH }}><span /></div>}
       {blocks.map(b => (
         <div key={b.event.id} className="pointer-events-auto absolute px-0.5"
           style={{ top: b.top, left: `${b.leftPct}%`, width: `${b.wPct}%`, height: Math.max(b.h - 1, 18), zIndex: selectedEventId === b.event.id ? 10 : (highlightedChainId === b.event.chainId && b.event.id !== selectedEventId ? 5 : 1) }}>

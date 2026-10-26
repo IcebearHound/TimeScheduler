@@ -5,7 +5,7 @@
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](./LICENSE)
 [![React](https://img.shields.io/badge/React-18-61DAFB?logo=react)](https://react.dev/)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5-3178C6?logo=typescript)](https://www.typescriptlang.org/)
-[![Vite](https://img.shields.io/badge/Vite-4-646CFF?logo=vite)](https://vitejs.dev/)
+[![Vite](https://img.shields.io/badge/Vite-8-646CFF?logo=vite)](https://vitejs.dev/)
 [![Tailwind CSS](https://img.shields.io/badge/Tailwind-3-06B6D4?logo=tailwindcss)](https://tailwindcss.com/)
 [![Zustand](https://img.shields.io/badge/Zustand-4-433e38)](https://zustand.docs.pmnd.rs/)
 
@@ -114,12 +114,20 @@
 
 打开 [在线网站](https://icebearhound.github.io/TimeScheduler/) 即可编辑和本地保存日程。网站开通授权服务后，在右上角 **用户** 选择 GitHub 或 Gitee，登录授权即可自动同步与跨设备恢复。未开通时页面会明确提示，仍可正常编辑与导出备份。
 
+### 日程工作台与数据保护
+
+- 首页提供今日概览、下一项日程和设备保存状态；空日历可直接创建日程、导入课表或恢复备份。功能导览和通知授权可在设置中主动打开。
+- 日／多日视图显示时间刻度与当前时间线；月视图从周一开始，包含完整六周和相邻月份日程。月底翻月不会跳过月份。月历日期可用方向键选择、Enter 打开。
+- 搜索支持名称、地点和自然语言日期；用 ↑↓ 选择结果、Enter 打开、Esc 关闭。弹窗隔离背景操作并恢复打开前焦点，文字编辑使用原生撤销。
+- 保存失败会显示持续提示，可导出包含未保存修改的紧急备份并重试。损坏的原始存档会被保护；先在设置中导出原始数据，再恢复有效的完整备份。存在存储问题时自动云同步暂停。
+- 创建日程及分组归属支持一步撤销。删除日程／事件链会同时清理引用；删除类型保留日程并移入「未分类」。剪切在粘贴时才移动原事件。
+
 ### 手机导航与界面设置
 
 - 顶部切换日程、多日、月览，选择日期或搜索；右上角用户栏提供账号同步与 **设置**。
 - 底部依次为 **分组、待办、新建、课程、工具**。导入课表、AI/MCP、撤销/重做和详情侧栏位于工具面板。
 - 分组面板按 **事件组／事件链／事件类型** 分页，每页独立滚动；长名称自动换行。事件组的“更多”菜单提供排序、重命名、导出、图标与删除。
-- **用户 → 设置 → 界面布局** 可选 **自动适配、手机版、桌面版**，此浏览器会记住选择。小屏选择桌面版可横向滚动；自动适配会随窗口宽度切换。
+- **用户 → 设置 → 界面布局** 可选 **自动适配、手机版、桌面版**，此浏览器会记住选择。自动模式在小于 1100 px 时使用手机／平板布局；手动选择桌面版时允许横向滚动。
 - 设置还提供浅色/深色/跟随系统主题、类型管理、功能导览和完整备份导出/恢复。
 - 手机面板最多占可视屏幕约 78%，顶部关闭栏始终可见。可点击 **关闭**、轻点面板外侧空白，或从顶部向下滑动关闭；在内容区正常滚动不会误关。详情修改会在关闭时保存，新建表单需点击“创建事件”才写入日程。
 
@@ -143,7 +151,7 @@
 
 ### 本地开发前置要求
 
-- **Node.js** `>= 22`
+- **Node.js** `>= 22.12`
 - **npm** 或 **yarn**
 
 ### 安装
@@ -160,7 +168,7 @@ npm install
 npm run dev
 ```
 
-浏览器自动打开 `http://localhost:5173`
+打开终端显示的本地地址（默认 `http://localhost:5173/TimeScheduler/`）。
 
 ### 构建
 
@@ -172,9 +180,16 @@ npm run preview  # 预览生产构建
 ### 其他命令
 
 ```bash
-npm run type-check  # TypeScript 类型检查
-npm run lint        # ESLint 代码检查
+npm run check       # 前端、本机服务和 Worker 类型检查
+npm test            # 业务、数据事务与安全回归测试
+npm run test:quality # 构建后执行质量验收、WCAG 扫描与首屏体积预算
+npm run test:ui     # 质量验收、手机导航、触摸面板和日历滚动回归
+npm audit           # 依赖安全审计
 ```
+
+浏览器测试首次运行前执行 `npx playwright install chromium`。结果、截图和可访问性明细写入 `test-results/`。持续集成在 PR 和 `codex/**` 分支运行相同检查；发布构建也先执行类型检查、业务测试和安全审计。
+
+首屏全部 JavaScript（含 React 和视图分块）的预算为原始体积 600 KiB、gzip 200 KiB；导入课表、电子表格和 Agent 在使用时加载。SheetJS 使用官方 CDN 的 0.20.3 发布包，锁文件包含完整性校验；`postcss-selector-parser` 固定在包含安全修复的兼容版本范围。
 
 ---
 
@@ -250,8 +265,9 @@ TimeScheduler/
 
 | 存储 Key | 内容 |
 |----------|------|
-| `eventStore` | 事件、事件链、事件类型、剪贴板 |
+| `eventStore` | 事件、事件链、事件类型、学期日期（剪贴板仅保留在内存） |
 | `eventGroupStore` | 事件组配置 |
+| `time-scheduler-preferences-v1` | 事件组图标、待办时间范围等显示偏好 |
 
 > 在右上角用户栏登录 GitHub / Gitee 后，修改自动同步到个人私有仓库并回读核验，离线修改联网后补传。登录令牌仅在当前浏览器 IndexedDB 中加密持久化，不进入日程存档。详见 [账号同步与部署指南](docs/WEB_ACCOUNT_SYNC.md)。也可导出 `.events` 文件备份。
 
@@ -303,7 +319,7 @@ TimeScheduler/
 |------|------|------|------|
 | 框架 | [React](https://react.dev/) | ^18.2 | UI 框架 |
 | 语言 | [TypeScript](https://www.typescriptlang.org/) | ^5.0 | 类型安全 |
-| 构建 | [Vite](https://vitejs.dev/) | ^4.4 | 快速开发与打包 |
+| 构建 | [Vite](https://vitejs.dev/) | ^8.3 | 快速开发与打包 |
 | 样式 | [Tailwind CSS](https://tailwindcss.com/) | ^3.3 | 原子化 CSS |
 | 状态管理 | [Zustand](https://zustand.docs.pmnd.rs/) | ^4.4 | 轻量状态管理 |
 | 日期处理 | [date-fns](https://date-fns.org/) | ^2.30 | 日期计算与格式化 |

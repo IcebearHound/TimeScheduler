@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react'
+import ModalShell from './ModalShell'
 import { Bell, X } from 'lucide-react'
 
 interface Props {
@@ -47,13 +48,13 @@ export default function NotificationPermissionPrompt({ onClose }: Props) {
   const isDenied = permState === 'denied'
 
   return (
-    <div data-dismiss-layer className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4 animate-modal-backdrop" onClick={handleDismiss}>
+    <ModalShell title="通知权限" onClose={handleDismiss} className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4 animate-modal-backdrop">
       <div
         className="bg-white dark:bg-slate-900 rounded-2xl shadow-modal dark:shadow-modal-dark border border-slate-200/60 dark:border-slate-700/60 max-w-md w-full overflow-hidden animate-modal-panel"
         onClick={e => e.stopPropagation()}
       >
         <div className="flex items-center justify-end px-5 pt-4">
-          <button onClick={handleDismiss}
+          <button aria-label="关闭通知设置" onClick={handleDismiss}
             className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 p-1 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors">
             <X className="w-5 h-5" />
           </button>
@@ -64,17 +65,16 @@ export default function NotificationPermissionPrompt({ onClose }: Props) {
             <>
               <div className="text-5xl mb-4">🔕</div>
               <h2 className="text-lg font-bold text-slate-900 dark:text-white mb-2">
-                浏览器已阻止通知
+                {'Notification' in window ? '浏览器已阻止通知' : '此浏览器暂不支持系统通知'}
               </h2>
               <p className="text-sm text-slate-500 dark:text-slate-400 leading-relaxed mb-4">
-                Chrome 对不熟悉的网站会自动拦截通知弹窗。<br />
-                请按以下步骤手动开启：
+                {'Notification' in window ? '可在浏览器的网站权限设置中允许通知。' : '你仍可查看日程和待办；也可在设置中导出日历，使用系统日历提醒。'}
               </p>
-              <ol className="text-xs text-slate-500 dark:text-slate-400 text-left space-y-1 mb-4 px-2">
+              {'Notification' in window && <ol className="text-xs text-slate-500 dark:text-slate-400 text-left space-y-1 mb-4 px-2">
                 <li>1. 点击地址栏左侧的 <span className="text-slate-700 dark:text-slate-200 font-medium">🔒 锁图标</span></li>
                 <li>2. 找到"通知"，点击 <span className="text-slate-700 dark:text-slate-200 font-medium">允许</span></li>
                 <li>3. 刷新页面即可</li>
-              </ol>
+              </ol>}
               <div className="flex items-center justify-center gap-2 mb-4">
                 <input type="checkbox" id="dontRemindDenied" checked={dontRemind}
                   onChange={e => setDontRemind(e.target.checked)}
@@ -130,6 +130,6 @@ export default function NotificationPermissionPrompt({ onClose }: Props) {
           )}
         </div>
       </div>
-    </div>
+    </ModalShell>
   )
 }

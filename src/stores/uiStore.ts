@@ -2,6 +2,7 @@
  * UI状态管理
  */
 import { create } from 'zustand'
+import { readPreferences, preferencesKey } from '../utils/preferences'
 import { subscribeWithSelector } from 'zustand/middleware'
 import { ViewMode } from '../types/calendar'
 import { EventConflict } from '../types/event'
@@ -135,6 +136,7 @@ function applyTheme(mode: 'light' | 'dark' | 'system') {
 }
 
 const initialTheme = getSavedTheme()
+const preferences = readPreferences({ getItem: key => localStorage.getItem(key) })
 const savedAgentDock = () => { try { const value = localStorage.getItem('agent-dock'); if (value === 'left' || value === 'floating') return value } catch {} return 'right' }
 
 const useUIStore = create<UIStore>()(
@@ -148,11 +150,11 @@ const useUIStore = create<UIStore>()(
     isMobileToolsOpen: false,
     setIsMobileToolsOpen: (open) => set({ isMobileToolsOpen: open }),
     calendarDayCount: 7,
-    setCalendarDayCount: (count) => set({ calendarDayCount: count }),
+    setCalendarDayCount: (count) => { if ([1, 3, 5, 7].includes(count)) set({ calendarDayCount: count }) },
     viewMode: 'week',
     setViewMode: (mode) => set({ viewMode: mode }),
     currentDate: new Date(),
-    setCurrentDate: (date) => set({ currentDate: date }),
+    setCurrentDate: (date) => { if (Number.isFinite(+date)) set({ currentDate: date }) },
 
     selectedEventId: undefined,
     setSelectedEvent: (id) => set(s => ({ selectedEventId: id, rightPanelTab: id ? 'details' : s.rightPanelTab === 'details' ? 'todo' : s.rightPanelTab })),
@@ -220,7 +222,7 @@ const useUIStore = create<UIStore>()(
     },
     removeToast: (id) => set(s => ({ toasts: s.toasts.filter(t => t.id !== id) })),
 
-    showGroupEmoji: true,
+    showGroupEmoji: preferences.showGroupEmoji,
     setShowGroupEmoji: (show) => set({ showGroupEmoji: show }),
 
     filterTypeIds: new Set(),
@@ -236,9 +238,9 @@ const useUIStore = create<UIStore>()(
     semesterStartDate: new Date(2026, 7, 31),
     setSemesterStartDate: (date) => set({ semesterStartDate: date }),
 
-    todoHighlightDays: 30,
+    todoHighlightDays: preferences.todoHighlightDays,
     setTodoHighlightDays: (days) => set({ todoHighlightDays: days }),
-    todoUpcomingDays: 3,
+    todoUpcomingDays: preferences.todoUpcomingDays,
     setTodoUpcomingDays: (days) => set({ todoUpcomingDays: days }),
 
     themeMode: initialTheme,
@@ -259,5 +261,10 @@ const useUIStore = create<UIStore>()(
     setShowDebugPanel: (show) => set({ showDebugPanel: show }),
   }))
 )
+
+useUIStore.subscribe((next, previous) => {
+  if (next.showGroupEmoji === previous.showGroupEmoji && next.todoHighlightDays === previous.todoHighlightDays && next.todoUpcomingDays === previous.todoUpcomingDays) return
+  try { localStorage.setItem(preferencesKey, JSON.stringify({ showGroupEmoji: next.showGroupEmoji, todoHighlightDays: next.todoHighlightDays, todoUpcomingDays: next.todoUpcomingDays })) } catch { /* Display preferences never block calendar edits. */ }
+})
 
 export default useUIStore

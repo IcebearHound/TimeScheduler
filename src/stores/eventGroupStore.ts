@@ -2,6 +2,7 @@
  * 事件组管理状态
  */
 import { create } from 'zustand'
+import { persistence, validateStoredEntries } from './persistenceStore'
 import { subscribeWithSelector } from 'zustand/middleware'
 import { EventGroup } from '../types/event'
 import { generateId } from '../utils/idGenerator'
@@ -294,20 +295,31 @@ const useEventGroupStore = create<EventGroupStore>()(
         activeGroupId: s.activeGroupId,
         groupOrder: s.groupOrder,
       }
-      try { localStorage.setItem('eventGroupStore', JSON.stringify(data)) }
-      catch { /* localStorage full or unavailable */ }
+      persistence.write('eventGroupStore', data)
     },
 
     load: () => {
-      const raw = localStorage.getItem('eventGroupStore')
+      if (persistence.useStatus.getState().issues.eventStore?.kind === 'unreadable') persistence.protect('eventGroupStore')
+      const raw = persistence.read('eventGroupStore')
       if (!raw) {
         get().createDefaultGroup()
         return
       }
       try {
         const p = JSON.parse(raw)
+        validateStoredEntries(p.groups)
+        for (const [, group] of p.groups) {
+          if (![group.eventIds, group.eventChainIds].every(ids => Array.isArray(ids) && ids.every(id => typeof id === 'string'))) throw new Error('分组数据无效')
+          if (![group.createdAt, group.updatedAt].every(date => date == null || Number.isFinite(Date.parse(date)))) throw new Error('分组时间戳无效')
+        }
+        if (p.groupOrder != null && (!Array.isArray(p.groupOrder) || p.groupOrder.some((id: unknown) => typeof id !== 'string'))) throw new Error('分组顺序无效')
+        p.groups = p.groups.map(([id, group]: [string, EventGroup]) => [id, { ...group, createdAt: new Date(group.createdAt || Date.now()), updatedAt: new Date(group.updatedAt || group.createdAt || Date.now()) }])
+        if (!persistence.useStatus.getState().issues.eventStore) {
+          const archive = useEventStore.getState()
+          p.groups = p.groups.map(([id, group]: [string, EventGroup]) => [id, { ...group, eventIds: group.eventIds.filter(id => archive.events.has(id)), eventChainIds: group.eventChainIds.filter(id => archive.eventChains.has(id)) }])
+        }
         const groups = new Map<string, EventGroup>(p.groups || [])
-        const order: string[] = (p.groupOrder != null && p.groupOrder.length > 0) ? p.groupOrder : Array.from(groups.keys())
+        const order = [...new Set<string>([...(p.groupOrder || []), ...groups.keys()])].filter(id => groups.has(id))
         let active = (p.activeGroupId && groups.has(p.activeGroupId)) ? p.activeGroupId : order[0] || ''
         
         if (groups.size === 0 || !active || !groups.has(active)) {
@@ -326,6 +338,7 @@ const useEventGroupStore = create<EventGroupStore>()(
           get().createDefaultGroup()
         }
       } catch {
+        persistence.protect('eventGroupStore')
         get().createDefaultGroup()
       }
     },

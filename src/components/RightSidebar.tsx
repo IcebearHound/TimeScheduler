@@ -1,11 +1,14 @@
-import { useEffect, useRef } from 'react'
+import { lazy, Suspense, useEffect, useRef } from 'react'
 import { BookOpen, CheckSquare, FlaskConical, Info, Maximize2, Minimize2, PanelRightClose, Sparkles } from 'lucide-react'
 import useUIStore from '../stores/uiStore'
 import useLayoutStore from '../stores/layoutStore'
-import RightPanel from './RightPanel'
 import TodoView from './TodoView'
-import AssignmentPanel from './AssignmentPanel'
-import CourseOverviewPanel from './CourseOverviewPanel'
+import LoadingState from './LoadingState'
+import { restoreFocus } from '../utils/useFocusTrap'
+
+const RightPanel = lazy(() => import('./RightPanel'))
+const AssignmentPanel = lazy(() => import('./AssignmentPanel'))
+const CourseOverviewPanel = lazy(() => import('./CourseOverviewPanel'))
 
 export default function RightSidebar() {
   const agentOpen = useUIStore(s => s.isAgentOpen)
@@ -32,7 +35,7 @@ export default function RightSidebar() {
       }
     }
     window.addEventListener('keydown', handle, true)
-    return () => { window.removeEventListener('keydown', handle, true); if (previous?.isConnected) previous.focus() }
+    return () => { window.removeEventListener('keydown', handle, true); restoreFocus(previous) }
   }, [expanded, isMobile, setExpanded])
   return <div ref={root} data-right-sidebar role={expanded && !isMobile ? 'dialog' : undefined} aria-modal={expanded && !isMobile ? true : undefined} aria-label="待办与课程任务" className="flex h-full min-h-0 flex-col bg-white text-slate-800 dark:bg-slate-900 dark:text-slate-200">
     <div className="flex shrink-0 items-center gap-1 border-b p-2 dark:border-slate-700">
@@ -48,10 +51,12 @@ export default function RightSidebar() {
     </div>
     <div className="min-h-0 flex-1 overflow-hidden" data-agent-dock-slot="right">
       <div className="h-full" style={{ visibility: agentOpen && agentDock === 'right' && !isMobile ? 'hidden' : undefined }}>
+      <Suspense fallback={<LoadingState />}>
       {tab === 'todo' && <div className="h-full overflow-y-auto"><TodoView embedded /></div>}
       {tab === 'assignments' && <div className="assignment-scroll h-full overflow-y-auto p-3"><AssignmentPanel /></div>}
       {tab === 'overview' && <div className="h-full overflow-y-auto p-3"><CourseOverviewPanel /></div>}
       {tab === 'details' && <RightPanel />}
+      </Suspense>
       </div>
     </div>
   </div>

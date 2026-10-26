@@ -1,30 +1,20 @@
-import AgentWindow from './components/AgentWindow'
 import PanelNavigation from './components/PanelNavigation'
 import SidebarResizeHandle, { useSidebarWidth } from './components/SidebarResizeHandle'
 import MobileSheet from './components/MobileSheet'
 import useLayoutStore from './stores/layoutStore'
-import SettingsPanel from './components/SettingsPanel'
-import MobileToolsPanel from './components/MobileToolsPanel'
-import SearchDialog from './components/SearchDialog'
-import React, { useEffect, useState, useRef, useCallback } from 'react'
+import React, { Suspense, lazy, useEffect, useState, useRef, useCallback } from 'react'
 import useEventStore from './stores/eventStore'
 import useEventGroupStore from './stores/eventGroupStore'
 import useUIStore from './stores/uiStore'
 import Header from './components/Header'
 import TimeTable from './components/TimeTable'
-import LeftSidebar from './components/LeftSidebar'
 import RightSidebar from './components/RightSidebar'
-import EventModal from './components/EventModal'
-import CourseImportModal from './components/CourseImportModal'
 import ConflictDialog from './components/ConflictDialog'
-import TypeManagerModal from './components/TypeManagerModal'
 import DialogModal from './components/DialogModal'
 import ToastContainer from './components/ToastContainer'
 import DebugOverlay from './components/DebugOverlay'
 import KeyboardShortcuts from './components/KeyboardShortcuts'
-import WelcomeGuide from './components/WelcomeGuide'
 import NotificationPermissionPrompt from './components/NotificationPermissionPrompt'
-import TodoModal from './components/TodoModal'
 import MobileHeader from './components/MobileHeader'
 import MobileBottomNav from './components/MobileBottomNav'
 import WorkspaceTools from './components/WorkspaceTools'
@@ -33,6 +23,22 @@ import { startCalendarSync } from './integrations/calendarSync'
 import { PanelLeftOpen, PanelRightOpen } from 'lucide-react'
 import { getReminderMilliseconds } from './utils/eventUtils'
 import { buildCourseTaskSchedule } from './utils/courseTaskSchedule'
+import WorkspaceOverview from './components/WorkspaceOverview'
+import CalendarEmptyState from './components/CalendarEmptyState'
+import StorageNotice from './components/StorageNotice'
+import LoadingState from './components/LoadingState'
+import usePersistenceStore from './stores/persistenceStore'
+
+const AgentWindow = lazy(() => import('./components/AgentWindow'))
+const SettingsPanel = lazy(() => import('./components/SettingsPanel'))
+const MobileToolsPanel = lazy(() => import('./components/MobileToolsPanel'))
+const SearchDialog = lazy(() => import('./components/SearchDialog'))
+const LeftSidebar = lazy(() => import('./components/LeftSidebar'))
+const EventModal = lazy(() => import('./components/EventModal'))
+const CourseImportModal = lazy(() => import('./components/CourseImportModal'))
+const TypeManagerModal = lazy(() => import('./components/TypeManagerModal'))
+const WelcomeGuide = lazy(() => import('./components/WelcomeGuide'))
+const TodoModal = lazy(() => import('./components/TodoModal'))
 
 export default function App() {
   const leftWidth = useSidebarWidth('left', 280), rightWidth = useSidebarWidth('right', 360)
@@ -43,6 +49,15 @@ export default function App() {
   const isMobileToolsOpen = useUIStore(s => s.isMobileToolsOpen)
   const isSearchOpen = useUIStore(s => s.isSearchOpen)
   const [initialized, setInitialized] = useState(false)
+  const [agentMounted, setAgentMounted] = useState(agentOpen)
+  const eventPanelOpen = useUIStore(s => s.isEventPanelOpen)
+  const importPanelOpen = useUIStore(s => s.isImportDialogOpen)
+  useEffect(() => { if (agentOpen) setAgentMounted(true) }, [agentOpen])
+  useEffect(() => {
+    const guard = (event: BeforeUnloadEvent) => { if (Object.keys(usePersistenceStore.getState().issues).length) { event.preventDefault(); event.returnValue = '' } }
+    window.addEventListener('beforeunload', guard)
+    return () => window.removeEventListener('beforeunload', guard)
+  }, [])
   useEffect(() => { if (initialized) void startAutoSync().then(() => startCalendarSync()) }, [initialized])
   const isConflictDialogOpen = useUIStore((s) => s.isConflictDialogOpen)
   const setIsConflictDialogOpen = useUIStore((s) => s.setIsConflictDialogOpen)
@@ -121,27 +136,7 @@ export default function App() {
     useUIStore.getState().setIsRightPanelOpen(!isMobile)
   }, [isMobile])
 
-  // 首次启动自动弹出功能导览
-  useEffect(() => {
-    if (!initialized) return
-    try {
-      if (!localStorage.getItem('hasSeenWelcomeGuide')) {
-        setIsWelcomeGuideOpen(true)
-      }
-    } catch {}
-  }, [initialized])
-
-  // 启动时检测通知权限，未授权/已拒绝则弹窗提醒
-  useEffect(() => {
-    if (!initialized) return
-    try {
-      if (localStorage.getItem('notificationPromptSeen')) return
-    } catch {}
-    if (!('Notification' in window)) return
-    if (Notification.permission === 'granted') return
-    const timer = setTimeout(() => setIsNotificationPromptOpen(true), 500)
-    return () => clearTimeout(timer)
-  }, [initialized])
+  // First use stays in the calendar; help and notification permission are user initiated.
 
   // 全局 ESC 关闭所有弹窗/浮窗
   useEffect(() => {
@@ -260,12 +255,14 @@ export default function App() {
     <div className="app-shell flex flex-col h-screen bg-gradient-to-br from-slate-50 via-white to-slate-100 dark:from-slate-950 dark:via-slate-900 dark:to-slate-800">
       <PanelNavigation />
       <KeyboardShortcuts />
+      <a className="skip-link" href="#calendar-main">跳到日历</a>
       {isMobile ? <MobileHeader /> : <Header />}
+      <StorageNotice />
       <WorkspaceTools />
       <div className="app-main flex flex-1 overflow-hidden">
         {isLeftSidebarOpen && <button type="button" aria-label="关闭导航" data-dismiss-layer className="mobile-panel-backdrop desktop:hidden" onClick={() => setIsLeftSidebarOpen(false)} />}
         {!isLeftSidebarOpen && !agentLeft && (
-          <button onClick={() => setIsLeftSidebarOpen(true)}
+          <button aria-label="展开分组导航" onClick={() => setIsLeftSidebarOpen(true)}
             className="hidden desktop:block absolute left-0 top-1/2 -translate-y-1/2 z-20 p-2 bg-white/80 dark:bg-slate-800/80 backdrop-blur-sm border border-slate-200/80 dark:border-slate-700/80 rounded-r-xl shadow-elevated hover:bg-white dark:hover:bg-slate-800 hover:shadow-overlay transition-all duration-200">
             <PanelLeftOpen className="w-4 h-4 text-slate-400 dark:text-slate-500" />
           </button>
@@ -274,10 +271,10 @@ export default function App() {
           onTransitionEnd={handleLeftTransitionEnd}
           style={{ '--sidebar-width': `${leftWidth.width}px` } as React.CSSProperties}
           className={`app-left-panel ${isLeftSidebarOpen || agentLeft ? 'is-open' : 'is-closed'} ${agentLeft ? 'has-docked-agent' : ''}`}>
-          <div className="h-full w-full" data-agent-dock-slot="left"><div className="h-full" style={{ visibility: agentLeft ? 'hidden' : undefined }}>{leftRender && <LeftSidebar />}</div></div>
+          <div className="h-full w-full" data-agent-dock-slot="left"><div className="h-full" style={{ visibility: agentLeft ? 'hidden' : undefined }}><Suspense fallback={<LoadingState />}>{leftRender && <LeftSidebar />}</Suspense></div></div>
           {!isMobile && (isLeftSidebarOpen || agentLeft) && <SidebarResizeHandle side="left" width={leftWidth.width} onResize={leftWidth.resize} />}
         </div>
-        <div className="calendar-container min-w-0 flex-1 overflow-hidden"><TimeTable /></div>
+        <main id="calendar-main" tabIndex={-1} aria-label="日历工作台" className="calendar-container min-w-0 flex-1 overflow-hidden flex flex-col outline-none"><WorkspaceOverview /><CalendarEmptyState /><TimeTable /></main>
         {!isMobile && isRightPanelOpen && <button type="button" aria-label="关闭详情" className="mobile-panel-backdrop desktop:hidden" onClick={() => setIsRightPanelOpen(false)} />}
         {!isMobile && isRightPanelOpen && rightPanelExpanded && !agentRight && <button data-dismiss-layer aria-label="退出全屏空白区域" className="fixed inset-0 z-40 bg-slate-950/40" onClick={() => useUIStore.getState().setRightPanelExpanded(false)} />}
         {!isMobile && <div ref={rightRef}
@@ -289,19 +286,20 @@ export default function App() {
         </div>}
         {isMobile && isRightPanelOpen && <MobileSheet title={rightPanelTab === 'ai' ? '日程 Agent' : '事件详情与待办'} closeLabel="收起详情面板" onClose={() => setIsRightPanelOpen(false)} expanded={rightPanelExpanded} horizontalScroll={rightPanelTab === 'todo' || rightPanelTab === 'assignments'} onEscape={rightPanelExpanded ? () => useUIStore.getState().setRightPanelExpanded(false) : undefined} fill><div className="mobile-detail-content"><RightSidebar /></div></MobileSheet>}
         {!isRightPanelOpen && !agentRight && (
-          <button onClick={() => setIsRightPanelOpen(true)}
+          <button aria-label="展开待办与详情" onClick={() => setIsRightPanelOpen(true)}
             className="hidden desktop:block absolute right-0 top-1/2 -translate-y-1/2 z-20 p-2 bg-white/80 dark:bg-slate-800/80 backdrop-blur-sm border border-slate-200/80 dark:border-slate-700/80 rounded-l-xl shadow-elevated hover:bg-white dark:hover:bg-slate-800 hover:shadow-overlay transition-all duration-200">
             <PanelRightOpen className="w-4 h-4 text-slate-400 dark:text-slate-500" />
           </button>
         )}
       </div>
       {isMobile && <MobileBottomNav />}
-      <AgentWindow />
+      <Suspense fallback={<div className="feature-loading"><LoadingState /></div>}>
+      {(agentMounted || agentOpen) && <AgentWindow />}
       {isSettingsOpen && <SettingsPanel />}
       {isMobileToolsOpen && <MobileToolsPanel />}
       {isSearchOpen && <SearchDialog onClose={() => useUIStore.getState().setIsSearchOpen(false)} />}
-      <EventModal />
-      <CourseImportModal />
+      {eventPanelOpen && <EventModal />}
+      {importPanelOpen && <CourseImportModal />}
       {isConflictDialogOpen && conflictConflicts.length > 0 && (
         <ConflictDialog conflicts={conflictConflicts}
           onClose={() => { setConflictConflicts([]); setIsConflictDialogOpen(false) }}
@@ -314,6 +312,7 @@ export default function App() {
       {isWelcomeGuideOpen && <WelcomeGuide onClose={() => setIsWelcomeGuideOpen(false)} />}
       {isNotificationPromptOpen && <NotificationPermissionPrompt onClose={() => setIsNotificationPromptOpen(false)} />}
       {isTodoModalOpen && <TodoModal onClose={() => setIsTodoModalOpen(false)} />}
+      </Suspense>
     </div>
   )
 }

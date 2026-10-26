@@ -9,6 +9,7 @@ import useEventGroupStore from '../../stores/eventGroupStore'
 import { getStartOfDay, getEndOfDay } from '../../utils/dateUtils'
 import { isJumping } from '../../utils/scrollTarget'
 import DayColumn from './DayColumn'
+import { calendarSlotHeight } from './TimeScale'
 
 export default function DayView() {
   const scrollRef = useRef<HTMLDivElement>(null)
@@ -44,7 +45,7 @@ export default function DayView() {
   const wd = ['星期日', '星期一', '星期二', '星期三', '星期四', '星期五', '星期六'][currentDate.getDay()]
   const isToday = currentDate.toDateString() === new Date().toDateString()
 
-  const [slotH, setSlotH] = useState(80)
+  const [slotH, setSlotH] = useState(calendarSlotHeight)
   useEffect(() => {
     const calc = () => {
       const h = window.innerHeight - 130; setSlotH(Math.max(60, Math.floor(h / 24)))
@@ -66,14 +67,14 @@ export default function DayView() {
     <div className="h-full flex flex-col bg-white dark:bg-slate-900 overflow-hidden">
       <div className="hidden desktop:flex items-center justify-between px-6 py-4 border-b border-slate-200/60 dark:border-slate-800/60">
         <div className="flex items-center gap-4">
-          <button onClick={nav.p} className="p-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-colors"><ChevronLeft className="w-5 h-5 text-slate-600 dark:text-slate-300" /></button>
+          <button aria-label="上一天" onClick={nav.p} className="p-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-colors"><ChevronLeft className="w-5 h-5 text-slate-600 dark:text-slate-300" /></button>
           <h2 className="text-lg font-bold text-slate-900 dark:text-white min-w-60">{currentDate.toLocaleDateString('zh-CN', { year: 'numeric', month: 'numeric', day: 'numeric' })} {wd}</h2>
-          <button onClick={nav.n} className="p-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-colors"><ChevronRight className="w-5 h-5 text-slate-600 dark:text-slate-300" /></button>
+          <button aria-label="下一天" onClick={nav.n} className="p-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-colors"><ChevronRight className="w-5 h-5 text-slate-600 dark:text-slate-300" /></button>
         </div>
         <button onClick={() => setCurrentDate(new Date())} className="px-3 py-1.5 text-xs font-medium rounded-lg bg-accent-50 dark:bg-accent-900/20 text-accent-700 dark:text-accent-300 hover:bg-accent-100 dark:hover:bg-accent-900/30 shadow-sm transition-colors">今天</button>
       </div>
       <div className="flex-1 overflow-hidden">
-        <div ref={scrollRef} data-calendar-scroll className="flex h-full overflow-y-auto">
+        <div ref={scrollRef} data-calendar-scroll role="region" aria-label="日程时间表" tabIndex={0} className="flex h-full overflow-y-auto">
           <div className="w-12 desktop:w-16 bg-slate-50 dark:bg-slate-950 border-r border-slate-200 dark:border-slate-800 flex-shrink-0">
             {Array.from({ length: 24 }, (_, i) => (
               <div key={i} className="flex items-start justify-end pr-1.5 desktop:pr-2 pt-1 text-[10px] desktop:text-xs text-slate-500 dark:text-slate-400 font-medium" style={{ height: slotH, minHeight: 60 }}>

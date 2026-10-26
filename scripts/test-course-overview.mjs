@@ -58,7 +58,7 @@ try {
     let data = await stored(), reports = data.events.map(([, e]) => e).filter(e => e.properties.taskKind === '实验报告')
     assert.deepEqual(reports.map(e => e.endTime), ['2026-09-23T15:00:00.000Z', '2026-09-30T15:00:00.000Z'])
     assert.ok(reports.every(e => e.chainId === 'c' && new Map(data.eventTypes).get(e.typeId).category === 'lab_report'))
-    const firstReport = page.locator(`[data-task-lamp="${reports[0].id}"]`)
+    const firstReport = page.locator(`[data-task-lamp="${reports[0].id}"]`).last()
     if (!await firstReport.isVisible()) await page.locator('summary').filter({ hasText: '此前逾期未完成' }).click()
     await firstReport.click()
     await page.clock.runFor(650)

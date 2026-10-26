@@ -3,6 +3,7 @@ import { Maximize2, Minimize2, Minus, Sparkles, X, PanelLeftOpen, PanelRightOpen
 import IntegrationPanel from './IntegrationPanel'
 import useUIStore from '../stores/uiStore'
 import useLayoutStore from '../stores/layoutStore'
+import { restoreFocus } from '../utils/useFocusTrap'
 
 const AgentContent = memo(IntegrationPanel)
 const resizeEdges = ['n', 's', 'e', 'w', 'ne', 'nw', 'se', 'sw'] as const
@@ -50,7 +51,7 @@ export default function AgentWindow() {
     if (open && !minimized) node?.focus({ preventScroll: true })
     return () => node?.removeEventListener('panel-dismiss', dismiss)
   }, [open, mounted, minimized, setOpen])
-  const close = () => { setDockMenu(false); setOpen(false); previous.current?.focus({ preventScroll: true }) }
+  const close = () => { setDockMenu(false); setOpen(false); restoreFocus(previous.current) }
   const floatWidth = Math.min(view.width - 24, expanded ? 1000 : mobile ? 480 : size.width), floatHeight = Math.min(view.height - 24, expanded ? view.height - 24 : mobile ? 740 : size.height)
   const width = docked && slot ? slot.width : floatWidth, height = docked && slot ? slot.height : floatHeight
   const left = mobile ? 12 : docked && slot ? slot.x : Math.max(0, Math.min(view.width - width, position?.x ?? view.width - width - 24))

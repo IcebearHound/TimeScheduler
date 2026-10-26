@@ -42,7 +42,7 @@ export default function MobileHeader() {
     </div>
     <div className="flex h-12 items-center gap-2 border-t border-slate-100 px-3 dark:border-slate-800">
       <div className="flex flex-1 rounded-xl bg-slate-100 p-1 dark:bg-slate-800" role="group" aria-label="日历视图">
-        {(['day', 'week', 'month'] as const).map((mode, i) => <button key={mode} aria-pressed={ui.viewMode === mode} onClick={() => ui.setViewMode(mode)} className={`min-h-8 flex-1 rounded-lg text-xs font-semibold ${ui.viewMode === mode ? 'bg-white text-accent-600 shadow-sm dark:bg-slate-700' : 'text-slate-500'}`}>{['日程', '多日', '月览'][i]}</button>)}
+        {(['day', 'week', 'month'] as const).map((mode, i) => <button key={mode} aria-pressed={ui.viewMode === mode} onClick={() => ui.setViewMode(mode)} className={`min-h-8 flex-1 rounded-lg text-xs font-semibold ${ui.viewMode === mode ? 'bg-white text-accent-600 shadow-sm dark:bg-slate-700 dark:text-accent-300' : 'text-slate-500 dark:text-slate-300'}`}>{['日程', '多日', '月览'][i]}</button>)}
       </div>
       <label className="mobile-icon-button relative" title="选择日期"><CalendarDays size={20} /><input aria-label="选择日期" type="date" value={dateValue} className="absolute inset-0 w-full opacity-0" onChange={e => { if (e.target.value) ui.setCurrentDate(new Date(e.target.value + 'T12:00:00')) }} /></label>
     </div>

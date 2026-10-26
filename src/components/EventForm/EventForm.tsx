@@ -76,7 +76,7 @@ export default function EventForm({ eventId, chainId, onClose, defaultStart, def
   const [endTime, setEndTime] = useState(endDefault)
   const [durationMin, setDurationMin] = useState(editEvent ? Math.round((new Date(editEvent.endTime).getTime() - new Date(editEvent.startTime).getTime()) / 60000) : 120)
   const [chainIdState, setChainIdState] = useState(editEvent?.chainId || chainId || '')
-  const [typeId, setTypeId] = useState(editEvent?.typeId || 'type-course')
+  const [typeId, setTypeId] = useState(editEvent?.typeId || (eventTypes.some(type => type.id === 'type-course') ? 'type-course' : eventTypes[0]?.id || ''))
   const [isHighlight, setIsHighlight] = useState(editEvent?.isHighlight || false)
   const [reminders, setReminders] = useState<Reminder[]>(editEvent?.reminders || [])
   const [showExtraProps, setShowExtraProps] = useState(false)
@@ -193,14 +193,13 @@ export default function EventForm({ eventId, chainId, onClose, defaultStart, def
     if (!name.trim()) { dialogAlert('请输入事件名称', '提示'); return }
     const st = new Date(startTime)
     const ed = new Date(endTime)
-    if (ed <= st) { dialogAlert('结束时间必须晚于开始时间', '提示'); return }
+    if (!Number.isFinite(+st) || !Number.isFinite(+ed) || ed <= st) { dialogAlert('请输入有效的时间，结束时间必须晚于开始时间', '提示'); return }
 
     if (eventId) {
       eventStore.updateEvent(eventId, { name, startTime: st, endTime: ed, chainId: chainIdState, typeId, isHighlight, properties: properties as EventProperty, reminders })
     } else {
-      const ev = eventStore.addEvent({ name, startTime: st, endTime: ed, chainId: chainIdState, typeId, reminders, properties: properties as EventProperty, isHighlight, priority: 0 })
       const gid = useEventGroupStore.getState().ensureActiveGroup()
-      useEventGroupStore.getState().addEventToGroup(gid, ev.id)
+      eventStore.addEvent({ name, startTime: st, endTime: ed, chainId: chainIdState, typeId, reminders, properties: properties as EventProperty, isHighlight, priority: 0 }, { groupId: gid })
     }
     const cf = eventStore.detectConflicts()
     if (cf.length > 0) {
@@ -215,7 +214,7 @@ export default function EventForm({ eventId, chainId, onClose, defaultStart, def
       <form onSubmit={handleSubmit} className="space-y-3">
         {/* 名称 */}
         <div className="flex items-center gap-2">
-          <input type="text" value={name} onChange={e => setName(e.target.value)}
+          <input aria-label="事件名称" autoFocus required maxLength={200} type="text" value={name} onChange={e => setName(e.target.value)}
             className="flex-1 text-lg font-bold text-slate-900 dark:text-white bg-transparent border-b-2 border-slate-200 dark:border-slate-700 focus:border-accent-500 focus:outline-none pb-1 transition-colors" placeholder="事件名称 *" />
           <button type="button" onClick={() => setIsHighlight(!isHighlight)}
             className={`p-1.5 rounded-lg transition-all flex-shrink-0 ${
@@ -227,14 +226,14 @@ export default function EventForm({ eventId, chainId, onClose, defaultStart, def
 
         {/* 类型 + 事件链 */}
         <div className="flex gap-2">
-          <select value={typeId} onChange={e => { setTypeId(e.target.value); setProperties({}) }}
+          <select aria-label="事件类型" value={typeId} onChange={e => { setTypeId(e.target.value); setProperties({}) }}
             className="flex-1 px-2.5 py-1.5 text-sm border border-slate-200 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 focus:outline-none focus:ring-accent-500/40 focus:border-accent-500">
             {eventTypes.map(t => (
               <option key={t.id} value={t.id}>{t.emoji} {t.name}</option>
             ))}
           </select>
           <div className="flex-1 flex gap-1">
-            <select value={chainIdState} onChange={e => setChainIdState(e.target.value)}
+            <select aria-label="所属事件链" value={chainIdState} onChange={e => setChainIdState(e.target.value)}
               className="flex-1 px-2.5 py-1.5 text-sm border border-slate-200 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 focus:outline-none focus:ring-accent-500/40 focus:border-accent-500">
               <option value="">无事件链</option>
               {chains.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
@@ -248,7 +247,7 @@ export default function EventForm({ eventId, chainId, onClose, defaultStart, def
 
         {/* 时间 */}
         <div>
-          <button type="button" onClick={() => setShowTimePicker(!showTimePicker)}
+          <button type="button" aria-label="编辑事件时间" aria-expanded={showTimePicker} onClick={() => setShowTimePicker(!showTimePicker)}
             className="flex items-center gap-2 w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 text-sm text-slate-700 dark:text-slate-300 hover:border-accent-300 transition-colors">
             <Clock className="w-4 h-4 text-slate-400 flex-shrink-0" />
             <span>{formatDisplayDate(startTime)} {formatDisplayTime(startTime)}</span>
@@ -261,7 +260,7 @@ export default function EventForm({ eventId, chainId, onClose, defaultStart, def
             <div className="mt-2 p-3 bg-slate-50 dark:bg-slate-700/30 rounded-lg space-y-2">
               <div>
                 <label className="text-xs text-slate-500">开始时间</label>
-                <input type="datetime-local" value={startTime} onChange={e => handleStartChange(e.target.value)}
+                <input aria-label="开始时间" required type="datetime-local" value={startTime} onChange={e => handleStartChange(e.target.value)}
                   className="w-full px-2 py-1 mt-0.5 text-xs border border-slate-300 dark:border-slate-600 rounded bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:outline-none focus:ring-accent-500/40 focus:border-accent-500" />
               </div>
               <div className="flex flex-wrap gap-1.5">
@@ -277,7 +276,7 @@ export default function EventForm({ eventId, chainId, onClose, defaultStart, def
               </div>
               <div>
                 <label className="text-xs text-slate-500">结束时间</label>
-                <input type="datetime-local" value={endTime} onChange={e => handleEndChange(e.target.value)}
+                <input aria-label="结束时间" required type="datetime-local" value={endTime} onChange={e => handleEndChange(e.target.value)}
                   className="w-full px-2 py-1 mt-0.5 text-xs border border-slate-300 dark:border-slate-600 rounded bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:outline-none focus:ring-accent-500/40 focus:border-accent-500" />
               </div>
             </div>

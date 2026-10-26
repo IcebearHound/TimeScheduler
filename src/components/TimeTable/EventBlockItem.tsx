@@ -10,9 +10,10 @@ import useEventGroupStore from '../../stores/eventGroupStore'
 import EventContextMenu from '../EventContextMenu'
 import PopoverEventEditor from '../PopoverEventEditor'
 import useLayoutStore from '../../stores/layoutStore'
+import { readableEventText } from '../../utils/colorContrast'
 
 const MIN15_MS = 15 * 60 * 1000
-const PX_PER_15MIN = 12
+const pixelsPerQuarter = (el: HTMLElement | null) => Number(el?.closest<HTMLElement>('[data-day-column]')?.dataset.slotHeight || 60) / 4
 
 interface EventBlockItemProps {
   event: Event; onEdit?: (event: Event) => void
@@ -25,6 +26,8 @@ type ResizeEdge = 'top' | 'bottom' | null
 
 export default function EventBlockItem({ event, onEdit, isHighlighted, compact, continuesBefore, continuesAfter }: EventBlockItemProps) {
   const containerRef = useRef<HTMLDivElement>(null)
+  const cleanupInteraction = useRef<(() => void) | null>(null)
+  useEffect(() => () => cleanupInteraction.current?.(), [])
   const longPressTimerRef = useRef<number | null>(null)
   const longPressTriggeredRef = useRef(false)
   const touchStartRef = useRef<{ x: number; y: number } | null>(null)
@@ -60,6 +63,7 @@ export default function EventBlockItem({ event, onEdit, isHighlighted, compact, 
   const dayDiff = Math.round((new Date(endDay).getTime() - new Date(startDay).getTime()) / 86400000)
   const timeDisplay = !isMultiDay ? `${st} - ${et}` : dayDiff === 1 ? `${st} - 次日 ${et}` : `${st} - ${et} (+${dayDiff}天)`
   const baseColor = event.color || eventChain?.color || '#3B82F6'
+  const textColor = readableEventText(baseColor)
   // 重点事件：左侧金色粗边框 + 星标
   const borderStyle = event.isHighlight ? 'border-l-4 border-l-amber-400' : 'border-l-4 border-l-white/30'
 
@@ -74,6 +78,7 @@ export default function EventBlockItem({ event, onEdit, isHighlighted, compact, 
 
   const startResize = useCallback((e: React.PointerEvent, edge: ResizeEdge) => {
     if (e.pointerType === 'touch' && selectedEventId !== event.id) return
+    cleanupInteraction.current?.()
     e.preventDefault(); e.stopPropagation()
     const origStart = new Date(event.startTime).getTime()
     const origEnd = new Date(event.endTime).getTime()
@@ -97,6 +102,8 @@ export default function EventBlockItem({ event, onEdit, isHighlighted, compact, 
       }
     }
     const up = (me: PointerEvent) => {
+      window.removeEventListener('pointercancel', cancel)
+      cleanupInteraction.current = null
       window.removeEventListener('pointermove', move); window.removeEventListener('pointerup', up)
       const el = containerRef.current
       if (el) {
@@ -108,16 +115,25 @@ export default function EventBlockItem({ event, onEdit, isHighlighted, compact, 
       setResizing(null)
 
       const totalDy = me.clientY - sy
-      const steps = Math.round(totalDy / PX_PER_15MIN)
+      const steps = Math.round(totalDy / pixelsPerQuarter(containerRef.current))
+      if (steps === 0) return
       const ms = steps * MIN15_MS
       if (edge === 'top') {
         const ns = origStart + ms
-        if (ns < origEnd - MIN15_MS) useEventStore.getState().updateEvent(event.id, { startTime: new Date(ns) })
+        if (ns <= origEnd - MIN15_MS) useEventStore.getState().updateEvent(event.id, { startTime: new Date(ns) })
       } else {
         const ne = origEnd + ms
-        if (ne > origStart + MIN15_MS) useEventStore.getState().updateEvent(event.id, { endTime: new Date(ne) })
+        if (ne >= origStart + MIN15_MS) useEventStore.getState().updateEvent(event.id, { endTime: new Date(ne) })
       }
     }
+    const cancel = () => {
+      window.removeEventListener('pointermove', move); window.removeEventListener('pointerup', up); window.removeEventListener('pointercancel', cancel)
+      const el = containerRef.current
+      if (el) { el.style.transform = ''; el.style.height = ''; el.style.opacity = ''; el.style.willChange = '' }
+      setResizing(null); cleanupInteraction.current = null
+    }
+    cleanupInteraction.current = cancel
+    window.addEventListener('pointercancel', cancel)
     window.addEventListener('pointermove', move); window.addEventListener('pointerup', up)
   }, [event.id, event.startTime, event.endTime, selectedEventId])
 
@@ -126,13 +142,16 @@ export default function EventBlockItem({ event, onEdit, isHighlighted, compact, 
     const isTouchHandle = !!target.closest('.touch-drag-handle')
     if (target.closest('button') && !isTouchHandle) return
     if (e.pointerType === 'touch' && !isTouchHandle) return
+    cleanupInteraction.current?.()
     e.preventDefault()
     const el = containerRef.current; if (!el) return
     const origStart = new Date(event.startTime).getTime(); const origEnd = new Date(event.endTime).getTime()
     el.style.willChange = 'transform'; el.style.zIndex = '50'; el.style.opacity = '0.85'; el.style.boxShadow = '0 10px 25px rgba(0,0,0,0.3)'
     const sx = e.clientX; const sy = e.clientY
-    // 估算列宽：窗口宽度减去边栏约 350px，除以 7 列
-    const colW = Math.max(100, (window.innerWidth - 400) / 7)
+    const colW = el.closest<HTMLElement>('[data-day-column]')?.getBoundingClientRect().width || 1
+    const quarterHeight = pixelsPerQuarter(el)
+    const scrollContainer = el.closest<HTMLElement>('[data-calendar-scroll]')
+    const startScroll = scrollContainer?.scrollTop || 0
 
     let scrollTimer: number | null = null
     const findScrollContainer = (el: HTMLElement): HTMLElement | null => {
@@ -161,11 +180,13 @@ export default function EventBlockItem({ event, onEdit, isHighlighted, compact, 
     }
 
     const up = (ue: PointerEvent) => {
+      window.removeEventListener('pointercancel', cancel)
+      cleanupInteraction.current = null
       window.removeEventListener('pointermove', move); window.removeEventListener('pointerup', up)
       if (scrollTimer) { clearInterval(scrollTimer); scrollTimer = null }
 
-      const stepsY = Math.round((ue.clientY - sy) / PX_PER_15MIN)
-      const stepsX = isMobile ? 0 : Math.round((ue.clientX - sx) / colW)
+      const stepsY = Math.round((ue.clientY - sy + (scrollContainer?.scrollTop || 0) - startScroll) / quarterHeight)
+      const stepsX = isMobile || useUIStore.getState().viewMode !== 'week' ? 0 : Math.round((ue.clientX - sx) / colW)
 
       // 记录旧位置
       const oldRect = el.getBoundingClientRect()
@@ -173,9 +194,10 @@ export default function EventBlockItem({ event, onEdit, isHighlighted, compact, 
 
       // 更新 store
       if (Math.abs(stepsY) > 0 || Math.abs(stepsX) > 0) {
-        const totalMs = stepsY * MIN15_MS + stepsX * 24 * 60 * 60 * 1000
-        const ns = new Date(origStart + totalMs)
-        const ne = new Date(origEnd + totalMs)
+        const ns = new Date(origStart)
+        ns.setDate(ns.getDate() + stepsX)
+        ns.setMinutes(ns.getMinutes() + stepsY * 15)
+        const ne = new Date(ns.getTime() + origEnd - origStart)
         if (ns.getTime() < ne.getTime()) {
           useEventStore.getState().moveEvent(event.id, ns, ne)
         }
@@ -213,8 +235,16 @@ export default function EventBlockItem({ event, onEdit, isHighlighted, compact, 
         })
       })
     }
+    const cancel = () => {
+      window.removeEventListener('pointermove', move); window.removeEventListener('pointerup', up); window.removeEventListener('pointercancel', cancel)
+      if (scrollTimer) clearInterval(scrollTimer)
+      el.style.transform = ''; el.style.boxShadow = ''; el.style.zIndex = ''; el.style.willChange = ''; el.style.opacity = ''
+      cleanupInteraction.current = null
+    }
+    cleanupInteraction.current = cancel
+    window.addEventListener('pointercancel', cancel)
     window.addEventListener('pointermove', move); window.addEventListener('pointerup', up)
-  }, [event.id, event.startTime, event.endTime])
+  }, [event.id, event.startTime, event.endTime, isMobile])
 
   const clearLongPress = () => {
     if (longPressTimerRef.current !== null) window.clearTimeout(longPressTimerRef.current)
@@ -251,11 +281,11 @@ export default function EventBlockItem({ event, onEdit, isHighlighted, compact, 
 
   if (compact) {
     return (
-      <div onClick={(e) => { if (e.ctrlKey || e.metaKey) toggleMultiSelect(event.id); else { setSelectedEvent(event.id); if (isMobile) setIsEventPanelOpen(true) } }}
+      <div role="button" tabIndex={0} aria-label={`${event.name}，${timeDisplay}`} onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.stopPropagation(); setSelectedEvent(event.id); setIsEventPanelOpen(true) } }} onClick={(e) => { e.stopPropagation(); if (e.ctrlKey || e.metaKey) toggleMultiSelect(event.id); else { setSelectedEvent(event.id); if (isMobile) setIsEventPanelOpen(true) } }}
         className={`group relative rounded px-2 py-1 text-xs font-medium cursor-pointer truncate transition-shadow ${
           selectedEventId === event.id ? 'ring-2 ring-blue-500 dark:ring-blue-400 z-10' : ''
         } ${selectedEventIds.has(event.id) ? 'brightness-110 saturate-150' : ''}`}
-        style={{ backgroundColor: baseColor + 'CC', color: 'white' }}>
+        style={{ backgroundColor: baseColor, color: textColor }}>
         {eventType?.emoji} {event.name}{event.isHighlight ? ' ⭐' : ''}
       </div>
     )
@@ -264,6 +294,11 @@ export default function EventBlockItem({ event, onEdit, isHighlighted, compact, 
   return (
     <>
       <div ref={containerRef}
+        role="button" tabIndex={0} aria-label={`${event.name}，${timeDisplay}`} aria-pressed={selectedEventId === event.id || selectedEventIds.has(event.id)}
+        onKeyDown={e => {
+          if (e.target !== e.currentTarget) return
+          if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setSelectedEvent(event.id); setIsEventPanelOpen(true) }
+        }}
         draggable={!isMobile}
         onDragStart={(e) => {
           setDraggedEvent(event.id)
@@ -292,6 +327,7 @@ export default function EventBlockItem({ event, onEdit, isHighlighted, compact, 
         }`}
         style={{
           backgroundColor: baseColor,
+          color: textColor,
           borderLeft: event.isHighlight ? '4px solid #fbbf24' : isHighlighted ? '5px solid rgba(255,255,255,0.8)' : '4px solid rgba(255,255,255,0.15)',
           minHeight: 22,
           borderTopLeftRadius: continuesBefore ? 0 : undefined,
@@ -316,7 +352,7 @@ export default function EventBlockItem({ event, onEdit, isHighlighted, compact, 
               <span className="flex-shrink-0">{eventType?.emoji}</span>
               <span className="truncate">{event.name}</span>
             </div>
-            <div className="opacity-90 whitespace-nowrap">{timeDisplay}</div>
+            <div className="whitespace-nowrap">{timeDisplay}</div>
           </div>
         </div>
 

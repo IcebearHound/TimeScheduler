@@ -99,8 +99,8 @@ try {
   await page.screenshot({ path: resolve(output, 'desktop.png') })
   for (const width of [320, 390, 768]) {
     await page.setViewportSize({ width, height: 667 })
-    await page.waitForFunction(expected => document.documentElement.dataset.layout === expected, width < 768 ? 'mobile' : 'desktop')
-    if (width < 768) {
+    await page.waitForFunction(expected => document.documentElement.dataset.layout === expected, width < 1100 ? 'mobile' : 'desktop')
+    if (width < 1100) {
       assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true)
       await page.getByRole('button', { name: '多日', exact: true }).click()
       await page.getByLabel('显示天数', { exact: true }).selectOption('7')

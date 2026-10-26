@@ -1,5 +1,6 @@
 import { useLayoutEffect } from 'react'
 import useUIStore from '../stores/uiStore'
+import { createModalIsolation } from '../utils/modalAccessibility'
 
 // Shared across effect remounts so React StrictMode cannot schedule two Back calls.
 let historyBackPending = false
@@ -7,6 +8,7 @@ let historyBackPending = false
 /** Existing backdrops own cancellation; Escape and browser Back invoke only the top one. */
 export default function PanelNavigation() {
   useLayoutEffect(() => {
+    const isolation = createModalIsolation()
     const marker = '__timeSchedulerPanel'
     let guarded = false, restoring = historyBackPending, disposed = false
     const restoreHistory = () => { restoring = true; if (!historyBackPending) { historyBackPending = true; history.back() } }
@@ -25,6 +27,7 @@ export default function PanelNavigation() {
       return true
     }
     const sync = () => {
+      isolation.sync()
       if (disposed || restoring) return
       if (layers().length && !guarded) { history.pushState({ ...history.state, [marker]: true }, ''); guarded = true }
       else if (!layers().length && guarded) {
@@ -40,10 +43,10 @@ export default function PanelNavigation() {
       if (e.key === 'Escape' && layers().length) { e.preventDefault(); e.stopImmediatePropagation(); dismiss() }
     }
     const observer = new MutationObserver(sync)
-    observer.observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ['class', 'hidden', 'style', 'data-dismiss-panel'] })
+    observer.observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ['class', 'hidden', 'style', 'aria-modal', 'data-dismiss-panel'] })
     window.addEventListener('keydown', key, true); window.addEventListener('popstate', pop)
     if (history.state?.[marker]) restoreHistory(); else sync()
-    return () => { disposed = true; observer.disconnect(); window.removeEventListener('keydown', key, true); window.removeEventListener('popstate', pop); if (guarded && history.state?.[marker]) restoreHistory() }
+    return () => { disposed = true; observer.disconnect(); isolation.restore(); window.removeEventListener('keydown', key, true); window.removeEventListener('popstate', pop); if (guarded && history.state?.[marker]) restoreHistory() }
   }, [])
   return null
 }

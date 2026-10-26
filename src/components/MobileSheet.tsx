@@ -2,6 +2,7 @@ import { CSSProperties, ReactNode, useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { X } from 'lucide-react'
 import useUIStore from '../stores/uiStore'
+import { restoreFocus } from '../utils/useFocusTrap'
 
 let sequence = 0
 const stack: number[] = []
@@ -55,7 +56,7 @@ export default function MobileSheet({ title, closeLabel, onClose, children, fill
       const index = stack.indexOf(id); if (index >= 0) stack.splice(index, 1)
       window.removeEventListener('keydown', key, true); window.removeEventListener('resize', resize)
       window.visualViewport?.removeEventListener('resize', resize); window.visualViewport?.removeEventListener('scroll', resize)
-      if (previous?.isConnected) previous.focus({ preventScroll: true })
+      restoreFocus(previous)
     }
   }, [id])
   const height = expanded ? view.height - 32 : Math.min(view.height * .78, 680)
